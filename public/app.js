@@ -155,13 +155,15 @@ async function handleBrowseFolder() {
   try {
     const response = await fetch("/api/choose-folder", { signal: AbortSignal.timeout(120000) });
     if (response.ok) {
-      const data = await response.json();
-      if (data.supported && data.chosenPath) {
+      const text = await response.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch {}
+      if (data?.supported && data.chosenPath) {
         els.folderPath.value = data.chosenPath;
         setStatus(`Selected folder: ${data.chosenPath}. Click Scan to import.`);
         return;
       }
-      if (data.supported && data.cancelled) {
+      if (data?.supported && data.cancelled) {
         return;
       }
     }
@@ -189,9 +191,17 @@ async function handleFolderScan(event) {
     const response = await fetch(`/api/scan-folder?path=${encodeURIComponent(folderPath)}`, {
       signal: AbortSignal.timeout(60000),
     });
-    const result = await response.json();
+    const text = await response.text();
+    let result = null;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      throw new Error(
+        `Server returned ${response.status} (non-JSON). Make sure the local server is running with 'npm start' or 'npm run dev'.`
+      );
+    }
     if (!response.ok) {
-      throw new Error(result.error || `Server responded with ${response.status}`);
+      throw new Error(result?.error || `Server responded with ${response.status}`);
     }
 
     const { folderName, videos = [], totalCount = 0 } = result;

@@ -816,7 +816,14 @@ function resolveLocalPath(inputPath) {
   if (clean.startsWith("~")) {
     clean = path.join(os.homedir(), clean.slice(1));
   }
-  return path.resolve(clean);
+  const resolved = path.resolve(clean);
+  if (!fs.existsSync(resolved)) {
+    const dataCandidate = path.join(DATA_ROOT, clean);
+    if (fs.existsSync(dataCandidate)) return dataCandidate;
+    const projectCandidate = path.join(ROOT, clean);
+    if (fs.existsSync(projectCandidate)) return projectCandidate;
+  }
+  return resolved;
 }
 
 function isHlsPackageDirectory(entries) {
