@@ -43,6 +43,7 @@ const CONTENT_TYPES = {
 };
 
 const SUPPORTED_VIDEO_EXTENSIONS = new Set(Object.keys(CONTENT_TYPES).filter((ext) => ext !== ".css" && ext !== ".html" && ext !== ".js" && ext !== ".json" && ext !== ".map" && ext !== ".svg"));
+const STANDALONE_VIDEO_EXTENSIONS = new Set(Array.from(SUPPORTED_VIDEO_EXTENSIONS).filter((ext) => ext !== ".m4s"));
 
 function isPublicIp(address) {
   if (!net.isIP(address)) return false;
@@ -818,6 +819,40 @@ function resolveLocalPath(inputPath) {
   return path.resolve(clean);
 }
 
+function isHlsPackageDirectory(entries) {
+  const fileNames = new Set(entries.filter((e) => e.isFile()).map((e) => e.name.toLowerCase()));
+  const dirNames = new Set(entries.filter((e) => e.isDirectory()).map((e) => e.name.toLowerCase()));
+
+  if (fileNames.has("master.m3u8")) return "master.m3u8";
+  if (fileNames.has("index.m3u8")) return "index.m3u8";
+  if (fileNames.has("playlist.m3u8") && (dirNames.has("audio") || dirNames.has("video") || dirNames.has("segments"))) {
+    return "playlist.m3u8";
+  }
+  if ((dirNames.has("audio") || dirNames.has("video")) && entries.some((e) => e.isFile() && e.name.toLowerCase().endsWith(".m3u8"))) {
+    const m3u8File = entries.find((e) => e.isFile() && e.name.toLowerCase().endsWith(".m3u8"));
+    return m3u8File.name;
+  }
+  return null;
+}
+
+async function getDirectorySize(dir) {
+  let total = 0;
+  try {
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        total += await getDirectorySize(full);
+      } else if (entry.isFile()) {
+        const stats = await fsp.stat(full);
+        total += stats.size;
+      }
+    }
+  } catch {}
+  return total;
+}
+
 async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs = new Set()) {
   const resolved = path.resolve(dirPath);
   let real;
@@ -836,6 +871,41 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
     return [];
   }
 
+  // Check if this directory itself is an HLS package (contains master.m3u8 with audio/video segments)
+  const hlsManifestName = isHlsPackageDirectory(entries);
+  if (hlsManifestName) {
+    let meta = null;
+    const metaEntry = entries.find((e) => e.isFile() && e.name.toLowerCase() === "metadata.json");
+    if (metaEntry) {
+      try {
+        meta = JSON.parse(await fsp.readFile(path.join(resolved, metaEntry.name), "utf8"));
+      } catch {}
+    }
+
+    const folderBaseName = path.basename(resolved);
+    const title =
+      meta?.title ||
+      (folderBaseName !== "videos" && folderBaseName !== "data"
+        ? folderBaseName.replace(/[-_]+/g, " ").trim()
+        : "HLS Video");
+    const totalSize = meta?.size || (await getDirectorySize(resolved));
+    const rel = relativePrefix ? `${relativePrefix}/${hlsManifestName}` : hlsManifestName;
+    const full = path.join(resolved, hlsManifestName);
+
+    return [
+      {
+        name: hlsManifestName,
+        title: title || hlsManifestName,
+        relativePath: rel,
+        absolutePath: full,
+        subfolder: relativePrefix || "",
+        size: totalSize,
+        format: "hls",
+        url: `/local-media/${encodeURIComponent(resolved)}/${hlsManifestName}`,
+      },
+    ];
+  }
+
   const results = [];
   entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
 
@@ -849,7 +919,7 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
       results.push(...nested);
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
-      if (SUPPORTED_VIDEO_EXTENSIONS.has(ext)) {
+      if (STANDALONE_VIDEO_EXTENSIONS.has(ext)) {
         try {
           const stats = await fsp.stat(full);
           const title = entry.name
@@ -863,7 +933,7 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
             absolutePath: full,
             subfolder: relativePrefix || "",
             size: stats.size,
-            url: `/api/local-media?path=${encodeURIComponent(full)}`,
+            url: `/local-media/${encodeURIComponent(resolved)}/${entry.name}`,
           });
         } catch {
           // Ignore unreadable files
@@ -898,23 +968,50 @@ async function handleScanFolder(response, requestUrl) {
 }
 
 function serveLocalMedia(request, response, requestUrl) {
-  const rawPath = requestUrl.searchParams.get("path");
-  if (!rawPath) return sendJson(response, 400, { error: "A file path is required." });
-  const filePath = resolveLocalPath(rawPath);
+  let filePath;
+
+  if (requestUrl.pathname.startsWith("/local-media/")) {
+    const remainder = requestUrl.pathname.slice("/local-media/".length);
+    const slashIdx = remainder.indexOf("/");
+    let baseDirEncoded, relPath;
+    if (slashIdx >= 0) {
+      baseDirEncoded = remainder.slice(0, slashIdx);
+      relPath = decodeURIComponent(remainder.slice(slashIdx + 1));
+    } else {
+      baseDirEncoded = remainder;
+      relPath = "";
+    }
+    const baseDir = decodeURIComponent(baseDirEncoded);
+    filePath = path.resolve(baseDir, relPath);
+    const resolvedBase = path.resolve(baseDir);
+    if (!filePath.startsWith(resolvedBase + path.sep) && filePath !== resolvedBase) {
+      return sendJson(response, 403, { error: "Forbidden path." });
+    }
+  } else {
+    const rawPath = requestUrl.searchParams.get("path");
+    if (!rawPath) return sendJson(response, 400, { error: "A file path is required." });
+    filePath = resolveLocalPath(rawPath);
+  }
+
   const ext = path.extname(filePath).toLowerCase();
-  if (!SUPPORTED_VIDEO_EXTENSIONS.has(ext)) {
-    return sendJson(response, 403, { error: "File format is not a supported video type." });
+  if (!CONTENT_TYPES[ext]) {
+    return sendJson(response, 403, { error: "File format is not a supported media type." });
   }
 
   fs.stat(filePath, (error, stats) => {
     if (error || !stats.isFile()) return sendJson(response, 404, { error: "Media file not found." });
     const contentType = CONTENT_TYPES[ext] || "application/octet-stream";
+    const isPlaylist = ext === ".m3u8";
     const range = request.headers.range?.match(/bytes=(\d*)-(\d*)/);
+
     if (range) {
       const start = range[1] ? Number(range[1]) : 0;
       const end = range[2] ? Math.min(Number(range[2]), stats.size - 1) : stats.size - 1;
       if (start > end || start >= stats.size) {
-        response.writeHead(416, { "Content-Range": `bytes */${stats.size}` });
+        response.writeHead(416, {
+          "Content-Range": `bytes */${stats.size}`,
+          "Access-Control-Allow-Origin": "*",
+        });
         return response.end();
       }
       response.writeHead(206, {
@@ -922,15 +1019,18 @@ function serveLocalMedia(request, response, requestUrl) {
         "Content-Length": end - start + 1,
         "Content-Range": `bytes ${start}-${end}/${stats.size}`,
         "Content-Type": contentType,
-        "Cache-Control": "private, max-age=31536000, immutable",
+        "Cache-Control": isPlaylist ? "no-cache" : "private, max-age=31536000, immutable",
+        "Access-Control-Allow-Origin": "*",
       });
       return fs.createReadStream(filePath, { start, end }).pipe(response);
     }
+
     response.writeHead(200, {
       "Accept-Ranges": "bytes",
       "Content-Length": stats.size,
       "Content-Type": contentType,
-      "Cache-Control": "private, max-age=31536000, immutable",
+      "Cache-Control": isPlaylist ? "no-cache" : "private, max-age=31536000, immutable",
+      "Access-Control-Allow-Origin": "*",
     });
     if (request.method === "HEAD") return response.end();
     return fs.createReadStream(filePath).pipe(response);
@@ -1000,7 +1100,7 @@ function startServer() {
     if (request.method === "GET" && requestUrl.pathname === "/api/choose-folder") {
       return handleChooseFolder(response);
     }
-    if ((request.method === "GET" || request.method === "HEAD") && requestUrl.pathname === "/api/local-media") {
+    if ((request.method === "GET" || request.method === "HEAD") && (requestUrl.pathname === "/api/local-media" || requestUrl.pathname.startsWith("/local-media/"))) {
       return serveLocalMedia(request, response, requestUrl);
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -1023,6 +1123,7 @@ module.exports = {
   fetchPage,
   getVimeoTranscript,
   handleScanFolder,
+  isHlsPackageDirectory,
   isPublicIp,
   listArchiveFiles,
   parseVtt,
@@ -1034,6 +1135,7 @@ module.exports = {
   selectHlsVariant,
   serveLocalMedia,
   splitTranslationText,
+  STANDALONE_VIDEO_EXTENSIONS,
   startServer,
   SUPPORTED_VIDEO_EXTENSIONS,
   transcriptFromCues,

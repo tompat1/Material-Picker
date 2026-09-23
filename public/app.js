@@ -981,7 +981,8 @@ function renderPlayer() {
 
   els.playerShell.dataset.mode = "video";
   if (/\.m3u8([?#].*)?$/i.test(playbackUrl)) {
-    loadHlsVideo(playbackUrl, hasOfflineCopy);
+    const isLocalHls = hasOfflineCopy || playbackUrl.startsWith("/offline-media/") || playbackUrl.startsWith("/local-media/");
+    loadHlsVideo(playbackUrl, isLocalHls);
     return;
   }
 
@@ -1004,7 +1005,8 @@ function markSelectedPlaybackReady(videoId, message) {
 }
 
 function loadHlsVideo(url, isOffline = false) {
-  if (isOffline && window.Hls?.isSupported()) {
+  const isLocalStream = url.startsWith("/offline-media/") || url.startsWith("/local-media/");
+  if ((isOffline || isLocalStream) && window.Hls?.isSupported()) {
     let recoveredMediaError = false;
     hlsPlayer = new window.Hls({
       enableWorker: true,
@@ -1013,7 +1015,13 @@ function loadHlsVideo(url, isOffline = false) {
     });
     hlsPlayer.loadSource(url);
     hlsPlayer.attachMedia(els.videoPlayer);
-    hlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, () => setPlayerStatus("Offline copy ready to play from disk."));
+    hlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, () => {
+      const msg = url.includes("/local-media/")
+        ? "Local HLS video ready to play with audio/video segments."
+        : "Offline copy ready to play from disk.";
+      setPlayerStatus(msg);
+      if (state.selectedId) markSelectedPlaybackReady(state.selectedId, msg);
+    });
     hlsPlayer.on(window.Hls.Events.ERROR, (_, data) => {
       if (!data.fatal) return;
       if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && !recoveredMediaError) {
@@ -1023,9 +1031,9 @@ function loadHlsVideo(url, isOffline = false) {
         return;
       }
       const reason = data.details || data.type || "local stream error";
-      setPlayerStatus(`The saved copy could not be played (${reason}). Retry it or create a new offline copy.`);
+      setPlayerStatus(`The stream could not be played (${reason}). Retry it or check folder.`);
     });
-    setPlayerStatus("Loading the saved HLS copy from disk...");
+    setPlayerStatus(url.includes("/local-media/") ? "Loading local HLS stream with separate audio/video segments..." : "Loading the saved HLS copy from disk...");
     return;
   }
 

@@ -8,6 +8,7 @@ const {
   assertUnencryptedHls,
   downloadMetrics,
   extractPlayerConfig,
+  isHlsPackageDirectory,
   isPublicIp,
   listArchiveFiles,
   parseHlsAttributes,
@@ -171,7 +172,7 @@ test("scanDirectoryForVideos discovers videos in deeply nested folders within fo
   assert.equal(trailer.relativePath, "trailer.mp4");
   assert.equal(trailer.subfolder, "");
   assert.equal(trailer.size, 12);
-  assert.ok(trailer.url.startsWith("/api/local-media?path="));
+  assert.ok(trailer.url.startsWith("/local-media/"));
 
   // Check Level 1 video
   const ep1 = results.find((v) => v.name === "episode-01.mkv");
@@ -199,4 +200,51 @@ test("resolveLocalPath expands tilde to home directory", () => {
   const home = os.homedir();
   assert.equal(resolveLocalPath("~/Videos"), path.join(home, "Videos"));
   assert.equal(resolveLocalPath("/absolute/path"), "/absolute/path");
+});
+
+test("scanDirectoryForVideos recognizes master.m3u8 with audio/video folders as a single HLS video", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "material-picker-hls-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  // Create an HLS package matching the user's folder structure:
+  // my-talk/
+  //   audio/
+  //     playlist.m3u8
+  //     segments/00001.m4s
+  //   video/
+  //     playlist.m3u8
+  //     segments/00001.m4s
+  //   master.m3u8
+  //   metadata.json
+  const hlsDir = path.join(root, "Keynote Presentation");
+  const audioSegDir = path.join(hlsDir, "audio", "segments");
+  const videoSegDir = path.join(hlsDir, "video", "segments");
+  fs.mkdirSync(audioSegDir, { recursive: true });
+  fs.mkdirSync(videoSegDir, { recursive: true });
+
+  fs.writeFileSync(path.join(hlsDir, "master.m3u8"), "#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,URI=\"audio/playlist.m3u8\"\nvideo/playlist.m3u8");
+  fs.writeFileSync(path.join(hlsDir, "metadata.json"), JSON.stringify({ title: "Keynote Talk - Full HD", size: 1050000 }));
+  fs.writeFileSync(path.join(hlsDir, "audio", "playlist.m3u8"), "#EXTM3U\nsegments/00001.m4s");
+  fs.writeFileSync(path.join(audioSegDir, "00001.m4s"), "audio-bytes");
+  fs.writeFileSync(path.join(hlsDir, "video", "playlist.m3u8"), "#EXTM3U\nsegments/00001.m4s");
+  fs.writeFileSync(path.join(videoSegDir, "00001.m4s"), "video-bytes");
+
+  // Also add a regular mp4 in the root alongside the HLS folder
+  fs.writeFileSync(path.join(root, "regular-clip.mp4"), "clip-bytes");
+
+  const results = await scanDirectoryForVideos(root);
+
+  // Must only find 2 videos: "regular-clip.mp4" and "Keynote Presentation", NOT individual segments!
+  assert.equal(results.length, 2);
+
+  const hlsItem = results.find((item) => item.format === "hls");
+  assert.ok(hlsItem, "Should detect the HLS package");
+  assert.equal(hlsItem.title, "Keynote Talk - Full HD");
+  assert.equal(hlsItem.name, "master.m3u8");
+  assert.equal(hlsItem.size, 1050000);
+  assert.ok(hlsItem.url.startsWith("/local-media/"));
+  assert.ok(hlsItem.url.includes("master.m3u8"));
+
+  // Verify none of the .m4s segments were returned as individual videos
+  assert.ok(results.every((item) => !item.name.endsWith(".m4s")));
 });
