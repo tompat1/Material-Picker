@@ -283,6 +283,7 @@ async function handleFolderScan(event) {
     setStatus(
       `Scraped ${addedCount} video ${addedCount === 1 ? "file" : "files"}${subfolderInfo} into “${folderName}”. Ready to play!`
     );
+    if (addedCount) showDesk(addedCount === 1 ? "screen" : "reels");
   } catch (error) {
     setStatus(`Folder scan error: ${error.message}`);
   } finally {
@@ -374,6 +375,7 @@ function handleLocalFolderInput(event) {
   render();
 
   setStatus(`Imported ${addedCount} video ${addedCount === 1 ? "file" : "files"} from “${rootFolderName}”. Ready to play!`);
+  if (addedCount) showDesk(addedCount === 1 ? "screen" : "reels");
 }
 
 async function handleImport(event) {
@@ -402,6 +404,7 @@ async function handleImport(event) {
         ? `Imported ${added} video ${added === 1 ? "item" : "items"} from the page.`
         : "The page loaded, but no video links were found. Paste page HTML or embed code into the extractor."
     );
+    if (added) showDesk(added === 1 ? "screen" : "reels");
   } catch (error) {
     recordScrape(url, {
       status: "blocked",
@@ -456,6 +459,7 @@ function handlePasteExtract() {
       ? `Extracted ${added} video ${added === 1 ? "item" : "items"} from the pasted material.`
       : "No supported video links were found. Try pasting the page source or direct embed code."
   );
+  if (added) showDesk(added === 1 ? "screen" : "reels");
 }
 
 function extractVideos(text, baseUrl = "") {
@@ -501,6 +505,7 @@ function addVideo(video) {
   state.selectedId = next.id;
   saveState();
   render();
+  showDesk("screen");
 }
 
 function updateSelectedFromForm() {
@@ -540,6 +545,13 @@ function selectVideo(id) {
   state.selectedId = id;
   saveState();
   render();
+  showDesk("screen");
+}
+
+function showDesk(name) {
+  const tab = document.querySelector(`#desk-${name}`);
+  if (!tab || !window.matchMedia("(max-width: 1180px)").matches) return;
+  tab.checked = true;
 }
 
 function duplicateSelected() {
@@ -579,6 +591,13 @@ function clearAll() {
   saveState();
   render();
   setStatus("All saved material was cleared from this browser.");
+}
+
+function renderVideoCount() {
+  const count = state.videos.length;
+  els.videoCount.textContent = count;
+  const label = els.videoCount.nextElementSibling;
+  if (label) label.textContent = count === 1 ? "reel" : "reels";
 }
 
 function render() {
@@ -984,7 +1003,17 @@ function renderPlayer() {
 
   if (!video?.url) {
     els.playerShell.dataset.mode = "empty";
-    setPlayerStatus("Select a saved video to begin.");
+    const emptyTitle = els.emptyPlayer.querySelector("strong");
+    const emptyCopy = els.emptyPlayer.querySelector("span");
+    if (video) {
+      if (emptyTitle) emptyTitle.textContent = "No picture yet";
+      if (emptyCopy) emptyCopy.textContent = "Add a video URL to put this reel on the screen.";
+      setPlayerStatus("This reel has no video URL yet.");
+    } else {
+      if (emptyTitle) emptyTitle.textContent = "Screen is dark";
+      if (emptyCopy) emptyCopy.textContent = "Select a reel, or scan a folder to load one.";
+      setPlayerStatus("Select a saved video to begin.");
+    }
     return;
   }
 

@@ -873,6 +873,8 @@ select {
   gap: 0.7rem;
 }
 
+.library-offline-copy,
+.offline-heading > div:first-child,
 .offline-destination > div {
   display: grid;
   gap: 0.12rem;
@@ -1130,7 +1132,6 @@ progress::-moz-progress-bar {
 }
 
 .player-shell {
-  position: relative;
   display: grid;
   overflow: hidden;
   padding: 0.45rem 1.25rem;
@@ -1390,6 +1391,7 @@ progress::-moz-progress-bar {
   .brand {
     grid-area: brand;
   }
+}
 
   .storage-pill {
     grid-area: count;
@@ -1511,6 +1513,7 @@ progress::-moz-progress-bar {
   .bulk-download-progress,
   .card-download-progress {
     grid-template-columns: 1fr;
+    padding-left: 0.35rem;
   }
 
   .bulk-download-progress span,
