@@ -290,9 +290,21 @@ async function getWhisperPipeline() {
       return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny", {
         quantized: true,
       });
-    })();
+    })().catch((error) => {
+      whisperPipelinePromise = null;
+      throw error;
+    });
   }
   return whisperPipelinePromise;
+}
+
+function pcmBufferToFloat32(pcm) {
+  const evenLength = pcm.length - (pcm.length % 2);
+  const samples = new Float32Array(evenLength / 2);
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = pcm.readInt16LE(i * 2) / 32768;
+  }
+  return samples;
 }
 
 const WHISPER_LANGUAGES = {
@@ -313,12 +325,7 @@ async function handleTranscribe(request, response) {
     let floatSamples = null;
 
     if (body.pcmBase64) {
-      const buffer = Buffer.from(body.pcmBase64, "base64");
-      const int16 = new Int16Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 2));
-      floatSamples = new Float32Array(int16.length);
-      for (let i = 0; i < int16.length; i++) {
-        floatSamples[i] = int16[i] / 32768.0;
-      }
+      floatSamples = pcmBufferToFloat32(Buffer.from(body.pcmBase64, "base64"));
     } else if (Array.isArray(body.samples)) {
       floatSamples = new Float32Array(body.samples);
     }
@@ -1289,6 +1296,7 @@ module.exports = {
   listArchiveFiles,
   parseVtt,
   parseHlsAttributes,
+  pcmBufferToFloat32,
   proofreadText,
   resolveLocalPath,
   sanitizeOfflineMaster,

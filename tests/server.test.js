@@ -13,6 +13,7 @@ const {
   listArchiveFiles,
   parseHlsAttributes,
   parseVtt,
+  pcmBufferToFloat32,
   proofreadText,
   resolveLocalPath,
   sanitizeOfflineMaster,
@@ -261,5 +262,16 @@ test("proofreadText removes speech fillers, deduplicates stutters, and fixes sen
 
   const multilingual = "[00:10] yyy to jest bardzo dobre";
   assert.equal(proofreadText(multilingual, "pl"), "[00:10] To jest bardzo dobre");
+});
+
+test("decodes PCM whose byte offset is not aligned for Int16Array", () => {
+  const backing = Buffer.alloc(8);
+  backing.writeInt16LE(16384, 1);
+  backing.writeInt16LE(-16384, 3);
+  const unaligned = backing.subarray(1, 5);
+  const samples = pcmBufferToFloat32(unaligned);
+  assert.equal(samples.length, 2);
+  assert.ok(Math.abs(samples[0] - 0.5) < 0.001);
+  assert.ok(Math.abs(samples[1] + 0.5) < 0.001);
 });
 

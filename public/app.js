@@ -1733,23 +1733,99 @@ let accumulatedLength = 0;
 let isTranscribingChunk = false;
 let lastChunkTime = 0;
 
-function setupAudioTrackCapture() {
-  if (!audioContext) {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextClass) return null;
-    audioContext = new AudioContextClass();
-  }
+const TRANSCRIBE_SAMPLE_RATE = 16000;
+const TRANSCRIBE_CHUNK_SAMPLES = TRANSCRIBE_SAMPLE_RATE * 12;
+let silentStreak = 0;
+let audioTap = null;
+let transcriptionEndedHandler = null;
 
-  if (audioContext.state === "suspended") {
-    audioContext.resume().catch(() => {});
+async function openAudioTap() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!audioContext) audioContext = new AudioContextClass();
+  if (audioContext.state === "suspended") await audioContext.resume();
+
+  const capture = els.videoPlayer.captureStream?.() || els.videoPlayer.webkitCaptureStream?.();
+  let tracks = capture?.getAudioTracks?.().filter((track) => track.readyState === "live") || [];
+  if (!tracks.length && capture && !els.videoPlayer.paused) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    tracks = capture.getAudioTracks().filter((track) => track.readyState === "live");
+  }
+  if (tracks.length) {
+    return {
+      audioContext,
+      source: audioContext.createMediaStreamSource(new MediaStream(tracks)),
+      kind: "stream",
+    };
   }
 
   if (!mediaElementSource) {
     mediaElementSource = audioContext.createMediaElementSource(els.videoPlayer);
     mediaElementSource.connect(audioContext.destination);
   }
+  return { audioContext, source: mediaElementSource, kind: "element" };
+}
 
-  return { audioContext, mediaElementSource };
+async function createCaptureProcessor(context, onSamples) {
+  try {
+    if (!context.__pickerWorklet) {
+      const code = `
+        class PickerCaptureProcessor extends AudioWorkletProcessor {
+          constructor() {
+            super();
+            this.pending = new Float32Array(4096);
+            this.offset = 0;
+          }
+          process(inputs) {
+            const channel = inputs[0] && inputs[0][0];
+            if (!channel) return true;
+            let read = 0;
+            while (read < channel.length) {
+              const take = Math.min(this.pending.length - this.offset, channel.length - read);
+              this.pending.set(channel.subarray(read, read + take), this.offset);
+              this.offset += take;
+              read += take;
+              if (this.offset === this.pending.length) {
+                this.port.postMessage(this.pending);
+                this.pending = new Float32Array(this.pending.length);
+                this.offset = 0;
+              }
+            }
+            return true;
+          }
+        }
+        registerProcessor("picker-capture", PickerCaptureProcessor);
+      `;
+      const url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
+      await context.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      context.__pickerWorklet = true;
+    }
+    const node = new AudioWorkletNode(context, "picker-capture");
+    node.port.onmessage = (event) => onSamples(event.data, context.sampleRate);
+    return node;
+  } catch {
+    const processor = context.createScriptProcessor(4096, 1, 1);
+    processor.onaudioprocess = (event) => onSamples(event.inputBuffer.getChannelData(0), context.sampleRate);
+    return processor;
+  }
+}
+
+function disconnectAudioTap() {
+  if (audioProcessor) {
+    try {
+      audioProcessor.disconnect();
+    } catch {}
+    if (audioProcessor.port) audioProcessor.port.onmessage = null;
+    audioProcessor.onaudioprocess = null;
+    audioProcessor = null;
+  }
+  if (audioTap?.kind === "stream") {
+    try {
+      audioTap.source.disconnect();
+    } catch {}
+  }
+  audioTap = null;
 }
 
 function downsampleTo16k(inputBuffer, inputSampleRate) {
@@ -1795,6 +1871,10 @@ async function startTranscription() {
   if (!video) return;
   if (video.transcript && !confirm("Replace the existing transcript for this video?")) return;
 
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (AudioContextClass && !audioContext) audioContext = new AudioContextClass();
+  if (audioContext?.state === "suspended") audioContext.resume();
+
   els.transcriptText.value = "";
   updateTranscriptFields();
 
@@ -1831,58 +1911,87 @@ async function startTranscription() {
     }
   }
 
-  startAudioTrackTranscription(video);
+  await startAudioTrackTranscription(video);
 }
 
-function startAudioTrackTranscription(video) {
-  const setup = setupAudioTrackCapture();
-  if (!setup) {
+function collectAudioSamples(inputData, sampleRate) {
+  if (!audioTrackTranscribing || els.videoPlayer.paused) return;
+  const downsampled = downsampleTo16k(inputData, sampleRate);
+  accumulatedSamples.push(downsampled);
+  accumulatedLength += downsampled.length;
+  if (accumulatedLength >= TRANSCRIBE_CHUNK_SAMPLES && !isTranscribingChunk) {
+    processPendingAudioChunk();
+  }
+}
+
+function haltAudioCapture() {
+  audioTrackTranscribing = false;
+  if (transcriptionEndedHandler) {
+    els.videoPlayer.removeEventListener("ended", transcriptionEndedHandler);
+    transcriptionEndedHandler = null;
+  }
+  disconnectAudioTap();
+  accumulatedSamples = [];
+  accumulatedLength = 0;
+}
+
+async function startAudioTrackTranscription() {
+  haltAudioCapture();
+
+  let tap;
+  try {
+    tap = await openAudioTap();
+  } catch (error) {
     setTranscriptButtons(false);
-    setTranscriptStatus("Web Audio API is not supported in this browser.", "error");
-    setStatus("Audio track transcription could not start.");
+    setTranscriptStatus(`Could not read the video audio: ${error.message}`, "error");
+    return;
+  }
+  if (!tap) {
+    setTranscriptButtons(false);
+    setTranscriptStatus("This browser cannot capture audio from the player.", "error");
+    return;
+  }
+  if (els.videoPlayer.paused) {
+    if (tap.kind === "stream") {
+      try {
+        tap.source.disconnect();
+      } catch {}
+    }
+    setTranscriptButtons(false);
+    setTranscriptStatus("Press play. Transcription reads the audio while the video plays.", "error");
     return;
   }
 
-  stopTranscription();
-
+  audioTap = tap;
   audioTrackTranscribing = true;
   accumulatedSamples = [];
   accumulatedLength = 0;
-  isTranscribingChunk = false;
+  silentStreak = 0;
   lastChunkTime = els.videoPlayer.currentTime || 0;
 
-  audioProcessor = setup.audioContext.createScriptProcessor(4096, 1, 1);
-  setup.mediaElementSource.connect(audioProcessor);
-  audioProcessor.connect(setup.audioContext.destination);
+  audioProcessor = await createCaptureProcessor(tap.audioContext, collectAudioSamples);
+  tap.source.connect(audioProcessor);
+  const mute = tap.audioContext.createGain();
+  mute.gain.value = 0;
+  audioProcessor.connect(mute);
+  mute.connect(tap.audioContext.destination);
 
-  audioProcessor.onaudioprocess = (event) => {
-    if (!audioTrackTranscribing || els.videoPlayer.paused) return;
-
-    const inputData = event.inputBuffer.getChannelData(0);
-    const downsampled = downsampleTo16k(inputData, setup.audioContext.sampleRate);
-    accumulatedSamples.push(downsampled);
-    accumulatedLength += downsampled.length;
-
-    if (accumulatedLength >= 56000 && !isTranscribingChunk) {
-      processPendingAudioChunk(false);
-    }
-  };
-
-  const onEnded = () => {
-    processPendingAudioChunk(true);
-    stopTranscription();
-  };
-
-  els.videoPlayer.addEventListener("ended", onEnded, { once: true });
+  if (transcriptionEndedHandler) els.videoPlayer.removeEventListener("ended", transcriptionEndedHandler);
+  transcriptionEndedHandler = () => stopTranscription();
+  els.videoPlayer.addEventListener("ended", transcriptionEndedHandler);
 
   setTranscriptButtons(true);
   const currentTime = formatTime(els.videoPlayer.currentTime || 0);
-  setTranscriptStatus(`Transcribing directly from video audio track [${currentTime}]...`, "working");
-  setStatus("Transcribing from the video audio track. The video is playing.");
+  setTranscriptStatus(
+    `Listening from ${currentTime}. The first line appears after a short stretch of speech. The speech model downloads on the first run.`,
+    "working"
+  );
+  setStatus("Transcribing from the video audio. Keep the video playing.");
 }
 
-async function processPendingAudioChunk(isFinal = false) {
-  if (accumulatedLength === 0) return;
+async function processPendingAudioChunk() {
+  if (isTranscribingChunk || accumulatedLength === 0) return;
+  isTranscribingChunk = true;
 
   const merged = new Float32Array(accumulatedLength);
   let offset = 0;
@@ -1890,78 +1999,95 @@ async function processPendingAudioChunk(isFinal = false) {
     merged.set(chunk, offset);
     offset += chunk.length;
   }
-
   accumulatedSamples = [];
   accumulatedLength = 0;
 
   const chunkStartTime = lastChunkTime;
-  const chunkEndTime = els.videoPlayer.currentTime || (chunkStartTime + (merged.length / 16000));
+  const chunkEndTime = els.videoPlayer.currentTime || chunkStartTime + merged.length / TRANSCRIBE_SAMPLE_RATE;
   lastChunkTime = chunkEndTime;
 
   let sumSquares = 0;
-  for (let i = 0; i < merged.length; i++) {
-    sumSquares += merged[i] * merged[i];
-  }
+  for (let i = 0; i < merged.length; i++) sumSquares += merged[i] * merged[i];
   const rms = Math.sqrt(sumSquares / merged.length);
-  if (rms < 0.005) return;
-
-  const pcmBase64 = floatTo16BitPCMBase64(merged);
-  isTranscribingChunk = true;
 
   try {
+    if (rms < 0.005) {
+      silentStreak += 1;
+      setTranscriptStatus(
+        silentStreak >= 2
+          ? "The video is playing, but its audio is not reaching the transcriber."
+          : `Listening at ${formatTime(chunkEndTime)}. That stretch had no audible speech.`,
+        silentStreak >= 2 ? "error" : "working"
+      );
+      return;
+    }
+
+    silentStreak = 0;
+    setTranscriptStatus(
+      `Transcribing ${formatTime(chunkStartTime)}–${formatTime(chunkEndTime)}. The first run waits while the speech model loads.`,
+      "working"
+    );
     const response = await fetch("/api/transcribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        pcmBase64,
+        pcmBase64: floatTo16BitPCMBase64(merged),
         language: els.sourceLang.value,
         currentTime: chunkStartTime,
       }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(180000),
     });
-
     const data = await response.json();
-    if (response.ok && data.text) {
-      const timeStr = formatTime(chunkStartTime);
-      const newText = `[${timeStr}] ${data.text}`;
+    if (!response.ok) throw new Error(data.error || `Transcription returned ${response.status}.`);
+    if (data.text) {
+      const newText = `[${formatTime(chunkStartTime)}] ${data.text}`;
       els.transcriptText.value = els.transcriptText.value.trim()
         ? `${els.transcriptText.value.trim()}\n${newText}`
         : newText;
       updateTranscriptFields();
-
       const video = selectedVideo();
       if (video) {
         video.transcript = els.transcriptText.value;
         saveState();
       }
-      setTranscriptStatus(`Transcribing from audio track [${formatTime(chunkEndTime)}]...`, "working");
+      setTranscriptStatus(
+        audioTrackTranscribing
+          ? `Listening at ${formatTime(chunkEndTime)}. New lines appear as speech continues.`
+          : "Audio track transcript saved for this video."
+      );
+      return;
     }
+    setTranscriptStatus(`Listening at ${formatTime(chunkEndTime)}. No speech recognized in that stretch yet.`, "working");
   } catch (error) {
-    console.error("Transcription chunk error:", error);
+    setTranscriptStatus(`Transcription failed: ${error.message}`, "error");
+    setStatus(`Transcription failed: ${error.message}`);
   } finally {
     isTranscribingChunk = false;
+    const shouldContinue = audioTrackTranscribing && accumulatedLength >= TRANSCRIBE_CHUNK_SAMPLES;
+    const shouldFlushTail = !audioTrackTranscribing && accumulatedLength > TRANSCRIBE_SAMPLE_RATE / 2;
+    if (shouldContinue || shouldFlushTail) processPendingAudioChunk();
   }
 }
 
 function stopTranscription() {
+  const shouldFlush = !isTranscribingChunk && accumulatedLength > TRANSCRIBE_SAMPLE_RATE / 2;
   audioTrackTranscribing = false;
-  if (audioProcessor) {
-    try {
-      audioProcessor.disconnect();
-    } catch {}
-    audioProcessor = null;
+  if (transcriptionEndedHandler) {
+    els.videoPlayer.removeEventListener("ended", transcriptionEndedHandler);
+    transcriptionEndedHandler = null;
   }
-  if (accumulatedLength > 16000) {
-    processPendingAudioChunk(true);
-  }
+  disconnectAudioTap();
+  if (shouldFlush) processPendingAudioChunk();
   if (recognition) {
     recognition.stop();
     recognition = null;
   }
   setTranscriptButtons(false);
-  if (els.transcriptText.value.trim()) {
+  if (isTranscribingChunk) {
+    setTranscriptStatus("Finishing the current stretch of audio...", "working");
+  } else if (els.transcriptText.value.trim()) {
     setTranscriptStatus("Audio track transcript saved for this video.", "ready");
-  } else {
+  } else if (els.transcriptStatus.dataset.tone !== "error") {
     setTranscriptStatus("Transcription stopped.", "ready");
   }
 }
