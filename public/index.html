@@ -34,25 +34,68 @@
           </button>
         </div>
 
-        <form id="importForm" class="url-form">
-          <label for="sourceUrl">Page URL</label>
-          <div class="input-row">
-            <input
-              id="sourceUrl"
-              name="sourceUrl"
-              type="url"
-              placeholder="https://summitsforimpact.com/..."
-              autocomplete="url"
-            />
-            <button class="primary-button" type="submit">
-              <span aria-hidden="true">↧</span>
-              <span>Scan</span>
-            </button>
+        <div class="folder-scan-card">
+          <div class="folder-scan-header">
+            <div>
+              <p class="eyebrow">Local media</p>
+              <h3>Scan video folder</h3>
+            </div>
+            <span class="folder-badge">Subfolders included</span>
           </div>
-          <p class="hint">
-            The app tries a direct browser scan, then its guarded page relay. If both are denied, paste the page HTML or add video links manually.
-          </p>
-        </form>
+          <form id="folderScanForm" class="url-form">
+            <label for="folderPath">Local folder path</label>
+            <div class="input-row">
+              <input
+                id="folderPath"
+                name="folderPath"
+                type="text"
+                placeholder="/Users/username/Videos, ~/Movies, ./data"
+                autocomplete="off"
+              />
+              <button class="ghost-button" id="browseFolderButton" type="button" title="Browse for a folder on your computer">
+                <span aria-hidden="true">📁</span>
+                <span>Browse</span>
+              </button>
+              <button class="primary-button" id="scanFolderButton" type="submit">
+                <span aria-hidden="true">↧</span>
+                <span>Scan</span>
+              </button>
+            </div>
+            <input type="file" id="localFolderInput" webkitdirectory directory multiple hidden />
+            <div class="folder-options-row">
+              <label class="permission-check">
+                <input id="folderCreateCollection" type="checkbox" checked />
+                <span>Create playlist folder from directory name</span>
+              </label>
+            </div>
+            <p class="hint">
+              Points to a folder on disk and automatically imports video files from all folders and subfolders within it into your playlist and library.
+            </p>
+          </form>
+        </div>
+
+        <details class="page-import-box">
+          <summary>Import from a page URL</summary>
+          <form id="importForm" class="url-form">
+            <label for="sourceUrl">Page URL</label>
+            <div class="input-row">
+              <input
+                id="sourceUrl"
+                name="sourceUrl"
+                type="url"
+                placeholder="https://summitsforimpact.com/..."
+                autocomplete="url"
+              />
+              <button class="primary-button" type="submit">
+                <span aria-hidden="true">↧</span>
+                <span>Scan</span>
+              </button>
+            </div>
+            <p class="hint">
+              The app tries a direct browser scan, then its guarded page relay. If both are denied, paste the page HTML or add video links manually.
+            </p>
+          </form>
+        </details>
 
         <details class="fallback-box">
           <summary>Paste page HTML or video links</summary>

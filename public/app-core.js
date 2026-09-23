@@ -3,9 +3,10 @@
   if (typeof module === "object" && module.exports) module.exports = api;
   if (root) root.MaterialPickerCore = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function createMaterialPickerCore() {
-  const VIDEO_EXTENSION = /\.(mp4|webm|ogv|ogg|mov|m4v|m3u8)([?#].*)?$/i;
+  const VIDEO_EXTENSION = /\.(mp4|webm|ogv|ogg|mov|m4v|mkv|avi|flv|wmv|ts|3gp|m3u8)([?#].*)?$/i;
   const VIDEO_PROVIDER = /youtube\.com|youtu\.be|vimeo\.com|wistia\.com|wistia\.net|brightcove|jwplayer/i;
 
+// sourcery skip: avoid-function-declarations-in-blocks
   function decodeHtml(value) {
     return String(value || "")
       .replace(/&quot;/gi, '"')

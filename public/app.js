@@ -21,6 +21,12 @@ const els = {
   duplicateVideoButton: document.querySelector("#duplicateVideoButton"),
   embedPlayer: document.querySelector("#embedPlayer"),
   emptyPlayer: document.querySelector("#emptyPlayer"),
+  folderScanForm: document.querySelector("#folderScanForm"),
+  folderPath: document.querySelector("#folderPath"),
+  browseFolderButton: document.querySelector("#browseFolderButton"),
+  scanFolderButton: document.querySelector("#scanFolderButton"),
+  folderCreateCollection: document.querySelector("#folderCreateCollection"),
+  localFolderInput: document.querySelector("#localFolderInput"),
   htmlPaste: document.querySelector("#htmlPaste"),
   historyCount: document.querySelector("#historyCount"),
   historyList: document.querySelector("#historyList"),
@@ -100,6 +106,9 @@ function init() {
 }
 
 function bindEvents() {
+  els.folderScanForm?.addEventListener("submit", handleFolderScan);
+  els.browseFolderButton?.addEventListener("click", handleBrowseFolder);
+  els.localFolderInput?.addEventListener("change", handleLocalFolderInput);
   els.importForm.addEventListener("submit", handleImport);
   els.parsePasteButton.addEventListener("click", handlePasteExtract);
   els.addBlankButton.addEventListener("click", () => {
@@ -140,6 +149,220 @@ function bindEvents() {
   els.translateButton.addEventListener("click", translateTranscript);
   els.proofreadButton.addEventListener("click", proofreadTranscript);
   els.downloadTranscriptButton.addEventListener("click", downloadTranscript);
+}
+
+async function handleBrowseFolder() {
+  try {
+    const response = await fetch("/api/choose-folder", { signal: AbortSignal.timeout(120000) });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.supported && data.chosenPath) {
+        els.folderPath.value = data.chosenPath;
+        setStatus(`Selected folder: ${data.chosenPath}. Click Scan to import.`);
+        return;
+      }
+      if (data.supported && data.cancelled) {
+        return;
+      }
+    }
+  } catch {
+    // If server helper is not available, fallback to browser directory input
+  }
+
+  if (els.localFolderInput) {
+    els.localFolderInput.click();
+  }
+}
+
+async function handleFolderScan(event) {
+  event.preventDefault();
+  const folderPath = els.folderPath.value.trim();
+  if (!folderPath) {
+    setStatus("Enter or browse for a local folder path first.");
+    return;
+  }
+
+  setStatus(`Scanning folder “${folderPath}” and all nested subfolders...`);
+  if (els.scanFolderButton) els.scanFolderButton.disabled = true;
+
+  try {
+    const response = await fetch(`/api/scan-folder?path=${encodeURIComponent(folderPath)}`, {
+      signal: AbortSignal.timeout(60000),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || `Server responded with ${response.status}`);
+    }
+
+    const { folderName, videos = [], totalCount = 0 } = result;
+    if (totalCount === 0 || videos.length === 0) {
+      setStatus(`Scanned “${folderName}” (including subfolders), but found no supported video files.`);
+      return;
+    }
+
+    let collectionId = "";
+    if (els.folderCreateCollection?.checked) {
+      let existing = state.collections.find(
+        (c) => c.name.toLowerCase() === folderName.toLowerCase()
+      );
+      if (!existing) {
+        existing = {
+          id: crypto.randomUUID(),
+          name: folderName,
+          createdAt: new Date().toISOString(),
+        };
+        state.collections.push(existing);
+      }
+      collectionId = existing.id;
+      activeCollectionId = collectionId;
+    }
+
+    let addedCount = 0;
+    let firstAddedId = null;
+
+    videos.forEach((item) => {
+      const existing = state.videos.find((v) => v.url === item.url);
+      if (existing) {
+        if (collectionId && !existing.collectionId) {
+          existing.collectionId = collectionId;
+        }
+        return;
+      }
+
+      const tagsList = [];
+      if (item.subfolder) {
+        tagsList.push(...item.subfolder.split("/").map((s) => s.trim()).filter(Boolean));
+      } else {
+        tagsList.push("local");
+      }
+
+      const nextVideo = {
+        id: crypto.randomUUID(),
+        title: item.title,
+        speaker: "",
+        url: item.url,
+        sourceUrl: item.relativePath || folderPath,
+        language: "English",
+        tags: tagsList.join(", "),
+        notes: `File: ${item.relativePath || item.name} (${formatBytes(item.size)})`,
+        transcript: "",
+        translation: "",
+        collectionId: collectionId || (activeCollectionId !== "all" && activeCollectionId !== "unfiled" ? activeCollectionId : ""),
+        playbackStatus: "ready",
+        playbackMessage: "Local media file ready for playback",
+        checkedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+
+      state.videos.unshift(nextVideo);
+      if (!firstAddedId) firstAddedId = nextVideo.id;
+      addedCount += 1;
+    });
+
+    if (firstAddedId) {
+      state.selectedId = firstAddedId;
+    }
+
+    saveState();
+    render();
+
+    const distinctSubfolders = new Set(videos.map((v) => v.subfolder).filter(Boolean));
+    const subfolderInfo = distinctSubfolders.size > 0 ? ` across ${distinctSubfolders.size} subfolders` : "";
+
+    setStatus(
+      `Scraped ${addedCount} video ${addedCount === 1 ? "file" : "files"}${subfolderInfo} into “${folderName}”. Ready to play!`
+    );
+  } catch (error) {
+    setStatus(`Folder scan error: ${error.message}`);
+  } finally {
+    if (els.scanFolderButton) els.scanFolderButton.disabled = false;
+  }
+}
+
+function handleLocalFolderInput(event) {
+  const fileList = event.target.files;
+  if (!fileList || fileList.length === 0) return;
+
+  const files = Array.from(fileList);
+  const videoFiles = files.filter((file) => core.isLikelyVideoUrl(file.name));
+
+  if (videoFiles.length === 0) {
+    setStatus("Selected folder contains no supported video files.");
+    return;
+  }
+
+  const samplePath = videoFiles[0].webkitRelativePath || "";
+  const rootFolderName = samplePath.split("/")[0] || "Imported Folder";
+
+  if (els.folderPath && !els.folderPath.value) {
+    els.folderPath.value = rootFolderName;
+  }
+
+  let collectionId = "";
+  if (els.folderCreateCollection?.checked) {
+    let existing = state.collections.find(
+      (c) => c.name.toLowerCase() === rootFolderName.toLowerCase()
+    );
+    if (!existing) {
+      existing = {
+        id: crypto.randomUUID(),
+        name: rootFolderName,
+        createdAt: new Date().toISOString(),
+      };
+      state.collections.push(existing);
+    }
+    collectionId = existing.id;
+    activeCollectionId = collectionId;
+  }
+
+  let addedCount = 0;
+  let firstAddedId = null;
+
+  videoFiles.forEach((file) => {
+    const relPath = file.webkitRelativePath || file.name;
+    const pathParts = relPath.split("/");
+    const subfolders = pathParts.slice(1, -1);
+    const title = file.name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
+    const objectUrl = URL.createObjectURL(file);
+
+    const tagsList = [];
+    if (subfolders.length > 0) {
+      tagsList.push(...subfolders);
+    } else {
+      tagsList.push("local");
+    }
+
+    const nextVideo = {
+      id: crypto.randomUUID(),
+      title: title || file.name,
+      speaker: "",
+      url: objectUrl,
+      sourceUrl: relPath,
+      language: "English",
+      tags: tagsList.join(", "),
+      notes: `File: ${relPath} (${formatBytes(file.size)})`,
+      transcript: "",
+      translation: "",
+      collectionId: collectionId || (activeCollectionId !== "all" && activeCollectionId !== "unfiled" ? activeCollectionId : ""),
+      playbackStatus: "ready",
+      playbackMessage: "Local browser file ready for playback",
+      checkedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+
+    state.videos.unshift(nextVideo);
+    if (!firstAddedId) firstAddedId = nextVideo.id;
+    addedCount += 1;
+  });
+
+  if (firstAddedId) {
+    state.selectedId = firstAddedId;
+  }
+
+  saveState();
+  render();
+
+  setStatus(`Imported ${addedCount} video ${addedCount === 1 ? "file" : "files"} from “${rootFolderName}”. Ready to play!`);
 }
 
 async function handleImport(event) {

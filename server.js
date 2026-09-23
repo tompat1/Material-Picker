@@ -1,8 +1,10 @@
+const { execFile } = require("node:child_process");
 const dns = require("node:dns").promises;
 const fs = require("node:fs");
 const fsp = fs.promises;
 const http = require("node:http");
 const net = require("node:net");
+const os = require("node:os");
 const path = require("node:path");
 
 const ROOT = __dirname;
@@ -18,18 +20,29 @@ const BROWSER_USER_AGENT =
 const offlineJobs = new Map();
 
 const CONTENT_TYPES = {
+  ".3gp": "video/3gpp",
+  ".avi": "video/x-msvideo",
   ".css": "text/css; charset=utf-8",
+  ".flv": "video/x-flv",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
   ".m3u8": "application/vnd.apple.mpegurl",
   ".m4s": "video/iso.segment",
+  ".m4v": "video/mp4",
+  ".map": "application/json; charset=utf-8",
+  ".mkv": "video/x-matroska",
+  ".mov": "video/quicktime",
   ".mp4": "video/mp4",
+  ".ogg": "video/ogg",
+  ".ogv": "video/ogg",
   ".svg": "image/svg+xml",
   ".ts": "video/mp2t",
   ".webm": "video/webm",
+  ".wmv": "video/x-ms-wmv",
 };
+
+const SUPPORTED_VIDEO_EXTENSIONS = new Set(Object.keys(CONTENT_TYPES).filter((ext) => ext !== ".css" && ext !== ".html" && ext !== ".js" && ext !== ".json" && ext !== ".map" && ext !== ".svg"));
 
 function isPublicIp(address) {
   if (!net.isIP(address)) return false;
@@ -549,7 +562,7 @@ async function cacheHlsStream(sourceUrl, destination, job) {
 }
 
 function directMediaExtension(url, contentType) {
-  const pathname = new URL(url).pathname;
+  const {pathname} = new URL(url);
   const candidate = path.extname(pathname).toLowerCase();
   if ([".mp4", ".webm", ".ogv", ".ogg", ".mov", ".m4v"].includes(candidate)) return candidate;
   if (/webm/i.test(contentType)) return ".webm";
@@ -796,6 +809,148 @@ function serveStatic(response, pathname) {
   });
 }
 
+function resolveLocalPath(inputPath) {
+  if (!inputPath || typeof inputPath !== "string") return "";
+  let clean = inputPath.trim();
+  if (clean.startsWith("~")) {
+    clean = path.join(os.homedir(), clean.slice(1));
+  }
+  return path.resolve(clean);
+}
+
+async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs = new Set()) {
+  const resolved = path.resolve(dirPath);
+  let real;
+  try {
+    real = await fsp.realpath(resolved);
+  } catch {
+    real = resolved;
+  }
+  if (visitedDirs.has(real)) return [];
+  visitedDirs.add(real);
+
+  let entries;
+  try {
+    entries = await fsp.readdir(resolved, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const results = [];
+  entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    const rel = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
+    const full = path.join(resolved, entry.name);
+
+    if (entry.isDirectory()) {
+      const nested = await scanDirectoryForVideos(full, rel, visitedDirs);
+      results.push(...nested);
+    } else if (entry.isFile()) {
+      const ext = path.extname(entry.name).toLowerCase();
+      if (SUPPORTED_VIDEO_EXTENSIONS.has(ext)) {
+        try {
+          const stats = await fsp.stat(full);
+          const title = entry.name
+            .replace(/\.[a-z0-9]+$/i, "")
+            .replace(/[-_]+/g, " ")
+            .trim();
+          results.push({
+            name: entry.name,
+            title: title || entry.name,
+            relativePath: rel,
+            absolutePath: full,
+            subfolder: relativePrefix || "",
+            size: stats.size,
+            url: `/api/local-media?path=${encodeURIComponent(full)}`,
+          });
+        } catch {
+          // Ignore unreadable files
+        }
+      }
+    }
+  }
+  return results;
+}
+
+async function handleScanFolder(response, requestUrl) {
+  const rawPath = requestUrl.searchParams.get("path");
+  if (!rawPath) return sendJson(response, 400, { error: "A folder path is required." });
+  const folderPath = resolveLocalPath(rawPath);
+  try {
+    const stats = await fsp.stat(folderPath);
+    if (!stats.isDirectory()) {
+      return sendJson(response, 400, { error: "The specified path is not a directory." });
+    }
+    const videos = await scanDirectoryForVideos(folderPath);
+    const folderName = path.basename(folderPath) || "Local Videos";
+    return sendJson(response, 200, {
+      folderPath,
+      folderName,
+      totalCount: videos.length,
+      videos,
+    });
+  } catch (error) {
+    const status = error.code === "ENOENT" ? 404 : 500;
+    return sendJson(response, status, { error: `Could not access directory: ${error.message}` });
+  }
+}
+
+function serveLocalMedia(request, response, requestUrl) {
+  const rawPath = requestUrl.searchParams.get("path");
+  if (!rawPath) return sendJson(response, 400, { error: "A file path is required." });
+  const filePath = resolveLocalPath(rawPath);
+  const ext = path.extname(filePath).toLowerCase();
+  if (!SUPPORTED_VIDEO_EXTENSIONS.has(ext)) {
+    return sendJson(response, 403, { error: "File format is not a supported video type." });
+  }
+
+  fs.stat(filePath, (error, stats) => {
+    if (error || !stats.isFile()) return sendJson(response, 404, { error: "Media file not found." });
+    const contentType = CONTENT_TYPES[ext] || "application/octet-stream";
+    const range = request.headers.range?.match(/bytes=(\d*)-(\d*)/);
+    if (range) {
+      const start = range[1] ? Number(range[1]) : 0;
+      const end = range[2] ? Math.min(Number(range[2]), stats.size - 1) : stats.size - 1;
+      if (start > end || start >= stats.size) {
+        response.writeHead(416, { "Content-Range": `bytes */${stats.size}` });
+        return response.end();
+      }
+      response.writeHead(206, {
+        "Accept-Ranges": "bytes",
+        "Content-Length": end - start + 1,
+        "Content-Range": `bytes ${start}-${end}/${stats.size}`,
+        "Content-Type": contentType,
+        "Cache-Control": "private, max-age=31536000, immutable",
+      });
+      return fs.createReadStream(filePath, { start, end }).pipe(response);
+    }
+    response.writeHead(200, {
+      "Accept-Ranges": "bytes",
+      "Content-Length": stats.size,
+      "Content-Type": contentType,
+      "Cache-Control": "private, max-age=31536000, immutable",
+    });
+    if (request.method === "HEAD") return response.end();
+    return fs.createReadStream(filePath).pipe(response);
+  });
+}
+
+function handleChooseFolder(response) {
+  if (process.platform !== "darwin") {
+    return sendJson(response, 200, { supported: false, message: "Native dialog only supported on macOS." });
+  }
+  const script = 'POSIX path of (choose folder with prompt "Select video folder:")';
+  execFile("osascript", ["-e", script], { timeout: 60000 }, (error, stdout) => {
+    if (error) {
+      return sendJson(response, 200, { supported: true, cancelled: true });
+    }
+    const chosenPath = stdout.trim().replace(/\/$/, "");
+    return sendJson(response, 200, { supported: true, chosenPath });
+  });
+}
+
 function startServer() {
   fs.mkdirSync(VIDEO_ROOT, { recursive: true });
   const server = http.createServer(async (request, response) => {
@@ -839,6 +994,15 @@ function startServer() {
     if ((request.method === "GET" || request.method === "HEAD") && requestUrl.pathname.startsWith("/offline-media/")) {
       return serveOfflineFile(request, response, requestUrl.pathname);
     }
+    if (request.method === "GET" && requestUrl.pathname === "/api/scan-folder") {
+      return handleScanFolder(response, requestUrl);
+    }
+    if (request.method === "GET" && requestUrl.pathname === "/api/choose-folder") {
+      return handleChooseFolder(response);
+    }
+    if ((request.method === "GET" || request.method === "HEAD") && requestUrl.pathname === "/api/local-media") {
+      return serveLocalMedia(request, response, requestUrl);
+    }
     if (request.method !== "GET" && request.method !== "HEAD") {
       return sendJson(response, 405, { error: "Method not allowed." });
     }
@@ -858,15 +1022,20 @@ module.exports = {
   extractPlayerConfig,
   fetchPage,
   getVimeoTranscript,
+  handleScanFolder,
   isPublicIp,
   listArchiveFiles,
   parseVtt,
   parseHlsAttributes,
+  resolveLocalPath,
   sanitizeOfflineMaster,
   safeVideoId,
+  scanDirectoryForVideos,
   selectHlsVariant,
+  serveLocalMedia,
   splitTranslationText,
   startServer,
+  SUPPORTED_VIDEO_EXTENSIONS,
   transcriptFromCues,
   validateRemoteUrl,
 };

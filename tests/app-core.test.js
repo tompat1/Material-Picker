@@ -144,3 +144,13 @@ test("creates portable destination folder names for offline archives", () => {
   assert.equal(core.archiveFolderName('A talk: body / mind?', "video_123-abc"), "A talk body mind - video_12");
   assert.equal(core.archiveFolderName("...", "../"), "Offline video - video");
 });
+
+test("recognizes common video container extensions including mkv, avi, and ts", () => {
+  assert.equal(core.isLikelyVideoUrl("file:///videos/clip.mkv"), true);
+  assert.equal(core.isLikelyVideoUrl("file:///videos/clip.avi"), true);
+  assert.equal(core.isLikelyVideoUrl("file:///videos/clip.flv"), true);
+  assert.equal(core.isLikelyVideoUrl("file:///videos/clip.wmv"), true);
+  assert.equal(core.isLikelyVideoUrl("file:///videos/clip.ts"), true);
+  assert.equal(core.isLikelyVideoUrl("file:///videos/clip.mp4"), true);
+  assert.equal(core.isLikelyVideoUrl("file:///docs/readme.txt"), false);
+});

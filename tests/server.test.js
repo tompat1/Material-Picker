@@ -12,8 +12,10 @@ const {
   listArchiveFiles,
   parseHlsAttributes,
   parseVtt,
+  resolveLocalPath,
   sanitizeOfflineMaster,
   safeVideoId,
+  scanDirectoryForVideos,
   selectHlsVariant,
   splitTranslationText,
   transcriptFromCues,
@@ -135,4 +137,66 @@ test("lists a complete offline archive without following symbolic links", async 
     { path: "master.m3u8", size: 8 },
     { path: "video/segment-0.ts", size: 7 },
   ]);
+});
+
+test("scanDirectoryForVideos discovers videos in deeply nested folders within folders", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "material-picker-scan-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  // Create nested folders: root/Level1/Level2/Level3
+  const level1 = path.join(root, "Season 1");
+  const level2 = path.join(level1, "Disc 1");
+  const level3 = path.join(level2, "Bonus");
+  fs.mkdirSync(level3, { recursive: true });
+
+  // Add video files at different depths
+  fs.writeFileSync(path.join(root, "trailer.mp4"), "root-trailer");
+  fs.writeFileSync(path.join(level1, "episode-01.mkv"), "ep-1");
+  fs.writeFileSync(path.join(level2, "episode-02.webm"), "ep-2");
+  fs.writeFileSync(path.join(level3, "behind-the-scenes.mov"), "bonus");
+
+  // Add non-video files that should be ignored
+  fs.writeFileSync(path.join(root, "notes.txt"), "some notes");
+  fs.writeFileSync(path.join(level1, "subtitles.srt"), "1\n00:00:00 --> 00:00:01\nHi");
+  fs.writeFileSync(path.join(level2, ".DS_Store"), "ignore");
+
+  const results = await scanDirectoryForVideos(root);
+
+  assert.equal(results.length, 4);
+
+  // Check root video
+  const trailer = results.find((v) => v.name === "trailer.mp4");
+  assert.ok(trailer);
+  assert.equal(trailer.title, "trailer");
+  assert.equal(trailer.relativePath, "trailer.mp4");
+  assert.equal(trailer.subfolder, "");
+  assert.equal(trailer.size, 12);
+  assert.ok(trailer.url.startsWith("/api/local-media?path="));
+
+  // Check Level 1 video
+  const ep1 = results.find((v) => v.name === "episode-01.mkv");
+  assert.ok(ep1);
+  assert.equal(ep1.title, "episode 01");
+  assert.equal(ep1.relativePath, "Season 1/episode-01.mkv");
+  assert.equal(ep1.subfolder, "Season 1");
+
+  // Check Level 2 video
+  const ep2 = results.find((v) => v.name === "episode-02.webm");
+  assert.ok(ep2);
+  assert.equal(ep2.title, "episode 02");
+  assert.equal(ep2.relativePath, "Season 1/Disc 1/episode-02.webm");
+  assert.equal(ep2.subfolder, "Season 1/Disc 1");
+
+  // Check Level 3 video
+  const bonus = results.find((v) => v.name === "behind-the-scenes.mov");
+  assert.ok(bonus);
+  assert.equal(bonus.title, "behind the scenes");
+  assert.equal(bonus.relativePath, "Season 1/Disc 1/Bonus/behind-the-scenes.mov");
+  assert.equal(bonus.subfolder, "Season 1/Disc 1/Bonus");
+});
+
+test("resolveLocalPath expands tilde to home directory", () => {
+  const home = os.homedir();
+  assert.equal(resolveLocalPath("~/Videos"), path.join(home, "Videos"));
+  assert.equal(resolveLocalPath("/absolute/path"), "/absolute/path");
 });
