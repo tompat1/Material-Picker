@@ -592,8 +592,15 @@ function clearAll() {
   setStatus("All saved material was cleared from this browser.");
 }
 
+function renderVideoCount() {
+  const count = state.videos.length;
+  els.videoCount.textContent = count;
+  const label = els.videoCount.nextElementSibling;
+  if (label) label.textContent = count === 1 ? "reel" : "reels";
+}
+
 function render() {
-  els.videoCount.textContent = state.videos.length;
+  renderVideoCount();
   renderLibrary();
   renderCollectionManager();
   renderScrapeHistory();
@@ -673,7 +680,7 @@ function renderLibrary() {
     else if (activeCollectionId === "all") message = "The library is empty. Scan a folder or a page to add videos.";
     else if (activeCollectionId === "unfiled") message = "No unfiled videos.";
     els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p></div>`;
-    els.videoCount.textContent = state.videos.length;
+    renderVideoCount();
     return;
   }
 
@@ -728,7 +735,7 @@ function renderLibrary() {
     }
     els.videoList.append(card);
   });
-  els.videoCount.textContent = state.videos.length;
+  renderVideoCount();
 }
 
 function visibleVideos() {
@@ -990,7 +997,17 @@ function renderPlayer() {
 
   if (!video?.url) {
     els.playerShell.dataset.mode = "empty";
-    setPlayerStatus("Select a saved video to begin.");
+    const emptyTitle = els.emptyPlayer.querySelector("strong");
+    const emptyCopy = els.emptyPlayer.querySelector("span");
+    if (video) {
+      if (emptyTitle) emptyTitle.textContent = "No picture yet";
+      if (emptyCopy) emptyCopy.textContent = "Add a video URL to put this reel on the screen.";
+      setPlayerStatus("This reel has no video URL yet.");
+    } else {
+      if (emptyTitle) emptyTitle.textContent = "Screen is dark";
+      if (emptyCopy) emptyCopy.textContent = "Select a reel, or scan a folder to load one.";
+      setPlayerStatus("Select a saved video to begin.");
+    }
     return;
   }
 
