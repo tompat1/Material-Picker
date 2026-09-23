@@ -549,7 +549,8 @@ function selectVideo(id) {
 }
 
 function showDesk(name) {
-  const tab = document.querySelector(`#desk-${name}`);
+  const tabName = name === "reels" ? "library" : name;
+  const tab = document.querySelector(`#desk-${tabName}`);
   if (!tab || !window.matchMedia("(max-width: 1180px)").matches) return;
   tab.checked = true;
 }
@@ -591,13 +592,6 @@ function clearAll() {
   saveState();
   render();
   setStatus("All saved material was cleared from this browser.");
-}
-
-function renderVideoCount() {
-  const count = state.videos.length;
-  els.videoCount.textContent = count;
-  const label = els.videoCount.nextElementSibling;
-  if (label) label.textContent = count === 1 ? "reel" : "reels";
 }
 
 function render() {

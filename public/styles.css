@@ -1132,6 +1132,7 @@ progress::-moz-progress-bar {
 }
 
 .player-shell {
+  position: relative;
   display: grid;
   overflow: hidden;
   padding: 0.45rem 1.25rem;
@@ -1391,7 +1392,6 @@ progress::-moz-progress-bar {
   .brand {
     grid-area: brand;
   }
-}
 
   .storage-pill {
     grid-area: count;
