@@ -1,7 +1,7 @@
 const STORAGE_KEY = "material-picker:v1";
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const core = window.MaterialPickerCore;
-const { formatBytes, formatDuration } = core;
+const { archiveFolderName, formatBytes, formatDuration } = core;
 
 const els = {
   addBlankButton: document.querySelector("#addBlankButton"),
@@ -10,6 +10,8 @@ const els = {
   bulkOfflineProgress: document.querySelector("#bulkOfflineProgress"),
   bulkOfflineProgressLabel: document.querySelector("#bulkOfflineProgressLabel"),
   checkLibraryButton: document.querySelector("#checkLibraryButton"),
+  chooseLibraryFolderButton: document.querySelector("#chooseLibraryFolderButton"),
+  chooseOfflineFolderButton: document.querySelector("#chooseOfflineFolderButton"),
   clearSelectionButton: document.querySelector("#clearSelectionButton"),
   clearHistoryButton: document.querySelector("#clearHistoryButton"),
   clearAllButton: document.querySelector("#clearAllButton"),
@@ -28,10 +30,12 @@ const els = {
   collectionList: document.querySelector("#collectionList"),
   collectionName: document.querySelector("#collectionName"),
   libraryOfflinePermission: document.querySelector("#libraryOfflinePermission"),
+  libraryDestinationStatus: document.querySelector("#libraryDestinationStatus"),
   markAllOfflineButton: document.querySelector("#markAllOfflineButton"),
   moveCollectionSelect: document.querySelector("#moveCollectionSelect"),
   moveSelectedButton: document.querySelector("#moveSelectedButton"),
   offlinePath: document.querySelector("#offlinePath"),
+  offlineDestinationStatus: document.querySelector("#offlineDestinationStatus"),
   offlinePermission: document.querySelector("#offlinePermission"),
   offlineProgress: document.querySelector("#offlineProgress"),
   offlineStatus: document.querySelector("#offlineStatus"),
@@ -76,6 +80,7 @@ const els = {
 let recognition = null;
 let hlsPlayer = null;
 let offlineStoragePath = "";
+let offlineExportDirectoryHandle = null;
 let bulkOfflineRunning = false;
 let bulkOfflineMessage = "";
 let bulkOfflineCurrentId = "";
@@ -103,6 +108,8 @@ function bindEvents() {
   });
   els.clearAllButton.addEventListener("click", clearAll);
   els.checkLibraryButton.addEventListener("click", checkLibraryPlayback);
+  els.chooseLibraryFolderButton.addEventListener("click", chooseOfflineFolder);
+  els.chooseOfflineFolderButton.addEventListener("click", chooseOfflineFolder);
   els.collectionForm.addEventListener("submit", createCollection);
   els.clearSelectionButton.addEventListener("click", clearVideoSelection);
   els.clearHistoryButton.addEventListener("click", clearScrapeHistory);
@@ -452,7 +459,7 @@ function renderLibrary() {
 
     const badge = card.querySelector(".playback-badge");
     const status =
-      video.offlineDownloadStatus === "downloading"
+      ["downloading", "exporting"].includes(video.offlineDownloadStatus)
         ? "saving"
         : video.offlineUrl && !video.offlineStale
           ? "offline"
@@ -462,7 +469,7 @@ function renderLibrary() {
     badge.dataset.status = status;
     badge.title = video.playbackMessage || "Not checked yet";
     const downloadProgress = card.querySelector(".card-download-progress");
-    if (video.offlineDownloadStatus === "downloading") {
+    if (["downloading", "exporting"].includes(video.offlineDownloadStatus)) {
       const progress = offlineProgressFraction(video);
       const progressElement = downloadProgress.querySelector("progress");
       downloadProgress.hidden = false;
@@ -495,14 +502,22 @@ function renderLibraryOfflineManager() {
   const pending = marked.filter(
     (video) => canSaveOfflineUrl(video.url) && (!video.offlineUrl || video.offlineStale)
   );
+  const exportable = offlineExportDirectoryHandle
+    ? marked.filter((video) => video.offlineUrl && !video.offlineStale)
+    : [];
+  const actionable = new Set([...pending, ...exportable].map((video) => video.id)).size;
   const eligibleVisible = visible.filter((video) => canSaveOfflineUrl(video.url));
   const allVisibleMarked =
     eligibleVisible.length > 0 && eligibleVisible.every((video) => selectedVideoIds.has(video.id));
   els.markAllOfflineButton.disabled = !eligibleVisible.length || bulkOfflineRunning;
   els.markAllOfflineButton.querySelector("span:last-child").textContent = allVisibleMarked ? "Unmark all" : "Mark all";
   els.libraryOfflinePermission.disabled = !pending.length || bulkOfflineRunning;
+  if (offlineExportDirectoryHandle) els.libraryOfflinePermission.disabled = !actionable || bulkOfflineRunning;
   els.saveSelectedOfflineButton.disabled =
-    !pending.length || !els.libraryOfflinePermission.checked || bulkOfflineRunning;
+    !actionable || !els.libraryOfflinePermission.checked || bulkOfflineRunning;
+  els.saveSelectedOfflineButton.querySelector("span:last-child").textContent =
+    offlineExportDirectoryHandle && pending.length === 0 ? "Copy marked to folder" : "Save marked offline";
+  renderOfflineDestination();
   els.bulkDownloadProgress.hidden = !bulkOfflineRunning;
   if (bulkOfflineRunning) {
     els.bulkOfflineStatus.textContent = bulkOfflineMessage || "Saving marked videos to disk...";
@@ -537,7 +552,7 @@ function offlineProgressLabel(video) {
   const details = [
     filesTotal
       ? `${Number(video.offlineFilesDone || 0)} of ${filesTotal} parts · ${bytes}`
-      : `${bytes} saved`,
+      : `${bytes} ${video?.offlineDownloadStatus === "exporting" ? "copied" : "saved"}`,
   ];
   const speed = Number(video?.offlineSpeedBytesPerSecond || 0);
   const eta = Number(video?.offlineEtaSeconds);
@@ -843,13 +858,16 @@ function openVideoSource() {
 
 function renderOfflineManager() {
   const video = selectedVideo();
-  const isDownloading = video?.offlineDownloadStatus === "downloading";
+  const isDownloading = ["downloading", "exporting"].includes(video?.offlineDownloadStatus);
   const hasCopy = Boolean(video?.offlineUrl && !video.offlineStale);
   const canSave = canSaveOfflineUrl(video?.url);
   els.offlinePermission.disabled = !canSave || isDownloading;
   els.saveOfflineButton.disabled = !canSave || !els.offlinePermission.checked || isDownloading;
+  els.saveOfflineButton.querySelector("span:last-child").textContent =
+    hasCopy && offlineExportDirectoryHandle ? "Copy to folder" : "Save offline";
   els.removeOfflineButton.disabled = !video?.offlineUrl || isDownloading;
   els.offlineProgress.hidden = !isDownloading;
+  renderOfflineDestination();
 
   if (!video) {
     els.offlineStatus.textContent = "Select a video to manage its local copy.";
@@ -871,7 +889,7 @@ function renderOfflineManager() {
     } else {
       els.offlineProgress.removeAttribute("value");
     }
-    els.offlineStatus.textContent = `Saving · ${offlineProgressLabel(video)}`;
+    els.offlineStatus.textContent = `${video.offlineDownloadStatus === "exporting" ? "Copying to chosen folder" : "Saving"} · ${offlineProgressLabel(video)}`;
   } else if (hasCopy) {
     els.offlineProgress.value = 100;
     els.offlineStatus.textContent = `Saved on disk · ${formatBytes(video.offlineSize)} · ${video.offlineFormat === "hls" ? "local HLS" : "video file"}`;
@@ -939,7 +957,7 @@ async function saveOfflineVideo() {
   if (!video?.url || !els.offlinePermission.checked) return;
   setStatus(`Saving “${video.title || "Untitled video"}” to disk...`);
   try {
-    await startOfflineDownload(video);
+    await saveOrExportOfflineVideo(video);
     els.offlinePermission.checked = false;
     renderOfflineManager();
   } catch (error) {
@@ -950,7 +968,8 @@ async function saveOfflineVideo() {
 
 async function saveSelectedOfflineVideos() {
   const videos = state.videos.filter(
-    (video) => selectedVideoIds.has(video.id) && canSaveOfflineUrl(video.url) && (!video.offlineUrl || video.offlineStale)
+    (video) => selectedVideoIds.has(video.id) && canSaveOfflineUrl(video.url) &&
+      ((!video.offlineUrl || video.offlineStale) || Boolean(offlineExportDirectoryHandle))
   );
   if (!videos.length || !els.libraryOfflinePermission.checked || bulkOfflineRunning) return;
   bulkOfflineRunning = true;
@@ -967,7 +986,7 @@ async function saveSelectedOfflineVideos() {
     bulkOfflineMessage = `Saving ${index + 1} of ${videos.length}: ${video.title || "Untitled video"}`;
     renderLibraryOfflineManager();
     try {
-      await startOfflineDownload(video);
+      await saveOrExportOfflineVideo(video);
     } catch (error) {
       failures.push({ video, error });
       markOfflineFailure(video, error);
@@ -988,6 +1007,123 @@ async function saveSelectedOfflineVideos() {
   } else {
     setStatus(`Saved all ${videos.length} marked videos to disk for offline playback.`);
   }
+}
+
+async function chooseOfflineFolder() {
+  if (!("showDirectoryPicker" in window)) {
+    setStatus("Folder selection is not available in this browser. Offline copies will stay in Material Picker storage.");
+    renderOfflineDestination();
+    return;
+  }
+  try {
+    offlineExportDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: "videos" });
+    setStatus(`New offline copies will also be saved in “${offlineExportDirectoryHandle.name}”.`);
+    renderOfflineDestination();
+    renderLibraryOfflineManager();
+    renderOfflineManager();
+  } catch (error) {
+    if (error.name !== "AbortError") setStatus(`The download folder could not be opened: ${error.message}`);
+  }
+}
+
+function renderOfflineDestination() {
+  const supported = "showDirectoryPicker" in window;
+  const operationRunning = state.videos.some((video) =>
+    ["downloading", "exporting"].includes(video.offlineDownloadStatus)
+  );
+  const label = offlineExportDirectoryHandle
+    ? `Chosen folder: ${offlineExportDirectoryHandle.name}`
+    : supported
+      ? "Material Picker storage (choose another folder if needed)"
+      : "Material Picker storage (folder selection unavailable in this browser)";
+  els.libraryDestinationStatus.textContent = label;
+  els.offlineDestinationStatus.textContent = label;
+  const buttonLabel = offlineExportDirectoryHandle ? "Change folder" : "Choose folder";
+  els.chooseLibraryFolderButton.textContent = buttonLabel;
+  els.chooseOfflineFolderButton.textContent = buttonLabel;
+  els.chooseLibraryFolderButton.disabled = !supported || bulkOfflineRunning || operationRunning;
+  els.chooseOfflineFolderButton.disabled = !supported || bulkOfflineRunning || operationRunning;
+}
+
+async function saveOrExportOfflineVideo(video) {
+  if (!video.offlineUrl || video.offlineStale) await startOfflineDownload(video);
+  if (offlineExportDirectoryHandle) await exportOfflineCopy(video);
+}
+
+async function exportOfflineCopy(video) {
+  const copyId = video.offlineCopyId || video.id;
+  const response = await fetch(`/api/offline/files?id=${encodeURIComponent(copyId)}`, {
+    signal: AbortSignal.timeout(15000),
+  });
+  const archive = await response.json();
+  if (!response.ok) throw new Error(archive.error || `Offline file list returned ${response.status}.`);
+  const destination = await offlineExportDirectoryHandle.getDirectoryHandle(
+    archiveFolderName(video.title, copyId),
+    { create: true }
+  );
+  video.offlineDownloadStatus = "exporting";
+  video.offlineBytesDownloaded = 0;
+  video.offlineTotalBytes = archive.size || 0;
+  video.offlineFilesDone = 0;
+  video.offlineFilesTotal = archive.files.length;
+  video.offlineSpeedBytesPerSecond = 0;
+  video.offlineEtaSeconds = null;
+  const startedAt = performance.now();
+  let copied = 0;
+  let lastRender = 0;
+  renderLibrary();
+  renderLibraryOfflineManager();
+  renderOfflineManager();
+
+  for (const file of archive.files) {
+    const parts = file.path.split("/");
+    const filename = parts.pop();
+    let folder = destination;
+    for (const part of parts) folder = await folder.getDirectoryHandle(part, { create: true });
+    const fileResponse = await fetch(offlineMediaUrl(copyId, file.path));
+    if (!fileResponse.ok || !fileResponse.body) throw new Error(`Could not copy ${file.path}.`);
+    const fileHandle = await folder.getFileHandle(filename, { create: true });
+    const writable = await fileHandle.createWritable();
+    const reader = fileResponse.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        await writable.write(value);
+        copied += value.byteLength;
+        const elapsedSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
+        video.offlineBytesDownloaded = copied;
+        video.offlineSpeedBytesPerSecond = copied / elapsedSeconds;
+        video.offlineEtaSeconds = video.offlineSpeedBytesPerSecond > 0
+          ? Math.max(0, (archive.size - copied) / video.offlineSpeedBytesPerSecond)
+          : null;
+        if (performance.now() - lastRender > 250) {
+          renderLibrary();
+          renderLibraryOfflineManager();
+          if (state.selectedId === video.id) renderOfflineManager();
+          lastRender = performance.now();
+        }
+      }
+      await writable.close();
+    } catch (error) {
+      await writable.abort().catch(() => {});
+      throw error;
+    }
+    video.offlineFilesDone += 1;
+  }
+  video.offlineDownloadStatus = "completed";
+  video.offlineExportedTo = offlineExportDirectoryHandle.name;
+  video.offlineExportedAt = new Date().toISOString();
+  saveState();
+  renderLibrary();
+  renderLibraryOfflineManager();
+  if (state.selectedId === video.id) renderOfflineManager();
+  setStatus(`Copied “${video.title || "Untitled video"}” to “${offlineExportDirectoryHandle.name}”.`);
+}
+
+function offlineMediaUrl(copyId, relativePath) {
+  const encodedPath = relativePath.split("/").map(encodeURIComponent).join("/");
+  return `/offline-media/${encodeURIComponent(copyId)}/${encodedPath}`;
 }
 
 async function startOfflineDownload(video) {

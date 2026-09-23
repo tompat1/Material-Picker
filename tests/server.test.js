@@ -1,4 +1,7 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const test = require("node:test");
 
 const {
@@ -6,6 +9,7 @@ const {
   downloadMetrics,
   extractPlayerConfig,
   isPublicIp,
+  listArchiveFiles,
   parseHlsAttributes,
   parseVtt,
   sanitizeOfflineMaster,
@@ -116,4 +120,19 @@ test("reports download speed and ETA for exact-size and segmented downloads", ()
   }, now);
   assert.equal(segmented.downloadSpeedBytesPerSecond, 1024 * 1024);
   assert.equal(segmented.etaSeconds, 900);
+});
+
+test("lists a complete offline archive without following symbolic links", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "material-picker-archive-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(directory, "video"));
+  fs.writeFileSync(path.join(directory, "master.m3u8"), "#EXTM3U\n");
+  fs.writeFileSync(path.join(directory, ".DS_Store"), "metadata");
+  fs.writeFileSync(path.join(directory, "video", "segment-0.ts"), "segment");
+  fs.symlinkSync(path.join(directory, "master.m3u8"), path.join(directory, "ignored-link"));
+
+  assert.deepEqual(await listArchiveFiles(directory), [
+    { path: "master.m3u8", size: 8 },
+    { path: "video/segment-0.ts", size: 7 },
+  ]);
 });

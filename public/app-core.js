@@ -134,6 +134,17 @@
     return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
   }
 
+  function archiveFolderName(title, id) {
+    const safeTitle = String(title || "Offline video")
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
+      .replace(/[. ]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 72) || "Offline video";
+    const safeId = String(id || "video").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 8) || "video";
+    return `${safeTitle} - ${safeId}`;
+  }
+
   function saveState(storage, key, state) {
     storage.setItem(key, JSON.stringify(state));
   }
@@ -180,6 +191,7 @@
 
   return {
     cleanUrl,
+    archiveFolderName,
     decodeHtml,
     extractVideos,
     formatBytes,

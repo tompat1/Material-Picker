@@ -426,6 +426,45 @@ h2 {
   width: 100%;
 }
 
+.offline-destination {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.offline-destination > div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.offline-destination strong {
+  font-size: 0.78rem;
+}
+
+.offline-destination span {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.offline-destination .ghost-button {
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+  padding: 0 0.7rem;
+  font-size: 0.74rem;
+}
+
+.offline-destination.compact {
+  grid-column: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 0.7rem;
+}
+
 .library-offline-bar > .button-row button {
   width: 100%;
   min-width: 0;
@@ -973,6 +1012,11 @@ h2 {
   }
 
   .offline-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .offline-destination {
     align-items: stretch;
     flex-direction: column;
   }

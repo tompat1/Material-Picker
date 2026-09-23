@@ -692,6 +692,43 @@ async function readOfflineLibrary() {
   return library;
 }
 
+async function listArchiveFiles(directory, prefix = "") {
+  const entries = await fsp.readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (entry.name.startsWith(".") || entry.isSymbolicLink()) continue;
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await listArchiveFiles(fullPath, relativePath)));
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const stats = await fsp.stat(fullPath);
+    files.push({ path: relativePath, size: stats.size });
+  }
+  return files;
+}
+
+async function handleOfflineFiles(response, idValue) {
+  try {
+    const id = safeVideoId(idValue);
+    const directory = path.join(VIDEO_ROOT, id);
+    const metadata = JSON.parse(await fsp.readFile(path.join(directory, "metadata.json"), "utf8"));
+    const files = await listArchiveFiles(directory);
+    return sendJson(response, 200, {
+      id,
+      title: metadata.title,
+      format: metadata.format,
+      size: files.reduce((total, file) => total + file.size, 0),
+      files,
+    });
+  } catch (error) {
+    const status = error.code === "ENOENT" ? 404 : 400;
+    return sendJson(response, status, { error: error.message || "The offline copy could not be listed." });
+  }
+}
+
 async function handleOfflineDelete(response, idValue) {
   try {
     const id = safeVideoId(idValue);
@@ -793,6 +830,9 @@ function startServer() {
         return sendJson(response, 400, { error: error.message });
       }
     }
+    if (request.method === "GET" && requestUrl.pathname === "/api/offline/files") {
+      return handleOfflineFiles(response, requestUrl.searchParams.get("id"));
+    }
     if (request.method === "DELETE" && requestUrl.pathname.startsWith("/api/offline/")) {
       return handleOfflineDelete(response, requestUrl.pathname.slice("/api/offline/".length));
     }
@@ -819,6 +859,7 @@ module.exports = {
   fetchPage,
   getVimeoTranscript,
   isPublicIp,
+  listArchiveFiles,
   parseVtt,
   parseHlsAttributes,
   sanitizeOfflineMaster,

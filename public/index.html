@@ -109,6 +109,13 @@
             <input id="libraryOfflinePermission" type="checkbox" />
             <span>I have permission to download the marked videos.</span>
           </label>
+          <div class="offline-destination">
+            <div>
+              <strong>Download location</strong>
+              <span id="libraryDestinationStatus">Material Picker storage</span>
+            </div>
+            <button class="ghost-button" id="chooseLibraryFolderButton" type="button">Choose folder</button>
+          </div>
           <div class="button-row tight">
             <button class="ghost-button" id="markAllOfflineButton" type="button">
               <span aria-hidden="true">✓</span>
@@ -254,6 +261,13 @@
             <input id="offlinePermission" type="checkbox" />
             <span>I have permission to save this video for offline use.</span>
           </label>
+          <div class="offline-destination compact">
+            <div>
+              <strong>Download location</strong>
+              <span id="offlineDestinationStatus">Material Picker storage</span>
+            </div>
+            <button class="ghost-button" id="chooseOfflineFolderButton" type="button">Choose folder</button>
+          </div>
           <progress id="offlineProgress" max="100" value="0" hidden></progress>
           <p class="hint" id="offlinePath">Copies are stored by the Material Picker server, not in browser localStorage.</p>
         </div>

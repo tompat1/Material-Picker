@@ -47,6 +47,8 @@ The Cloudflare deployment is the browser-only edition: provider playback, browse
 
 In the Library, mark individual videos or choose **Mark all**, confirm that you have permission to download the marked videos, and choose **Save marked offline**. The app saves the queue sequentially and changes each card from Saving to Offline. You can also save one selected video from its player panel. Direct files are copied as video files. Public unencrypted HLS streams, including publicly exposed Vimeo HLS, are stored as local manifests and media segments. The Offline copy panel shows progress, size, and the absolute disk archive path.
 
+Use **Choose folder** before saving to place an additional complete copy in a folder you select. Existing offline videos can also be marked and copied there without downloading them again. The app streams each file into the selected folder, preserves HLS manifests and segment folders, and keeps its internal `data/videos` copy for built-in playback. Folder selection uses the browser File System Access API and is currently available in supporting desktop browsers on localhost or HTTPS. Other browsers continue to use Material Picker storage.
+
 Material Picker deliberately refuses encrypted or DRM-protected HLS, signed-in media, and provider pages that do not expose downloadable media. It does not bypass paywalls, account access, or provider download restrictions.
 
 The `data/videos` directory is ignored by Git because it may contain large copyrighted media. Removing a copy in the app deletes its disk folder but keeps the video record, notes, and transcript.

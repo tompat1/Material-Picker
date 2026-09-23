@@ -139,3 +139,8 @@ test("formats download throughput and hour/minute estimates for the library", ()
   assert.equal(core.formatDuration(84 * 60), "1h 24m");
   assert.equal(core.formatDuration(2 * 60 * 60), "2h");
 });
+
+test("creates portable destination folder names for offline archives", () => {
+  assert.equal(core.archiveFolderName('A talk: body / mind?', "video_123-abc"), "A talk body mind - video_12");
+  assert.equal(core.archiveFolderName("...", "../"), "Offline video - video");
+});
