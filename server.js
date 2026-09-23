@@ -1,0 +1,830 @@
+const dns = require("node:dns").promises;
+const fs = require("node:fs");
+const fsp = fs.promises;
+const http = require("node:http");
+const net = require("node:net");
+const path = require("node:path");
+
+const ROOT = __dirname;
+const DATA_ROOT = path.join(ROOT, "data");
+const VIDEO_ROOT = path.join(DATA_ROOT, "videos");
+const MAX_PAGE_BYTES = 2 * 1024 * 1024;
+const MAX_TRANSLATION_BYTES = 300 * 1024;
+const MAX_REDIRECTS = 5;
+const PORT = Number(process.env.PORT || 4173);
+const BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36";
+const offlineJobs = new Map();
+
+const CONTENT_TYPES = {
+  ".css": "text/css; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".m3u8": "application/vnd.apple.mpegurl",
+  ".m4s": "video/iso.segment",
+  ".mp4": "video/mp4",
+  ".svg": "image/svg+xml",
+  ".ts": "video/mp2t",
+  ".webm": "video/webm",
+};
+
+function isPublicIp(address) {
+  if (!net.isIP(address)) return false;
+  if (address === "::1" || address === "::" || /^f[cd]/i.test(address) || /^fe[89ab]/i.test(address)) return false;
+  const mapped = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (mapped) return isPublicIp(mapped[1]);
+  if (net.isIPv6(address)) return true;
+
+  const [a, b] = address.split(".").map(Number);
+  return !(
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    a >= 224 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19))
+  );
+}
+
+async function validateRemoteUrl(value) {
+  const url = new URL(value);
+  if (!/^https?:$/.test(url.protocol)) throw new Error("Only HTTP and HTTPS page URLs are allowed.");
+  if (url.username || url.password) throw new Error("URLs containing credentials are not allowed.");
+  const addresses = await dns.lookup(url.hostname, { all: true, verbatim: true });
+  if (!addresses.length || addresses.some(({ address }) => !isPublicIp(address))) {
+    throw new Error("Local and private network addresses are not allowed.");
+  }
+  return url;
+}
+
+async function fetchRemoteText(
+  value,
+  {
+    accept = "text/plain",
+    contentTypePattern = /text\//i,
+    maxBytes = MAX_PAGE_BYTES,
+    redirects = 0,
+  } = {}
+) {
+  const url = await validateRemoteUrl(value);
+  const response = await fetch(url, {
+    headers: { Accept: accept, "User-Agent": BROWSER_USER_AGENT },
+    redirect: "manual",
+    signal: AbortSignal.timeout(20000),
+  });
+
+  if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
+    if (redirects >= MAX_REDIRECTS) throw new Error("The page redirected too many times.");
+    return fetchRemoteText(new URL(response.headers.get("location"), url).href, {
+      accept,
+      contentTypePattern,
+      maxBytes,
+      redirects: redirects + 1,
+    });
+  }
+  if (!response.ok) throw new Error(`The page returned ${response.status}.`);
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentTypePattern.test(contentType)) {
+    throw new Error("The URL returned an unsupported content type.");
+  }
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength > maxBytes) throw new Error("The response is larger than the allowed limit.");
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  while (true) {
+    const { done, value: chunk } = await reader.read();
+    if (done) break;
+    size += chunk.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new Error("The response is larger than the allowed limit.");
+    }
+    chunks.push(chunk);
+  }
+  const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+  return { body, finalUrl: url.href, contentType };
+}
+
+async function fetchPage(value) {
+  return fetchRemoteText(value, {
+    accept: "text/html,application/xhtml+xml,text/plain",
+    contentTypePattern: /text\/html|application\/xhtml\+xml|text\/plain/i,
+  });
+}
+
+function sendJson(response, status, data) {
+  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.end(JSON.stringify(data));
+}
+
+async function handleScrape(request, response, requestUrl) {
+  const target = requestUrl.searchParams.get("url");
+  if (!target) return sendJson(response, 400, { error: "A page URL is required." });
+  try {
+    const page = await fetchPage(target);
+    return sendJson(response, 200, { html: page.body, finalUrl: page.finalUrl });
+  } catch (error) {
+    const status = error instanceof TypeError ? 400 : 502;
+    return sendJson(response, status, { error: error.message || "The page could not be scanned." });
+  }
+}
+
+function vimeoIdFromUrl(value) {
+  const url = new URL(value);
+  if (!url.hostname.endsWith("vimeo.com")) return "";
+  return url.pathname.split("/").find((part) => /^\d+$/.test(part)) || "";
+}
+
+function extractPlayerConfig(html) {
+  const marker = "window.playerConfig = ";
+  const start = String(html || "").indexOf(marker);
+  const end = String(html || "").indexOf("</script>", start);
+  if (start < 0 || end < 0) throw new Error("Vimeo did not expose a player configuration.");
+  const json = String(html || "")
+    .slice(start + marker.length, end)
+    .trim()
+    .replace(/;\s*$/, "");
+  try {
+    return JSON.parse(json);
+  } catch {
+    throw new Error("Vimeo returned an unreadable player configuration.");
+  }
+}
+
+async function getVimeoPlayerConfig(videoUrl) {
+  const videoId = vimeoIdFromUrl(videoUrl);
+  if (!videoId) throw new Error("This is not a supported Vimeo video URL.");
+  const player = await fetchRemoteText(`https://player.vimeo.com/video/${videoId}`, {
+    accept: "text/html",
+    contentTypePattern: /text\/html/i,
+  });
+  return extractPlayerConfig(player.body);
+}
+
+function decodeEntities(value) {
+  return String(value || "")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)));
+}
+
+function parseVtt(vtt) {
+  const cues = [];
+  const blocks = String(vtt || "").replace(/^\uFEFF/, "").split(/\r?\n\r?\n+/);
+  blocks.forEach((block) => {
+    const lines = block.split(/\r?\n/).map((line) => line.trim());
+    const timingIndex = lines.findIndex((line) => line.includes("-->"));
+    if (timingIndex < 0 || /^(WEBVTT|NOTE|STYLE|REGION)/.test(lines[0] || "")) return;
+    const start = lines[timingIndex].split("-->")[0].trim();
+    const text = decodeEntities(
+      lines
+        .slice(timingIndex + 1)
+        .join(" ")
+        .replace(/<[^>]+>/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+    if (!text || text === cues.at(-1)?.text) return;
+    cues.push({ start, text });
+  });
+  return cues;
+}
+
+function transcriptFromCues(cues) {
+  return cues.map((cue) => `[${cue.start.replace(/\.\d+$/, "")}] ${cue.text}`).join("\n");
+}
+
+async function getVimeoTranscript(videoUrl, language) {
+  const config = await getVimeoPlayerConfig(videoUrl);
+  const tracks = config.request?.text_tracks || [];
+  const requested = language === "auto" ? null : language;
+  const track =
+    tracks.find((item) => requested && item.lang?.toLowerCase().startsWith(requested.toLowerCase())) ||
+    tracks.find((item) => item.default) ||
+    tracks[0];
+  if (!track?.url) throw new Error("This Vimeo video does not provide a public caption track.");
+
+  const caption = await fetchRemoteText(track.url, {
+    accept: "text/vtt,text/plain",
+    contentTypePattern: /text\/vtt|text\/plain|application\/octet-stream/i,
+  });
+  const cues = parseVtt(caption.body);
+  if (!cues.length) throw new Error("The caption track was empty.");
+  return { cues, language: track.lang || language || "auto", label: track.label || "Captions" };
+}
+
+async function handleTranscript(response, requestUrl) {
+  const videoUrl = requestUrl.searchParams.get("url");
+  const language = requestUrl.searchParams.get("language") || "auto";
+  if (!videoUrl) return sendJson(response, 400, { error: "A video URL is required." });
+  try {
+    const transcript = await getVimeoTranscript(videoUrl, language);
+    return sendJson(response, 200, {
+      text: transcriptFromCues(transcript.cues),
+      cueCount: transcript.cues.length,
+      language: transcript.language,
+      label: transcript.label,
+      source: "provider-captions",
+    });
+  } catch (error) {
+    return sendJson(response, 404, { error: error.message || "A transcript could not be loaded." });
+  }
+}
+
+function readJsonBody(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_TRANSLATION_BYTES) {
+        reject(new Error("The transcript is too large to translate in one request."));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
+      } catch {
+        reject(new Error("The translation request was not valid JSON."));
+      }
+    });
+    request.on("error", reject);
+  });
+}
+
+function splitTranslationText(text, maxLength = 3500) {
+  const chunks = [];
+  let current = "";
+  String(text || "")
+    .split(/(\n+)/)
+    .forEach((part) => {
+      if (current && current.length + part.length > maxLength) {
+        chunks.push(current);
+        current = "";
+      }
+      if (part.length <= maxLength) {
+        current += part;
+        return;
+      }
+      for (let index = 0; index < part.length; index += maxLength) {
+        if (current) chunks.push(current);
+        chunks.push(part.slice(index, index + maxLength));
+        current = "";
+      }
+    });
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+async function translateText(text, sourceLanguage, targetLanguage) {
+  const translated = [];
+  for (const chunk of splitTranslationText(text)) {
+    const endpoint = new URL("https://translate.googleapis.com/translate_a/single");
+    endpoint.searchParams.set("client", "gtx");
+    endpoint.searchParams.set("sl", sourceLanguage || "auto");
+    endpoint.searchParams.set("tl", targetLanguage);
+    endpoint.searchParams.set("dt", "t");
+    endpoint.searchParams.set("q", chunk);
+    const response = await fetch(endpoint, { signal: AbortSignal.timeout(20000) });
+    if (!response.ok) throw new Error(`The translation service returned ${response.status}.`);
+    const payload = await response.json();
+    translated.push((payload[0] || []).map((segment) => segment[0] || "").join(""));
+  }
+  return translated.join("");
+}
+
+async function handleTranslate(request, response) {
+  try {
+    const body = await readJsonBody(request);
+    const text = String(body.text || "").trim();
+    const sourceLanguage = String(body.sourceLanguage || "auto").toLowerCase();
+    const targetLanguage = String(body.targetLanguage || "").toLowerCase();
+    if (!text) return sendJson(response, 400, { error: "Transcript text is required." });
+    if (!/^(auto|[a-z]{2,3})$/.test(sourceLanguage) || !/^[a-z]{2,3}$/.test(targetLanguage)) {
+      return sendJson(response, 400, { error: "The selected language is not supported." });
+    }
+    const translation = await translateText(text, sourceLanguage, targetLanguage);
+    return sendJson(response, 200, { translation, service: "Google Translate" });
+  } catch (error) {
+    return sendJson(response, 502, { error: error.message || "Translation failed." });
+  }
+}
+
+function safeVideoId(value) {
+  const id = String(value || "");
+  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) throw new Error("The video ID is invalid.");
+  return id;
+}
+
+function downloadMetrics(job, now = Date.now()) {
+  const startedAt = Date.parse(job?.startedAt || "");
+  const elapsedSeconds = Number.isFinite(startedAt) ? Math.max(0, (Number(now) - startedAt) / 1000) : 0;
+  const bytesDownloaded = Math.max(0, Number(job?.bytesDownloaded || 0));
+  const totalBytes = Math.max(0, Number(job?.totalBytes || 0));
+  const filesDone = Math.max(0, Number(job?.filesDone || 0));
+  const filesTotal = Math.max(0, Number(job?.filesTotal || 0));
+  const speed = elapsedSeconds >= 1 && bytesDownloaded > 0 ? bytesDownloaded / elapsedSeconds : 0;
+  const fraction = totalBytes > 0
+    ? Math.min(1, bytesDownloaded / totalBytes)
+    : filesTotal > 0
+      ? Math.min(1, filesDone / filesTotal)
+      : 0;
+  let etaSeconds = null;
+
+  if (job?.status === "completed") {
+    etaSeconds = 0;
+  } else if (speed > 0 && totalBytes > bytesDownloaded) {
+    etaSeconds = (totalBytes - bytesDownloaded) / speed;
+  } else if (elapsedSeconds >= 1 && fraction > 0 && fraction < 1) {
+    etaSeconds = (elapsedSeconds * (1 - fraction)) / fraction;
+  }
+
+  return {
+    downloadSpeedBytesPerSecond: Math.round(speed),
+    etaSeconds: etaSeconds === null ? null : Math.max(0, Math.round(etaSeconds)),
+  };
+}
+
+function parseHlsAttributes(value) {
+  const attributes = {};
+  const input = String(value || "");
+  const pattern = /([A-Z0-9-]+)=((?:"[^"]*")|[^,]*)/gi;
+  let match;
+  while ((match = pattern.exec(input))) {
+    attributes[match[1].toUpperCase()] = match[2].replace(/^"|"$/g, "");
+  }
+  return attributes;
+}
+
+function selectHlsVariant(manifest, maxHeight = 1080) {
+  const lines = String(manifest || "").split(/\r?\n/);
+  const variants = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].startsWith("#EXT-X-STREAM-INF:")) continue;
+    const uriIndex = lines.findIndex((line, candidate) => candidate > index && line.trim() && !line.startsWith("#"));
+    if (uriIndex < 0) continue;
+    const attributes = parseHlsAttributes(lines[index].slice("#EXT-X-STREAM-INF:".length));
+    const height = Number((attributes.RESOLUTION || "x0").split("x")[1] || 0);
+    const bandwidth = Number(attributes["AVERAGE-BANDWIDTH"] || attributes.BANDWIDTH || 0);
+    variants.push({ attributes, bandwidth, height, infoLine: lines[index], uri: lines[uriIndex].trim() });
+  }
+  if (!variants.length) return null;
+  const compatible = variants.filter((variant) => variant.height <= maxHeight || variant.height === 0);
+  return (compatible.length ? compatible : variants).sort(
+    (a, b) => b.height - a.height || b.bandwidth - a.bandwidth
+  )[0];
+}
+
+function replaceHlsAttribute(line, name, value) {
+  const pattern = new RegExp(`${name}=(?:"[^"]*"|[^,]*)`, "i");
+  const replacement = `${name}="${value}"`;
+  return pattern.test(line) ? line.replace(pattern, replacement) : `${line},${replacement}`;
+}
+
+function removeHlsAttribute(line, name) {
+  const value = `${name}=(?:"[^"]*"|[^,]*)`;
+  return String(line || "")
+    .replace(new RegExp(`,${value}`, "gi"), "")
+    .replace(new RegExp(`${value},?`, "gi"), "");
+}
+
+function sanitizeOfflineMaster(manifest) {
+  return String(manifest || "")
+    .split(/\r?\n/)
+    .map((line) => {
+      if (!line.startsWith("#EXT-X-STREAM-INF:")) return line;
+      return removeHlsAttribute(removeHlsAttribute(line, "SUBTITLES"), "CLOSED-CAPTIONS");
+    })
+    .join("\n");
+}
+
+function assertUnencryptedHls(manifest) {
+  const protectedTag = String(manifest || "")
+    .split(/\r?\n/)
+    .find((line) => /^#EXT-X-(?:SESSION-)?KEY:/i.test(line) && !/METHOD=NONE(?:,|$)/i.test(line));
+  if (protectedTag) {
+    throw new Error("This stream is encrypted or DRM-protected and cannot be saved by Material Picker.");
+  }
+}
+
+async function fetchRemoteResponse(value, { accept = "*/*", redirects = 0 } = {}) {
+  const url = await validateRemoteUrl(value);
+  const response = await fetch(url, {
+    headers: { Accept: accept, "User-Agent": BROWSER_USER_AGENT },
+    redirect: "manual",
+    signal: AbortSignal.timeout(30000),
+  });
+  if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
+    if (redirects >= MAX_REDIRECTS) throw new Error("The media redirected too many times.");
+    return fetchRemoteResponse(new URL(response.headers.get("location"), url).href, {
+      accept,
+      redirects: redirects + 1,
+    });
+  }
+  if (!response.ok) throw new Error(`The media server returned ${response.status}.`);
+  return { response, finalUrl: url.href };
+}
+
+async function downloadRemoteFile(url, destination, job) {
+  const { response } = await fetchRemoteResponse(url);
+  const contentType = response.headers.get("content-type") || "";
+  if (/text\/html|application\/json/i.test(contentType)) {
+    throw new Error("The media URL returned a web page instead of video data.");
+  }
+  await fsp.mkdir(path.dirname(destination), { recursive: true });
+  const handle = await fsp.open(destination, "w");
+  try {
+    for await (const chunk of response.body) {
+      await handle.write(chunk);
+      job.bytesDownloaded += chunk.length;
+      job.updatedAt = new Date().toISOString();
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+function localMediaName(remoteUrl, index) {
+  let extension = ".bin";
+  try {
+    const candidate = path.extname(new URL(remoteUrl).pathname).toLowerCase();
+    if (/^\.[a-z0-9]{1,8}$/.test(candidate)) extension = candidate;
+  } catch {
+    // Keep the generic extension.
+  }
+  return `${String(index).padStart(5, "0")}${extension}`;
+}
+
+async function cacheMediaPlaylist(playlistUrl, destination, job) {
+  const playlist = await fetchRemoteText(playlistUrl, {
+    accept: "application/vnd.apple.mpegurl,application/x-mpegURL,text/plain",
+    contentTypePattern: /mpegurl|text\/plain|application\/octet-stream/i,
+    maxBytes: 5 * 1024 * 1024,
+  });
+  assertUnencryptedHls(playlist.body);
+  if (selectHlsVariant(playlist.body)) throw new Error("The selected HLS variant contained another master playlist.");
+
+  const lines = playlist.body.split(/\r?\n/);
+  const remoteFiles = new Map();
+  const register = (rawUrl) => {
+    const absolute = new URL(rawUrl, playlist.finalUrl).href;
+    if (!remoteFiles.has(absolute)) remoteFiles.set(absolute, `segments/${localMediaName(absolute, remoteFiles.size)}`);
+    return remoteFiles.get(absolute);
+  };
+
+  const rewritten = lines.map((line) => {
+    if (line.startsWith("#EXT-X-MAP:")) {
+      const attributes = parseHlsAttributes(line.slice("#EXT-X-MAP:".length));
+      if (!attributes.URI) return line;
+      return replaceHlsAttribute(line, "URI", register(attributes.URI));
+    }
+    if (!line.trim() || line.startsWith("#")) return line;
+    return register(line.trim());
+  });
+
+  const entries = [...remoteFiles.entries()];
+  job.filesTotal += entries.length;
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(4, entries.length) }, async () => {
+    while (cursor < entries.length) {
+      const [remoteUrl, localName] = entries[cursor++];
+      await downloadRemoteFile(remoteUrl, path.join(destination, localName), job);
+      job.filesDone += 1;
+      job.updatedAt = new Date().toISOString();
+    }
+  });
+  await Promise.all(workers);
+  await fsp.writeFile(path.join(destination, "playlist.m3u8"), rewritten.join("\n"), "utf8");
+}
+
+async function cacheHlsStream(sourceUrl, destination, job) {
+  const master = await fetchRemoteText(sourceUrl, {
+    accept: "application/vnd.apple.mpegurl,application/x-mpegURL,text/plain",
+    contentTypePattern: /mpegurl|text\/plain|application\/octet-stream/i,
+    maxBytes: 5 * 1024 * 1024,
+  });
+  assertUnencryptedHls(master.body);
+  const variant = selectHlsVariant(master.body);
+  if (!variant) {
+    await cacheMediaPlaylist(master.finalUrl, destination, job);
+    return { offlineUrl: `${job.publicBase}/playlist.m3u8`, format: "hls" };
+  }
+
+  const videoDir = path.join(destination, "video");
+  await cacheMediaPlaylist(new URL(variant.uri, master.finalUrl).href, videoDir, job);
+  const masterLines = ["#EXTM3U", "#EXT-X-VERSION:6"];
+  const audioGroup = variant.attributes.AUDIO;
+  if (audioGroup) {
+    const audioLine = master.body
+      .split(/\r?\n/)
+      .find((line) => {
+        if (!line.startsWith("#EXT-X-MEDIA:")) return false;
+        const attributes = parseHlsAttributes(line.slice("#EXT-X-MEDIA:".length));
+        return attributes.TYPE === "AUDIO" && attributes["GROUP-ID"] === audioGroup && attributes.URI;
+      });
+    if (audioLine) {
+      const audioAttributes = parseHlsAttributes(audioLine.slice("#EXT-X-MEDIA:".length));
+      await cacheMediaPlaylist(new URL(audioAttributes.URI, master.finalUrl).href, path.join(destination, "audio"), job);
+      masterLines.push(replaceHlsAttribute(audioLine, "URI", "audio/playlist.m3u8"));
+    }
+  }
+  masterLines.push(sanitizeOfflineMaster(variant.infoLine), "video/playlist.m3u8");
+  await fsp.writeFile(path.join(destination, "master.m3u8"), `${masterLines.join("\n")}\n`, "utf8");
+  return { offlineUrl: `${job.publicBase}/master.m3u8`, format: "hls" };
+}
+
+function directMediaExtension(url, contentType) {
+  const pathname = new URL(url).pathname;
+  const candidate = path.extname(pathname).toLowerCase();
+  if ([".mp4", ".webm", ".ogv", ".ogg", ".mov", ".m4v"].includes(candidate)) return candidate;
+  if (/webm/i.test(contentType)) return ".webm";
+  if (/ogg/i.test(contentType)) return ".ogv";
+  if (/quicktime/i.test(contentType)) return ".mov";
+  return ".mp4";
+}
+
+async function cacheDirectVideo(sourceUrl, destination, job) {
+  const { response, finalUrl } = await fetchRemoteResponse(sourceUrl, { accept: "video/*,application/octet-stream" });
+  const contentType = response.headers.get("content-type") || "";
+  if (!/video\/|application\/octet-stream/i.test(contentType)) {
+    throw new Error("The URL did not return a downloadable video file.");
+  }
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength) job.totalBytes = declaredLength;
+  const filename = `video${directMediaExtension(finalUrl, contentType)}`;
+  const handle = await fsp.open(path.join(destination, filename), "w");
+  try {
+    for await (const chunk of response.body) {
+      await handle.write(chunk);
+      job.bytesDownloaded += chunk.length;
+      job.updatedAt = new Date().toISOString();
+    }
+  } finally {
+    await handle.close();
+  }
+  job.filesTotal = 1;
+  job.filesDone = 1;
+  return { offlineUrl: `${job.publicBase}/${filename}`, format: "file" };
+}
+
+async function resolveOfflineSource(videoUrl) {
+  if (/vimeo\.com/i.test(videoUrl)) {
+    const config = await getVimeoPlayerConfig(videoUrl);
+    const progressive = [...(config.request?.files?.progressive || [])].sort((a, b) => Number(b.height) - Number(a.height));
+    if (progressive[0]?.url) return { type: "file", url: progressive[0].url, provider: "Vimeo public download" };
+    const hls = config.request?.files?.hls;
+    const hlsUrl = hls?.cdns?.[hls.default_cdn]?.url || Object.values(hls?.cdns || {})[0]?.url;
+    if (hlsUrl) return { type: "hls", url: hlsUrl, provider: "Vimeo public HLS" };
+    throw new Error("Vimeo did not expose a public downloadable file or unencrypted stream.");
+  }
+  if (/\.m3u8([?#].*)?$/i.test(videoUrl)) return { type: "hls", url: videoUrl, provider: "Direct HLS" };
+  if (/\.(mp4|webm|ogv|ogg|mov|m4v)([?#].*)?$/i.test(videoUrl)) {
+    return { type: "file", url: videoUrl, provider: "Direct file" };
+  }
+  throw new Error("Offline saving supports public Vimeo media, direct video files, and unencrypted HLS streams.");
+}
+
+async function runOfflineSave({ id, title, url }) {
+  const job = offlineJobs.get(id);
+  const temporary = path.join(VIDEO_ROOT, `${id}.partial`);
+  const destination = path.join(VIDEO_ROOT, id);
+  try {
+    await fsp.mkdir(VIDEO_ROOT, { recursive: true });
+    await fsp.rm(temporary, { recursive: true, force: true });
+    await fsp.mkdir(temporary, { recursive: true });
+    const source = await resolveOfflineSource(url);
+    job.provider = source.provider;
+    const result =
+      source.type === "hls"
+        ? await cacheHlsStream(source.url, temporary, job)
+        : await cacheDirectVideo(source.url, temporary, job);
+    const metadata = {
+      id,
+      title: title || "Untitled video",
+      sourceUrl: url,
+      offlineUrl: result.offlineUrl,
+      format: result.format,
+      provider: source.provider,
+      size: job.bytesDownloaded,
+      savedAt: new Date().toISOString(),
+    };
+    await fsp.writeFile(path.join(temporary, "metadata.json"), JSON.stringify(metadata, null, 2), "utf8");
+    await fsp.rm(destination, { recursive: true, force: true });
+    await fsp.rename(temporary, destination);
+    Object.assign(job, metadata, { status: "completed", updatedAt: new Date().toISOString() });
+  } catch (error) {
+    await fsp.rm(temporary, { recursive: true, force: true }).catch(() => {});
+    job.status = "failed";
+    job.error = error.message || "The video could not be saved.";
+    job.updatedAt = new Date().toISOString();
+  }
+}
+
+async function handleOfflineSave(request, response) {
+  try {
+    const body = await readJsonBody(request);
+    const id = safeVideoId(body.videoId);
+    const url = String(body.url || "");
+    await validateRemoteUrl(url);
+    if (body.rightsConfirmed !== true) {
+      return sendJson(response, 400, { error: "Confirm that you have permission to save this video." });
+    }
+    const current = offlineJobs.get(id);
+    if (current?.status === "downloading") return sendJson(response, 409, { error: "This video is already downloading." });
+    const job = {
+      id,
+      title: String(body.title || "Untitled video").slice(0, 300),
+      sourceUrl: url,
+      status: "downloading",
+      bytesDownloaded: 0,
+      totalBytes: 0,
+      filesDone: 0,
+      filesTotal: 0,
+      publicBase: `/offline-media/${id}`,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    offlineJobs.set(id, job);
+    void runOfflineSave({ id, title: job.title, url });
+    return sendJson(response, 202, { ...job, ...downloadMetrics(job) });
+  } catch (error) {
+    return sendJson(response, 400, { error: error.message || "The offline save request was invalid." });
+  }
+}
+
+async function readOfflineLibrary() {
+  await fsp.mkdir(VIDEO_ROOT, { recursive: true });
+  const entries = await fsp.readdir(VIDEO_ROOT, { withFileTypes: true });
+  const library = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.endsWith(".partial")) continue;
+    try {
+      const directory = path.join(VIDEO_ROOT, entry.name);
+      const masterPath = path.join(directory, "master.m3u8");
+      try {
+        const master = await fsp.readFile(masterPath, "utf8");
+        const repaired = sanitizeOfflineMaster(master);
+        if (repaired !== master) await fsp.writeFile(masterPath, repaired, "utf8");
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      const metadata = JSON.parse(await fsp.readFile(path.join(directory, "metadata.json"), "utf8"));
+      library.push(metadata);
+    } catch {
+      // Ignore incomplete or manually modified archive folders.
+    }
+  }
+  return library;
+}
+
+async function handleOfflineDelete(response, idValue) {
+  try {
+    const id = safeVideoId(idValue);
+    await fsp.rm(path.join(VIDEO_ROOT, id), { recursive: true, force: true });
+    await fsp.rm(path.join(VIDEO_ROOT, `${id}.partial`), { recursive: true, force: true });
+    offlineJobs.delete(id);
+    return sendJson(response, 200, { removed: true, id });
+  } catch (error) {
+    return sendJson(response, 400, { error: error.message || "The offline copy could not be removed." });
+  }
+}
+
+function serveOfflineFile(request, response, pathname) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname.replace(/^\/offline-media\//, ""));
+  } catch {
+    return sendJson(response, 400, { error: "Invalid media path." });
+  }
+  const filePath = path.resolve(VIDEO_ROOT, decoded);
+  if (!filePath.startsWith(`${VIDEO_ROOT}${path.sep}`)) return sendJson(response, 403, { error: "Forbidden." });
+  fs.stat(filePath, (error, stats) => {
+    if (error || !stats.isFile()) return sendJson(response, 404, { error: "Offline media not found." });
+    const contentType = CONTENT_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream";
+    const range = request.headers.range?.match(/bytes=(\d*)-(\d*)/);
+    if (range) {
+      const start = range[1] ? Number(range[1]) : 0;
+      const end = range[2] ? Math.min(Number(range[2]), stats.size - 1) : stats.size - 1;
+      if (start > end || start >= stats.size) {
+        response.writeHead(416, { "Content-Range": `bytes */${stats.size}` });
+        return response.end();
+      }
+      response.writeHead(206, {
+        "Accept-Ranges": "bytes",
+        "Content-Length": end - start + 1,
+        "Content-Range": `bytes ${start}-${end}/${stats.size}`,
+        "Content-Type": contentType,
+        "Cache-Control": "private, max-age=31536000, immutable",
+      });
+      return fs.createReadStream(filePath, { start, end }).pipe(response);
+    }
+    response.writeHead(200, {
+      "Accept-Ranges": "bytes",
+      "Content-Length": stats.size,
+      "Content-Type": contentType,
+      "Cache-Control": "private, max-age=31536000, immutable",
+    });
+    if (request.method === "HEAD") return response.end();
+    return fs.createReadStream(filePath).pipe(response);
+  });
+}
+
+function serveStatic(response, pathname) {
+  const requested = pathname === "/" ? "/index.html" : pathname;
+  const decoded = decodeURIComponent(requested);
+  const filePath = path.resolve(ROOT, `.${decoded}`);
+  if (!filePath.startsWith(`${ROOT}${path.sep}`)) return sendJson(response, 403, { error: "Forbidden." });
+  fs.stat(filePath, (error, stats) => {
+    if (error || !stats.isFile()) return sendJson(response, 404, { error: "Not found." });
+    response.writeHead(200, {
+      "Content-Type": CONTENT_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream",
+      "Cache-Control": "no-cache",
+    });
+    fs.createReadStream(filePath).pipe(response);
+  });
+}
+
+function startServer() {
+  fs.mkdirSync(VIDEO_ROOT, { recursive: true });
+  const server = http.createServer(async (request, response) => {
+    const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+    if (request.method === "GET" && requestUrl.pathname === "/api/scrape") {
+      return handleScrape(request, response, requestUrl);
+    }
+    if (request.method === "GET" && requestUrl.pathname === "/api/transcript") {
+      return handleTranscript(response, requestUrl);
+    }
+    if (request.method === "POST" && requestUrl.pathname === "/api/translate") {
+      return handleTranslate(request, response);
+    }
+    if (request.method === "POST" && requestUrl.pathname === "/api/offline/save") {
+      return handleOfflineSave(request, response);
+    }
+    if (request.method === "GET" && requestUrl.pathname === "/api/offline/library") {
+      try {
+        return sendJson(response, 200, { videos: await readOfflineLibrary(), storagePath: VIDEO_ROOT });
+      } catch (error) {
+        return sendJson(response, 500, { error: error.message || "The offline library could not be read." });
+      }
+    }
+    if (request.method === "GET" && requestUrl.pathname === "/api/offline/status") {
+      const id = requestUrl.searchParams.get("id");
+      try {
+        const job = offlineJobs.get(safeVideoId(id));
+        return job
+          ? sendJson(response, 200, { ...job, ...downloadMetrics(job) })
+          : sendJson(response, 404, { error: "No active download was found." });
+      } catch (error) {
+        return sendJson(response, 400, { error: error.message });
+      }
+    }
+    if (request.method === "DELETE" && requestUrl.pathname.startsWith("/api/offline/")) {
+      return handleOfflineDelete(response, requestUrl.pathname.slice("/api/offline/".length));
+    }
+    if ((request.method === "GET" || request.method === "HEAD") && requestUrl.pathname.startsWith("/offline-media/")) {
+      return serveOfflineFile(request, response, requestUrl.pathname);
+    }
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return sendJson(response, 405, { error: "Method not allowed." });
+    }
+    return serveStatic(response, requestUrl.pathname);
+  });
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`Material Picker running at http://localhost:${PORT}`);
+  });
+  return server;
+}
+
+if (require.main === module) startServer();
+
+module.exports = {
+  assertUnencryptedHls,
+  downloadMetrics,
+  extractPlayerConfig,
+  fetchPage,
+  getVimeoTranscript,
+  isPublicIp,
+  parseVtt,
+  parseHlsAttributes,
+  sanitizeOfflineMaster,
+  safeVideoId,
+  selectHlsVariant,
+  splitTranslationText,
+  startServer,
+  transcriptFromCues,
+  validateRemoteUrl,
+};
