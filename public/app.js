@@ -282,6 +282,7 @@ async function handleFolderScan(event) {
     setStatus(
       `Scraped ${addedCount} video ${addedCount === 1 ? "file" : "files"}${subfolderInfo} into “${folderName}”. Ready to play!`
     );
+    if (addedCount) showDesk(addedCount === 1 ? "screen" : "reels");
   } catch (error) {
     setStatus(`Folder scan error: ${error.message}`);
   } finally {
@@ -373,6 +374,7 @@ function handleLocalFolderInput(event) {
   render();
 
   setStatus(`Imported ${addedCount} video ${addedCount === 1 ? "file" : "files"} from “${rootFolderName}”. Ready to play!`);
+  if (addedCount) showDesk(addedCount === 1 ? "screen" : "reels");
 }
 
 async function handleImport(event) {
@@ -401,6 +403,7 @@ async function handleImport(event) {
         ? `Imported ${added} video ${added === 1 ? "item" : "items"} from the page.`
         : "The page loaded, but no video links were found. Paste page HTML or embed code into the extractor."
     );
+    if (added) showDesk(added === 1 ? "screen" : "reels");
   } catch (error) {
     recordScrape(url, {
       status: "blocked",
@@ -455,6 +458,7 @@ function handlePasteExtract() {
       ? `Extracted ${added} video ${added === 1 ? "item" : "items"} from the pasted material.`
       : "No supported video links were found. Try pasting the page source or direct embed code."
   );
+  if (added) showDesk(added === 1 ? "screen" : "reels");
 }
 
 function extractVideos(text, baseUrl = "") {
@@ -500,6 +504,7 @@ function addVideo(video) {
   state.selectedId = next.id;
   saveState();
   render();
+  showDesk("screen");
 }
 
 function updateSelectedFromForm() {
@@ -539,6 +544,13 @@ function selectVideo(id) {
   state.selectedId = id;
   saveState();
   render();
+  showDesk("screen");
+}
+
+function showDesk(name) {
+  const tab = document.querySelector(`#desk-${name}`);
+  if (!tab || !window.matchMedia("(max-width: 1180px)").matches) return;
+  tab.checked = true;
 }
 
 function duplicateSelected() {
@@ -655,8 +667,12 @@ function renderLibrary() {
 
   els.videoList.innerHTML = "";
   if (!filtered.length) {
-    const message = activeCollectionId === "all" ? "No saved videos match this search." : "This folder has no matching videos.";
-    els.videoList.innerHTML = `<p class="hint">${message}</p>`;
+    const searching = Boolean(els.searchLibrary.value.trim());
+    let message = "This folder has no matching videos.";
+    if (searching) message = "No videos match this search.";
+    else if (activeCollectionId === "all") message = "The library is empty. Scan a folder or a page to add videos.";
+    else if (activeCollectionId === "unfiled") message = "No unfiled videos.";
+    els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p></div>`;
     els.videoCount.textContent = state.videos.length;
     return;
   }
@@ -1681,6 +1697,8 @@ function setSourceFrame(url, updateInput = true) {
   if (!url) return;
   els.sourceFrame.src = url;
   if (updateInput) els.sourceUrl.value = url;
+  const disclosure = document.querySelector("#sourceDisclosure");
+  if (disclosure) disclosure.open = true;
 }
 
 function openSource() {
