@@ -257,14 +257,14 @@ async function handleTranscript(response, requestUrl) {
   }
 }
 
-function readJsonBody(request) {
+function readJsonBody(request, maxBytes = MAX_TRANSLATION_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
     request.on("data", (chunk) => {
       size += chunk.length;
-      if (size > MAX_TRANSLATION_BYTES) {
-        reject(new Error("The transcript is too large to translate in one request."));
+      if (size > maxBytes) {
+        reject(new Error("The request payload is too large."));
         request.destroy();
         return;
       }
@@ -274,12 +274,157 @@ function readJsonBody(request) {
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"));
       } catch {
-        reject(new Error("The translation request was not valid JSON."));
+        reject(new Error("The request was not valid JSON."));
       }
     });
     request.on("error", reject);
   });
 }
+
+let whisperPipelinePromise = null;
+
+async function getWhisperPipeline() {
+  if (!whisperPipelinePromise) {
+    whisperPipelinePromise = (async () => {
+      const { pipeline } = require("@xenova/transformers");
+      return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny", {
+        quantized: true,
+      });
+    })();
+  }
+  return whisperPipelinePromise;
+}
+
+const WHISPER_LANGUAGES = {
+  auto: null,
+  en: "english",
+  pl: "polish",
+  de: "german",
+  es: "spanish",
+  fr: "french",
+  it: "italian",
+  pt: "portuguese",
+  sv: "swedish",
+};
+
+async function handleTranscribe(request, response) {
+  try {
+    const body = await readJsonBody(request, 10 * 1024 * 1024);
+    let floatSamples = null;
+
+    if (body.pcmBase64) {
+      const buffer = Buffer.from(body.pcmBase64, "base64");
+      const int16 = new Int16Array(buffer.buffer, buffer.byteOffset, Math.floor(buffer.length / 2));
+      floatSamples = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) {
+        floatSamples[i] = int16[i] / 32768.0;
+      }
+    } else if (Array.isArray(body.samples)) {
+      floatSamples = new Float32Array(body.samples);
+    }
+
+    if (!floatSamples || floatSamples.length === 0) {
+      return sendJson(response, 400, { error: "Audio samples are required." });
+    }
+
+    let sumSquares = 0;
+    for (let i = 0; i < floatSamples.length; i++) {
+      sumSquares += floatSamples[i] * floatSamples[i];
+    }
+    const rms = Math.sqrt(sumSquares / floatSamples.length);
+    if (rms < 0.005) {
+      return sendJson(response, 200, {
+        text: "",
+        isSilent: true,
+        timestamp: body.currentTime || 0,
+      });
+    }
+
+    const transcriber = await getWhisperPipeline();
+    const sourceLang = String(body.language || "auto").toLowerCase();
+    const whisperLang = WHISPER_LANGUAGES[sourceLang] || null;
+
+    const options = { task: "transcribe" };
+    if (whisperLang) {
+      options.language = whisperLang;
+    }
+
+    const result = await transcriber(floatSamples, options);
+    let text = String(result?.text || "").trim();
+
+    if (/^\[(?:blank_audio|applause|laughter|noise|\s*)\]$/i.test(text)) {
+      text = "";
+    }
+
+    return sendJson(response, 200, {
+      text,
+      language: sourceLang,
+      timestamp: body.currentTime || 0,
+      service: "Whisper (local)",
+    });
+  } catch (error) {
+    return sendJson(response, 500, { error: error.message || "Transcription failed." });
+  }
+}
+
+function proofreadText(text, language = "en") {
+  if (!text) return "";
+  const lines = text.split("\n");
+  const processedLines = lines.map((line) => {
+    let prefix = "";
+    let content = line;
+    const timestampMatch = line.match(/^(\[\d{1,2}:\d{2}(?::\d{2})?\]\s*)/);
+    if (timestampMatch) {
+      prefix = timestampMatch[1];
+      content = line.slice(prefix.length);
+    }
+
+    let cleaned = content
+      .replace(/\b(um|uh|er|erm|ah|umm|uhh)\b/gi, "")
+      .replace(/\b(yyy|eee|ymm)\b/gi, "")
+      .replace(/\b(äh|ehm)\b/gi, "")
+      .replace(/\b(euh)\b/gi, "")
+      .replace(/\b(you know|wiesz|tu sais|weißt du)\b(?=[,\s]|$)/gi, "")
+      .replace(/\b(like|liksom|jakby)\b(?=[,\s]+(you|we|they|he|she|it|I|to|the|that|a|an)\b)/gi, "");
+
+    cleaned = cleaned.replace(/\b(\w+)\s+\1\b/gi, "$1");
+    cleaned = cleaned.replace(/\b(\w+)\s+\1\b/gi, "$1");
+
+    cleaned = cleaned
+      .replace(/[ \t]+/g, " ")
+      .replace(/\s+([,.!?;:])/g, "$1")
+      .replace(/([.!?])([A-Za-z])/g, "$1 $2")
+      .trim();
+
+    cleaned = cleaned
+      .split(/(?<=[.!?]\s+)/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join(" ");
+
+    if (!cleaned) return "";
+    return prefix + cleaned;
+  }).filter(Boolean);
+
+  return processedLines.join("\n");
+}
+
+async function handleProofread(request, response) {
+  try {
+    const body = await readJsonBody(request);
+    const text = String(body.text || "").trim();
+    if (!text) {
+      return sendJson(response, 400, { error: "Text is required to proofread." });
+    }
+    const language = String(body.language || "en").toLowerCase();
+    const proofread = proofreadText(text, language);
+    return sendJson(response, 200, { proofread, original: text });
+  } catch (error) {
+    return sendJson(response, 500, { error: error.message || "Proofreading failed." });
+  }
+}
+
 
 function splitTranslationText(text, maxLength = 3500) {
   const chunks = [];
@@ -1071,6 +1216,12 @@ function startServer() {
     if (request.method === "POST" && requestUrl.pathname === "/api/translate") {
       return handleTranslate(request, response);
     }
+    if (request.method === "POST" && requestUrl.pathname === "/api/transcribe") {
+      return handleTranscribe(request, response);
+    }
+    if (request.method === "POST" && requestUrl.pathname === "/api/proofread") {
+      return handleProofread(request, response);
+    }
     if (request.method === "POST" && requestUrl.pathname === "/api/offline/save") {
       return handleOfflineSave(request, response);
     }
@@ -1129,12 +1280,16 @@ module.exports = {
   extractPlayerConfig,
   fetchPage,
   getVimeoTranscript,
+  handleProofread,
   handleScanFolder,
+  handleTranscribe,
+  handleTranslate,
   isHlsPackageDirectory,
   isPublicIp,
   listArchiveFiles,
   parseVtt,
   parseHlsAttributes,
+  proofreadText,
   resolveLocalPath,
   sanitizeOfflineMaster,
   safeVideoId,

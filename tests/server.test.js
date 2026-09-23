@@ -13,6 +13,7 @@ const {
   listArchiveFiles,
   parseHlsAttributes,
   parseVtt,
+  proofreadText,
   resolveLocalPath,
   sanitizeOfflineMaster,
   safeVideoId,
@@ -248,3 +249,17 @@ test("scanDirectoryForVideos recognizes master.m3u8 with audio/video folders as 
   // Verify none of the .m4s segments were returned as individual videos
   assert.ok(results.every((item) => !item.name.endsWith(".m4s")));
 });
+
+test("proofreadText removes speech fillers, deduplicates stutters, and fixes sentence capitalization", () => {
+  const dirty = "[00:02] um hello world , we are um testing\n[00:05] the the audio track works great";
+  const cleaned = proofreadText(dirty, "en");
+
+  assert.equal(
+    cleaned,
+    "[00:02] Hello world, we are testing\n[00:05] The audio track works great"
+  );
+
+  const multilingual = "[00:10] yyy to jest bardzo dobre";
+  assert.equal(proofreadText(multilingual, "pl"), "[00:10] To jest bardzo dobre");
+});
+

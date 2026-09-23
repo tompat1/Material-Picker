@@ -1689,10 +1689,87 @@ function openSource() {
   window.open(video.sourceUrl, "_blank", "noopener,noreferrer");
 }
 
+let audioContext = null;
+let mediaElementSource = null;
+let audioProcessor = null;
+let audioTrackTranscribing = false;
+let accumulatedSamples = [];
+let accumulatedLength = 0;
+let isTranscribingChunk = false;
+let lastChunkTime = 0;
+
+function setupAudioTrackCapture() {
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    audioContext = new AudioContextClass();
+  }
+
+  if (audioContext.state === "suspended") {
+    audioContext.resume().catch(() => {});
+  }
+
+  if (!mediaElementSource) {
+    mediaElementSource = audioContext.createMediaElementSource(els.videoPlayer);
+    mediaElementSource.connect(audioContext.destination);
+  }
+
+  return { audioContext, mediaElementSource };
+}
+
+function downsampleTo16k(inputBuffer, inputSampleRate) {
+  if (inputSampleRate === 16000) return inputBuffer;
+  const ratio = inputSampleRate / 16000;
+  const newLength = Math.round(inputBuffer.length / ratio);
+  const result = new Float32Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < inputBuffer.length; i++) {
+      accum += inputBuffer[i];
+      count++;
+    }
+    result[offsetResult] = count > 0 ? accum / count : 0;
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
+  }
+  return result;
+}
+
+function floatTo16BitPCMBase64(floatSamples) {
+  const buffer = new ArrayBuffer(floatSamples.length * 2);
+  const view = new DataView(buffer);
+  for (let i = 0; i < floatSamples.length; i++) {
+    const s = Math.max(-1, Math.min(1, floatSamples[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 async function startTranscription() {
   const video = selectedVideo();
   if (!video) return;
   if (video.transcript && !confirm("Replace the existing transcript for this video?")) return;
+
+  els.transcriptText.value = "";
+  updateTranscriptFields();
+
+  try {
+    if (els.videoPlayer.paused) {
+      await els.videoPlayer.play();
+    }
+  } catch (error) {
+    console.warn("Automatic video playback could not be started:", error);
+  }
 
   if (/vimeo\.com/i.test(video.url)) {
     setTranscriptButtons(false, true);
@@ -1715,65 +1792,143 @@ async function startTranscription() {
       setStatus("The provider caption track was saved as this video's transcript.");
       return;
     } catch (error) {
-      setTranscriptStatus(`${error.message} Trying microphone recognition instead.`, "error");
+      setTranscriptStatus(`${error.message} Transcribing using video audio tracks instead.`, "working");
     }
   }
 
-  startMicrophoneTranscription(video);
+  startAudioTrackTranscription(video);
 }
 
-function startMicrophoneTranscription(video) {
-  if (!SpeechRecognition) {
+function startAudioTrackTranscription(video) {
+  const setup = setupAudioTrackCapture();
+  if (!setup) {
     setTranscriptButtons(false);
-    setTranscriptStatus(
-      "No public caption track was available, and microphone speech recognition is not supported in this browser.",
-      "error"
-    );
-    setStatus("Transcription could not start in this browser.");
+    setTranscriptStatus("Web Audio API is not supported in this browser.", "error");
+    setStatus("Audio track transcription could not start.");
     return;
   }
 
   stopTranscription();
-  recognition = new SpeechRecognition();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = speechLocale(els.sourceLang.value);
 
-  let committed = els.transcriptText.value.trim();
-  recognition.onresult = (event) => {
-    let interim = "";
-    for (let index = event.resultIndex; index < event.results.length; index += 1) {
-      const transcript = event.results[index][0].transcript.trim();
-      if (event.results[index].isFinal) {
-        committed = appendTranscriptLine(committed, transcript);
-      } else {
-        interim = transcript;
-      }
+  audioTrackTranscribing = true;
+  accumulatedSamples = [];
+  accumulatedLength = 0;
+  isTranscribingChunk = false;
+  lastChunkTime = els.videoPlayer.currentTime || 0;
+
+  audioProcessor = setup.audioContext.createScriptProcessor(4096, 1, 1);
+  setup.mediaElementSource.connect(audioProcessor);
+  audioProcessor.connect(setup.audioContext.destination);
+
+  audioProcessor.onaudioprocess = (event) => {
+    if (!audioTrackTranscribing || els.videoPlayer.paused) return;
+
+    const inputData = event.inputBuffer.getChannelData(0);
+    const downsampled = downsampleTo16k(inputData, setup.audioContext.sampleRate);
+    accumulatedSamples.push(downsampled);
+    accumulatedLength += downsampled.length;
+
+    if (accumulatedLength >= 56000 && !isTranscribingChunk) {
+      processPendingAudioChunk(false);
     }
-    els.transcriptText.value = interim ? `${committed}\n${interim}`.trim() : committed;
-    updateTranscriptFields();
   };
-  recognition.onerror = (event) => {
-    setStatus(`Transcription stopped: ${event.error}.`);
-    setTranscriptStatus(`Microphone transcription stopped: ${event.error}.`, "error");
-    setTranscriptButtons(false);
+
+  const onEnded = () => {
+    processPendingAudioChunk(true);
+    stopTranscription();
   };
-  recognition.onend = () => {
-    setTranscriptButtons(false);
-    if (els.transcriptText.value.trim()) setTranscriptStatus("Microphone transcript saved for this video.");
-  };
-  recognition.start();
+
+  els.videoPlayer.addEventListener("ended", onEnded, { once: true });
+
   setTranscriptButtons(true);
-  setTranscriptStatus("Listening through the microphone. Play the video through audible speakers.", "working");
-  setStatus("Listening with browser speech recognition. Play the video audio clearly enough for the microphone to hear.");
+  const currentTime = formatTime(els.videoPlayer.currentTime || 0);
+  setTranscriptStatus(`Transcribing directly from video audio track [${currentTime}]...`, "working");
+  setStatus("Transcribing from the video audio track. The video is playing.");
+}
+
+async function processPendingAudioChunk(isFinal = false) {
+  if (accumulatedLength === 0) return;
+
+  const merged = new Float32Array(accumulatedLength);
+  let offset = 0;
+  for (const chunk of accumulatedSamples) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  accumulatedSamples = [];
+  accumulatedLength = 0;
+
+  const chunkStartTime = lastChunkTime;
+  const chunkEndTime = els.videoPlayer.currentTime || (chunkStartTime + (merged.length / 16000));
+  lastChunkTime = chunkEndTime;
+
+  let sumSquares = 0;
+  for (let i = 0; i < merged.length; i++) {
+    sumSquares += merged[i] * merged[i];
+  }
+  const rms = Math.sqrt(sumSquares / merged.length);
+  if (rms < 0.005) return;
+
+  const pcmBase64 = floatTo16BitPCMBase64(merged);
+  isTranscribingChunk = true;
+
+  try {
+    const response = await fetch("/api/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pcmBase64,
+        language: els.sourceLang.value,
+        currentTime: chunkStartTime,
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    const data = await response.json();
+    if (response.ok && data.text) {
+      const timeStr = formatTime(chunkStartTime);
+      const newText = `[${timeStr}] ${data.text}`;
+      els.transcriptText.value = els.transcriptText.value.trim()
+        ? `${els.transcriptText.value.trim()}\n${newText}`
+        : newText;
+      updateTranscriptFields();
+
+      const video = selectedVideo();
+      if (video) {
+        video.transcript = els.transcriptText.value;
+        saveState();
+      }
+      setTranscriptStatus(`Transcribing from audio track [${formatTime(chunkEndTime)}]...`, "working");
+    }
+  } catch (error) {
+    console.error("Transcription chunk error:", error);
+  } finally {
+    isTranscribingChunk = false;
+  }
 }
 
 function stopTranscription() {
+  audioTrackTranscribing = false;
+  if (audioProcessor) {
+    try {
+      audioProcessor.disconnect();
+    } catch {}
+    audioProcessor = null;
+  }
+  if (accumulatedLength > 16000) {
+    processPendingAudioChunk(true);
+  }
   if (recognition) {
     recognition.stop();
     recognition = null;
   }
   setTranscriptButtons(false);
+  if (els.transcriptText.value.trim()) {
+    setTranscriptStatus("Audio track transcript saved for this video.", "ready");
+  } else {
+    setTranscriptStatus("Transcription stopped.", "ready");
+  }
 }
 
 function setTranscriptButtons(isRecording, isProcessing = false) {
@@ -1826,6 +1981,11 @@ async function translateTranscript() {
     if (!response.ok) throw new Error(data.error || `Translation request returned ${response.status}.`);
     els.translatedText.value = data.translation;
     updateTranscriptFields();
+    const video = selectedVideo();
+    if (video) {
+      video.translation = data.translation;
+      saveState();
+    }
     setTranscriptStatus(`Translation complete using ${data.service || "the server translator"}.`);
     setStatus(`Translated to ${targetLanguage.toUpperCase()}.`);
   } catch (error) {
@@ -1850,25 +2010,51 @@ async function proofreadTranscript() {
   const original = els.translatedText.value.trim() || els.transcriptText.value.trim();
   if (!original) {
     setStatus("Add transcript text before proofreading.");
+    setTranscriptStatus("Add or transcribe text before proofreading.", "error");
     return;
   }
 
+  els.proofreadButton.disabled = true;
+  setTranscriptStatus("Proofreading text: formatting sentences, fixing punctuation & cleaning fillers...", "working");
   try {
-    if (window.Proofreader?.create) {
-      const proofreader = await window.Proofreader.create();
-      els.translatedText.value = await proofreader.proofread(original);
-      setStatus("Proofread with the browser Proofreader API.");
-    } else {
-      els.translatedText.value = localProofread(original);
-      setStatus("Proofread locally with spacing, casing, and punctuation cleanup.");
+    const response = await fetch("/api/proofread", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: original,
+        language: els.targetLang.value || els.sourceLang.value || "en",
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Proofreading request failed.");
+
+    els.translatedText.value = data.proofread;
+    updateTranscriptFields();
+    const video = selectedVideo();
+    if (video) {
+      video.translation = data.proofread;
+      saveState();
     }
-    updateTranscriptFields();
+    setTranscriptStatus("Proofreading complete: cleaned disfluencies, fixed punctuation & casing.", "ready");
+    setStatus("Proofread text with punctuation, casing, filler removal, and clean paragraphs.");
   } catch (error) {
-    els.translatedText.value = localProofread(original);
+    const fallback = localProofread(original);
+    els.translatedText.value = fallback;
     updateTranscriptFields();
-    setStatus(`Browser proofreading failed: ${error.message}. A local cleanup pass was applied.`);
+    const video = selectedVideo();
+    if (video) {
+      video.translation = fallback;
+      saveState();
+    }
+    setTranscriptStatus("Proofread locally with punctuation, casing, and spacing cleanup.", "ready");
+    setStatus(`Proofread locally: ${error.message}`);
+  } finally {
+    els.proofreadButton.disabled = !selectedVideo();
   }
 }
+
 
 function downloadTranscript() {
   const video = selectedVideo();
