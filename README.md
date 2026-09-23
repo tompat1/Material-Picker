@@ -17,7 +17,7 @@ For another phone or tablet on the same network, open `http://YOUR-COMPUTER-IP:4
 
 ## Cloudflare Deployment
 
-The repository includes `wrangler.jsonc`, which deploys only the browser files in `public/`. Run:
+The repository includes `wrangler.jsonc`. It deploys the browser files in `public/` plus a page-scan relay at `/api/scrape`. Run:
 
 ```sh
 npm run deploy
@@ -25,7 +25,7 @@ npm run deploy
 
 For a connected Cloudflare Workers Build, leave the build command empty and use `npx wrangler deploy` as the deploy command. The explicit asset directory prevents `node_modules`, tests, server code, and local video archives from being uploaded as static assets.
 
-The Cloudflare deployment is the browser-only edition: provider playback, browser storage, notes, folders, and transcript editing work in the browser. Page relay, server translation, server transcription, and disk-backed offline copies require the local Node server because Workers cannot write to this computer's `data/videos` directory. Run `npm start` when those local features are needed.
+The Cloudflare deployment scans pages through its own relay, and provider playback, browser storage, notes, folders, and transcript editing stay in the browser. Server translation, server transcription, and disk-backed offline copies still require the local Node server, because Workers cannot write to this computer's `data/videos` directory. Run `npm start` when those local features are needed.
 
 ## What It Does
 

@@ -422,17 +422,26 @@ async function fetchPageForImport(url) {
     const response = await fetch(url, { mode: "cors", signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`The page returned ${response.status}.`);
     return { html: await response.text(), finalUrl: response.url || url, method: "browser scan" };
-  } catch (browserError) {
-    const relayResponse = await fetch(`/api/scrape?url=${encodeURIComponent(url)}`, {
-      signal: AbortSignal.timeout(25000),
-    });
-    let relayData;
+  } catch {
+    let relayResponse;
+    try {
+      relayResponse = await fetch(`/api/scrape?url=${encodeURIComponent(url)}`, {
+        signal: AbortSignal.timeout(45000),
+      });
+    } catch {
+      throw new Error("The site blocks a direct scan, and the scan relay did not respond.");
+    }
+    let relayData = null;
     try {
       relayData = await relayResponse.json();
     } catch {
-      throw new Error(`${browserError.message} Start the app with npm start to enable the secure scan relay.`);
+      relayData = null;
     }
-    if (!relayResponse.ok) throw new Error(relayData.error || `The scan relay returned ${relayResponse.status}.`);
+    if (!relayResponse.ok || typeof relayData?.html !== "string") {
+      throw new Error(
+        relayData?.error || "The site blocks a direct scan, and the scan relay is not available."
+      );
+    }
     return { html: relayData.html, finalUrl: relayData.finalUrl || url, method: "secure relay" };
   }
 }
