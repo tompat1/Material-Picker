@@ -392,19 +392,21 @@ async function handleImport(event) {
   try {
     const page = await fetchPageForImport(url);
     const items = extractVideos(page.html, page.finalUrl || url);
-    const added = addExtractedVideos(items, url);
+    const imported = addExtractedVideos(items, url);
     recordScrape(url, {
       status: "completed",
       foundCount: items.length,
-      addedCount: added,
+      addedCount: imported.added,
       method: page.method,
     });
-    setStatus(
-      added
-        ? `Imported ${added} video ${added === 1 ? "item" : "items"} from the page.`
-        : "The page loaded, but no video links were found. Paste page HTML or embed code into the extractor."
-    );
-    if (added) showDesk(added === 1 ? "screen" : "reels");
+    if (imported.added) presentImportedVideos(imported.ids);
+    else {
+      setStatus(
+        items.length
+          ? "Those videos are already in the library. Mark the ones you want, choose a folder, and download them."
+          : "The page loaded, but no video links were found. Paste page HTML or embed code into the extractor."
+      );
+    }
   } catch (error) {
     recordScrape(url, {
       status: "blocked",
@@ -454,21 +456,23 @@ function handlePasteExtract() {
     return;
   }
   const items = extractVideos(text, sourceUrl);
-  const added = addExtractedVideos(items, sourceUrl);
+  const imported = addExtractedVideos(items, sourceUrl);
   if (sourceUrl) {
     recordScrape(sourceUrl, {
       status: "completed",
       foundCount: items.length,
-      addedCount: added,
+      addedCount: imported.added,
       method: "pasted source",
     });
   }
-  setStatus(
-    added
-      ? `Extracted ${added} video ${added === 1 ? "item" : "items"} from the pasted material.`
-      : "No supported video links were found. Try pasting the page source or direct embed code."
-  );
-  if (added) showDesk(added === 1 ? "screen" : "reels");
+  if (imported.added) presentImportedVideos(imported.ids);
+  else {
+    setStatus(
+      items.length
+        ? "Those videos are already in the library. Mark the ones you want, choose a folder, and download them."
+        : "No supported video links were found. Try pasting the page source or direct embed code."
+    );
+  }
 }
 
 function extractVideos(text, baseUrl = "") {
@@ -476,22 +480,41 @@ function extractVideos(text, baseUrl = "") {
 }
 
 function addExtractedVideos(items, sourceUrl = "") {
-  let added = 0;
+  const ids = [];
   items.forEach((item) => {
     if (state.videos.some((video) => video.url === item.url)) return;
-    addVideo({
-      title: item.title,
-      url: item.url,
-      sourceUrl: item.sourceUrl || sourceUrl,
-      language: "English",
-      tags: inferTags(item.url),
-    });
-    added += 1;
+    ids.push(
+      addVideo(
+        {
+          title: item.title,
+          url: item.url,
+          sourceUrl: item.sourceUrl || sourceUrl,
+          language: "English",
+          tags: inferTags(item.url),
+        },
+        { reveal: false }
+      )
+    );
   });
-  return added;
+  return { added: ids.length, ids };
 }
 
-function addVideo(video) {
+function presentImportedVideos(ids) {
+  ids.forEach((id) => selectedVideoIds.add(id));
+  activeCollectionId = "all";
+  showDesk("reels");
+  render();
+  const count = ids.length;
+  const folder = offlineExportDirectoryHandle?.name;
+  setStatus(
+    folder
+      ? `Marked ${count} video${count === 1 ? "" : "s"} from this scan. Confirm permission, then download them to “${folder}”. Uncheck any you want to skip.`
+      : `Marked ${count} video${count === 1 ? "" : "s"} from this scan. Choose a folder on this computer, confirm permission, then download them. Uncheck any you want to skip.`
+  );
+  document.querySelector(".library-offline-bar")?.scrollIntoView({ block: "nearest" });
+}
+
+function addVideo(video, options = {}) {
   const next = {
     id: crypto.randomUUID(),
     title: video.title || inferTitleFromUrl(video.url || video.sourceUrl || ""),
@@ -514,7 +537,8 @@ function addVideo(video) {
   state.selectedId = next.id;
   saveState();
   render();
-  showDesk("screen");
+  if (options.reveal !== false) showDesk("screen");
+  return next.id;
 }
 
 function updateSelectedFromForm() {
@@ -611,6 +635,7 @@ function render() {
   renderForm();
   renderPlayer();
   renderOfflineManager();
+  renderLibraryOfflineManager();
   renderTranscript();
 }
 
@@ -781,7 +806,7 @@ function renderLibraryOfflineManager() {
   els.saveSelectedOfflineButton.disabled =
     !actionable || !els.libraryOfflinePermission.checked || bulkOfflineRunning;
   els.saveSelectedOfflineButton.querySelector("span:last-child").textContent =
-    offlineExportDirectoryHandle && pending.length === 0 ? "Copy marked to folder" : "Save marked offline";
+    offlineExportDirectoryHandle && pending.length === 0 ? "Copy marked to folder" : "Download marked";
   renderOfflineDestination();
   els.bulkDownloadProgress.hidden = !bulkOfflineRunning;
   if (bulkOfflineRunning) {
@@ -797,7 +822,12 @@ function renderLibraryOfflineManager() {
       : "Preparing downloads...";
   } else if (marked.length) {
     const saved = marked.filter((video) => video.offlineUrl && !video.offlineStale).length;
-    els.bulkOfflineStatus.textContent = `${marked.length} marked · ${saved} already offline · ${pending.length} ready to save`;
+    const place = offlineExportDirectoryHandle?.name
+      ? `“${offlineExportDirectoryHandle.name}”`
+      : "a folder you choose";
+    els.bulkOfflineStatus.textContent = pending.length
+      ? `${marked.length} marked · ${pending.length} ready to download to ${place}.`
+      : `${marked.length} marked · ${saved} already on disk.`;
   } else {
     els.bulkOfflineStatus.textContent = "Mark videos below to save them to disk.";
   }
@@ -1255,6 +1285,13 @@ async function saveSelectedOfflineVideos() {
       ((!video.offlineUrl || video.offlineStale) || Boolean(offlineExportDirectoryHandle))
   );
   if (!videos.length || !els.libraryOfflinePermission.checked || bulkOfflineRunning) return;
+  if (!offlineExportDirectoryHandle && "showDirectoryPicker" in window) {
+    const chosen = await chooseOfflineFolder();
+    if (!chosen) {
+      setStatus("Choose a folder to set where the marked videos are saved.");
+      return;
+    }
+  }
   bulkOfflineRunning = true;
   bulkOfflineTotal = videos.length;
   bulkOfflineIndex = 0;
@@ -1294,18 +1331,20 @@ async function saveSelectedOfflineVideos() {
 
 async function chooseOfflineFolder() {
   if (!("showDirectoryPicker" in window)) {
-    setStatus("Folder selection is not available in this browser. Offline copies will stay in Material Picker storage.");
+    setStatus("This browser cannot pick a folder. Downloads stay in Material Picker storage on the computer running the app.");
     renderOfflineDestination();
-    return;
+    return false;
   }
   try {
     offlineExportDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: "videos" });
-    setStatus(`New offline copies will also be saved in “${offlineExportDirectoryHandle.name}”.`);
+    setStatus(`Downloads will be saved in “${offlineExportDirectoryHandle.name}”.`);
     renderOfflineDestination();
     renderLibraryOfflineManager();
     renderOfflineManager();
+    return true;
   } catch (error) {
     if (error.name !== "AbortError") setStatus(`The download folder could not be opened: ${error.message}`);
+    return false;
   }
 }
 
@@ -1317,8 +1356,8 @@ function renderOfflineDestination() {
   const label = offlineExportDirectoryHandle
     ? `Chosen folder: ${offlineExportDirectoryHandle.name}`
     : supported
-      ? "Material Picker storage (choose another folder if needed)"
-      : "Material Picker storage (folder selection unavailable in this browser)";
+      ? "Choose a folder on this computer"
+      : "Material Picker storage (this browser cannot choose a folder)";
   els.libraryDestinationStatus.textContent = label;
   els.offlineDestinationStatus.textContent = label;
   const buttonLabel = offlineExportDirectoryHandle ? "Change folder" : "Choose folder";
@@ -1433,8 +1472,14 @@ async function startOfflineDownload(video) {
     }),
     signal: AbortSignal.timeout(30000),
   });
-  const job = await response.json();
-  if (!response.ok) throw new Error(job.error || `Offline save returned ${response.status}.`);
+  const job = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? "Downloads to disk run in the local app. Start it with npm start, then choose a folder and download the marked videos."
+        : job.error || `Offline save returned ${response.status}.`
+    );
+  }
   await pollOfflineJob(video.id);
 }
 
@@ -1594,14 +1639,14 @@ async function repairLegacyPageRecords({ automatic }) {
       const page = await fetchPageForImport(sourceUrl);
       const items = extractVideos(page.html, page.finalUrl || sourceUrl);
       if (!items.length) throw new Error("No playable video links were found on the source page.");
-      const added = addExtractedVideos(items, sourceUrl);
+      const imported = addExtractedVideos(items, sourceUrl);
       state.videos = state.videos.filter((video) => video.id !== record.id);
       completedSources.add(sourceKey);
       repaired += 1;
       recordScrape(sourceUrl, {
         status: "completed",
         foundCount: items.length,
-        addedCount: added,
+        addedCount: imported.added,
         method: `${page.method} repair`,
       });
     } catch (error) {
