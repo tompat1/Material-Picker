@@ -751,7 +751,7 @@ function renderLibrary() {
     const status =
       ["downloading", "exporting"].includes(video.offlineDownloadStatus)
         ? "saving"
-        : video.offlineUrl && !video.offlineStale
+        : hasDiskCopy(video)
           ? "offline"
           : video.playbackStatus || "unchecked";
     const labels = { blocked: "Blocked", checking: "Checking", ready: "Ready", saving: "Saving", offline: "Offline", unknown: "Manual check", unchecked: "Unchecked" };
@@ -789,11 +789,9 @@ function visibleVideos() {
 function renderLibraryOfflineManager() {
   const visible = visibleVideos();
   const marked = state.videos.filter((video) => selectedVideoIds.has(video.id));
-  const pending = marked.filter(
-    (video) => canSaveOfflineUrl(video.url) && (!video.offlineUrl || video.offlineStale)
-  );
+  const pending = marked.filter((video) => canSaveOfflineUrl(video.url) && !hasDiskCopy(video));
   const exportable = offlineExportDirectoryHandle
-    ? marked.filter((video) => video.offlineUrl && !video.offlineStale)
+    ? marked.filter((video) => video.offlineUrl && !video.offlineStale && !video.offlineExportedTo)
     : [];
   const actionable = new Set([...pending, ...exportable].map((video) => video.id)).size;
   const eligibleVisible = visible.filter((video) => canSaveOfflineUrl(video.url));
@@ -1172,12 +1170,11 @@ function openVideoSource() {
 function renderOfflineManager() {
   const video = selectedVideo();
   const isDownloading = ["downloading", "exporting"].includes(video?.offlineDownloadStatus);
-  const hasCopy = Boolean(video?.offlineUrl && !video.offlineStale);
+  const hasCopy = hasDiskCopy(video);
   const canSave = canSaveOfflineUrl(video?.url);
-  els.offlinePermission.disabled = !canSave || isDownloading;
-  els.saveOfflineButton.disabled = !canSave || !els.offlinePermission.checked || isDownloading;
-  els.saveOfflineButton.querySelector("span:last-child").textContent =
-    hasCopy && offlineExportDirectoryHandle ? "Copy to folder" : "Save offline";
+  els.offlinePermission.disabled = !canSave || isDownloading || hasCopy;
+  els.saveOfflineButton.disabled = !canSave || !els.offlinePermission.checked || isDownloading || hasCopy;
+  els.saveOfflineButton.querySelector("span:last-child").textContent = "Download to folder";
   els.removeOfflineButton.disabled = !video?.offlineUrl || isDownloading;
   els.offlineProgress.hidden = !isDownloading;
   renderOfflineDestination();
@@ -1202,7 +1199,10 @@ function renderOfflineManager() {
     } else {
       els.offlineProgress.removeAttribute("value");
     }
-    els.offlineStatus.textContent = `${video.offlineDownloadStatus === "exporting" ? "Copying to chosen folder" : "Saving"} · ${offlineProgressLabel(video)}`;
+    els.offlineStatus.textContent = `Saving to the chosen folder · ${offlineProgressLabel(video)}`;
+  } else if (video.offlineExportedTo) {
+    els.offlineProgress.value = 100;
+    els.offlineStatus.textContent = `Saved in “${video.offlineExportedTo}” · ${video.offlineFormat === "hls" ? "local HLS" : "video file"}`;
   } else if (hasCopy) {
     els.offlineProgress.value = 100;
     els.offlineStatus.textContent = `Saved on disk · ${formatBytes(video.offlineSize)} · ${video.offlineFormat === "hls" ? "local HLS" : "video file"}`;
@@ -1213,7 +1213,7 @@ function renderOfflineManager() {
   } else if (!canSave) {
     els.offlineStatus.textContent = "This provider does not expose a downloadable file or public unencrypted HLS source.";
   } else {
-    els.offlineStatus.textContent = "No disk copy yet. Confirm permission, then choose Save offline.";
+    els.offlineStatus.textContent = "No disk copy yet. Confirm permission, then download it to a folder you created.";
   }
 
   const archiveId = video.offlineCopyId || video.id;
@@ -1279,16 +1279,19 @@ async function saveOfflineVideo() {
   }
 }
 
+function hasDiskCopy(video) {
+  return Boolean((video?.offlineUrl && !video.offlineStale) || video?.offlineExportedTo);
+}
+
 async function saveSelectedOfflineVideos() {
   const videos = state.videos.filter(
-    (video) => selectedVideoIds.has(video.id) && canSaveOfflineUrl(video.url) &&
-      ((!video.offlineUrl || video.offlineStale) || Boolean(offlineExportDirectoryHandle))
+    (video) => selectedVideoIds.has(video.id) && canSaveOfflineUrl(video.url) && !hasDiskCopy(video)
   );
   if (!videos.length || !els.libraryOfflinePermission.checked || bulkOfflineRunning) return;
   if (!offlineExportDirectoryHandle && "showDirectoryPicker" in window) {
     const chosen = await chooseOfflineFolder();
     if (!chosen) {
-      setStatus("Choose a folder to set where the marked videos are saved.");
+      setStatus("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
       return;
     }
   }
@@ -1336,14 +1339,18 @@ async function chooseOfflineFolder() {
     return false;
   }
   try {
-    offlineExportDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: "videos" });
+    offlineExportDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: "downloads" });
     setStatus(`Downloads will be saved in “${offlineExportDirectoryHandle.name}”.`);
     renderOfflineDestination();
     renderLibraryOfflineManager();
     renderOfflineManager();
     return true;
   } catch (error) {
-    if (error.name !== "AbortError") setStatus(`The download folder could not be opened: ${error.message}`);
+    if (error.name === "AbortError") {
+      setStatus("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
+    } else {
+      setStatus(`The download folder could not be opened: ${error.message}`);
+    }
     return false;
   }
 }
@@ -1367,9 +1374,106 @@ function renderOfflineDestination() {
   els.chooseOfflineFolderButton.disabled = !supported || bulkOfflineRunning || operationRunning;
 }
 
+async function writeDownloadPlan(video, plan) {
+  const destination = await offlineExportDirectoryHandle.getDirectoryHandle(archiveFolderName(video.title, video.id), {
+    create: true,
+  });
+  video.offlineDownloadStatus = "exporting";
+  video.offlineFilesDone = 0;
+  video.offlineFilesTotal = plan.files.length;
+  video.offlineBytesDownloaded = 0;
+  video.offlineTotalBytes = 0;
+  video.offlineSpeedBytesPerSecond = 0;
+  video.offlineEtaSeconds = null;
+  video.offlineFormat = plan.format;
+  video.offlineProvider = plan.provider;
+  delete video.offlineError;
+  const startedAt = performance.now();
+  let lastRender = 0;
+  renderLibrary();
+  renderLibraryOfflineManager();
+  if (state.selectedId === video.id) renderOfflineManager();
+
+  for (const file of plan.files) {
+    const copied = await writePlannedFile(destination, file, (bytes) => {
+      video.offlineBytesDownloaded += bytes;
+      const elapsedSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
+      video.offlineSpeedBytesPerSecond = video.offlineBytesDownloaded / elapsedSeconds;
+      if (performance.now() - lastRender > 250) {
+        renderLibrary();
+        renderLibraryOfflineManager();
+        if (state.selectedId === video.id) renderOfflineManager();
+        lastRender = performance.now();
+      }
+    });
+    video.offlineFilesDone += 1;
+    renderLibrary();
+    renderLibraryOfflineManager();
+    if (state.selectedId === video.id) renderOfflineManager();
+  }
+
+  video.offlineDownloadStatus = "completed";
+  video.offlineExportedTo = offlineExportDirectoryHandle.name;
+  video.offlineExportedAt = new Date().toISOString();
+  video.offlineSize = video.offlineBytesDownloaded;
+  saveState();
+  renderLibrary();
+  renderLibraryOfflineManager();
+  if (state.selectedId === video.id) renderOfflineManager();
+}
+
+async function writePlannedFile(root, file, onBytes) {
+  const parts = file.path.split("/").filter(Boolean);
+  const filename = parts.pop();
+  let folder = root;
+  for (const part of parts) folder = await folder.getDirectoryHandle(part, { create: true });
+  const handle = await folder.getFileHandle(filename, { create: true });
+  const writable = await handle.createWritable();
+  try {
+    if (typeof file.text === "string") {
+      await writable.write(file.text);
+      await writable.close();
+      onBytes(file.text.length);
+      return file.text.length;
+    }
+    const response = await fetch(`/api/media-proxy?url=${encodeURIComponent(file.url)}`);
+    if (!response.ok || !response.body) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `Could not download ${file.path}.`);
+    }
+    const reader = response.body.getReader();
+    let copied = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      await writable.write(value);
+      copied += value.byteLength;
+      onBytes(value.byteLength);
+    }
+    await writable.close();
+    return copied;
+  } catch (error) {
+    await writable.abort().catch(() => {});
+    throw error;
+  }
+}
+
 async function saveOrExportOfflineVideo(video) {
-  if (!video.offlineUrl || video.offlineStale) await startOfflineDownload(video);
-  if (offlineExportDirectoryHandle) await exportOfflineCopy(video);
+  if (!offlineExportDirectoryHandle) {
+    const chosen = await chooseOfflineFolder();
+    if (!chosen) throw new Error("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
+  }
+  const planResponse = await fetch(`/api/media-plan?url=${encodeURIComponent(video.url)}`, {
+    signal: AbortSignal.timeout(30000),
+  });
+  if (planResponse.status === 404) {
+    if (!video.offlineUrl || video.offlineStale) await startOfflineDownload(video);
+    if (offlineExportDirectoryHandle) await exportOfflineCopy(video);
+    return;
+  }
+  const plan = await planResponse.json().catch(() => ({}));
+  if (!planResponse.ok) throw new Error(plan.error || `The download could not be prepared (${planResponse.status}).`);
+  await writeDownloadPlan(video, plan);
 }
 
 async function exportOfflineCopy(video) {

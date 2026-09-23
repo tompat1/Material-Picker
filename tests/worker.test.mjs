@@ -105,6 +105,46 @@ test("a bot challenge without a browser asks for pasted HTML", async () => {
   assert.match((await response.json()).error, /Paste the page HTML/);
 });
 
+test("download plan rewrites a split HLS stream into local files", async () => {
+  const master = [
+    "#EXTM3U",
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio-high",NAME="Original",DEFAULT=YES,URI="audio/playlist.m3u8"',
+    '#EXT-X-STREAM-INF:BANDWIDTH=1000,RESOLUTION=1280x720,AUDIO="audio-high"',
+    "video/playlist.m3u8",
+  ].join("\n");
+  const media = (name) =>
+    ["#EXTM3U", '#EXT-X-MAP:URI="segments/init.mp4"', "#EXTINF:6,", `segments/${name}`].join("\n");
+  const response = await handleApiRequest(
+    request(`/api/media-plan?url=${encodeURIComponent("https://cdn.example/master.m3u8")}`),
+    {
+      fetchImpl: async (input) => {
+        const href = input instanceof URL ? input.href : String(input);
+        const body = href.endsWith("/master.m3u8")
+          ? master
+          : href.includes("/audio/")
+            ? media("audio.m4s")
+            : media("video.m4s");
+        return htmlResponse(body, 200, { "content-type": "application/vnd.apple.mpegurl" });
+      },
+    }
+  );
+  assert.equal(response.status, 200);
+  const plan = await response.json();
+  assert.equal(plan.format, "hls");
+  assert.equal(plan.files[0].path, "master.m3u8");
+  assert.match(plan.files[0].text, /video\/playlist\.m3u8/);
+  assert.ok(plan.files.some((file) => file.path === "video/segments/00000.mp4" && file.url.endsWith("/init.mp4")));
+  assert.ok(plan.files.some((file) => file.path === "audio/segments/00001.m4s"));
+});
+
+test("media proxy rejects a private file URL", async () => {
+  const response = await handleApiRequest(
+    request(`/api/media-proxy?url=${encodeURIComponent("http://127.0.0.1/secret.mp4")}`),
+    { fetchImpl: async () => { throw new Error("fetched a private URL"); } }
+  );
+  assert.equal(response.status, 400);
+});
+
 test("hosted offline library reports no disk copies", async () => {
   const response = await handleApiRequest(request("/api/offline/library"));
   assert.equal(response.status, 200);
