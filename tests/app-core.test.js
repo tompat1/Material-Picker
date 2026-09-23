@@ -145,6 +145,33 @@ test("creates portable destination folder names for offline archives", () => {
   assert.equal(core.archiveFolderName("...", "../"), "Offline video - video");
 });
 
+test("follows a split HLS master to its audio segments", () => {
+  const masterUrl = "http://127.0.0.1:4173/local-media/dir/master.m3u8";
+  const master = [
+    "#EXTM3U",
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio-high",NAME="Original",DEFAULT=YES,URI="audio/playlist.m3u8"',
+    '#EXT-X-STREAM-INF:BANDWIDTH=1,CODECS="avc1.640028,mp4a.40.2",AUDIO="audio-high"',
+    "video/playlist.m3u8",
+  ].join("\n");
+  const parsedMaster = core.parseHlsPlaylist(master, masterUrl);
+  assert.equal(parsedMaster.audioPlaylistUrl, "http://127.0.0.1:4173/local-media/dir/audio/playlist.m3u8");
+  assert.equal(parsedMaster.segments.length, 0);
+
+  const media = [
+    "#EXTM3U",
+    '#EXT-X-MAP:URI="segments/00000.mp4"',
+    "#EXTINF:6.080000,",
+    "segments/00001.m4s",
+    "#EXTINF:6.080000,",
+    "segments/00002.m4s",
+  ].join("\n");
+  const parsedMedia = core.parseHlsPlaylist(media, parsedMaster.audioPlaylistUrl);
+  assert.equal(parsedMedia.initUrl, "http://127.0.0.1:4173/local-media/dir/audio/segments/00000.mp4");
+  assert.equal(parsedMedia.segments.length, 2);
+  assert.equal(parsedMedia.segments[0].url, "http://127.0.0.1:4173/local-media/dir/audio/segments/00001.m4s");
+  assert.equal(parsedMedia.segments[1].start, 6.08);
+});
+
 test("recognizes common video container extensions including mkv, avi, and ts", () => {
   assert.equal(core.isLikelyVideoUrl("file:///videos/clip.mkv"), true);
   assert.equal(core.isLikelyVideoUrl("file:///videos/clip.avi"), true);

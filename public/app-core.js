@@ -174,6 +174,66 @@
     };
   }
 
+  function hlsAttribute(line, name) {
+    const quoted = line.match(new RegExp(`${name}="([^"]*)"`, "i"));
+    if (quoted) return quoted[1];
+    const bare = line.match(new RegExp(`${name}=([^,]*)`, "i"));
+    return bare ? bare[1] : "";
+  }
+
+  function parseHlsPlaylist(text, playlistUrl) {
+    const lines = String(text || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    let audioPlaylistUrl = "";
+    let variantUrl = "";
+    let initUrl = "";
+    const segments = [];
+    let pendingDuration = 0;
+    let cursor = 0;
+    let sawStreamInf = false;
+
+    lines.forEach((line) => {
+      if (line.startsWith("#EXT-X-MEDIA:") && /TYPE=AUDIO/i.test(line)) {
+        const uri = hlsAttribute(line, "URI");
+        if (!uri) return;
+        const resolved = toAbsoluteUrl(uri, playlistUrl);
+        if (/DEFAULT=YES/i.test(line) || !audioPlaylistUrl) audioPlaylistUrl = resolved;
+        return;
+      }
+      if (line.startsWith("#EXT-X-STREAM-INF")) {
+        sawStreamInf = true;
+        return;
+      }
+      if (line.startsWith("#EXT-X-MAP:")) {
+        const uri = hlsAttribute(line, "URI");
+        if (uri) initUrl = toAbsoluteUrl(uri, playlistUrl);
+        return;
+      }
+      if (line.startsWith("#EXTINF:")) {
+        pendingDuration = Number.parseFloat(line.slice("#EXTINF:".length)) || 0;
+        return;
+      }
+      if (line.startsWith("#")) return;
+      if (sawStreamInf && !variantUrl) {
+        variantUrl = toAbsoluteUrl(line, playlistUrl);
+        sawStreamInf = false;
+        return;
+      }
+      if (pendingDuration <= 0) return;
+      segments.push({
+        url: toAbsoluteUrl(line, playlistUrl),
+        duration: pendingDuration,
+        start: cursor,
+      });
+      cursor += pendingDuration;
+      pendingDuration = 0;
+    });
+
+    return { audioPlaylistUrl, variantUrl, initUrl, segments };
+  }
+
   function loadState(storage, key) {
     try {
       const stored = JSON.parse(storage.getItem(key));
@@ -200,6 +260,7 @@
     inferTitleFromUrl,
     isLikelyVideoUrl,
     loadState,
+    parseHlsPlaylist,
     moveVideosToCollection,
     playbackKind,
     removeCollection,

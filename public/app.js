@@ -1738,6 +1738,8 @@ const TRANSCRIBE_CHUNK_SAMPLES = TRANSCRIBE_SAMPLE_RATE * 12;
 let silentStreak = 0;
 let audioTap = null;
 let transcriptionEndedHandler = null;
+let hlsTranscriptionToken = 0;
+let hlsAbort = null;
 
 async function openAudioTap() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -1926,6 +1928,11 @@ function collectAudioSamples(inputData, sampleRate) {
 
 function haltAudioCapture() {
   audioTrackTranscribing = false;
+  hlsTranscriptionToken += 1;
+  if (hlsAbort) {
+    hlsAbort.abort();
+    hlsAbort = null;
+  }
   if (transcriptionEndedHandler) {
     els.videoPlayer.removeEventListener("ended", transcriptionEndedHandler);
     transcriptionEndedHandler = null;
@@ -1935,7 +1942,234 @@ function haltAudioCapture() {
   accumulatedLength = 0;
 }
 
+function currentPlaybackUrl(video = selectedVideo()) {
+  if (video?.offlineUrl && !video.offlineStale) return video.offlineUrl;
+  return video?.url || "";
+}
+
 async function startAudioTrackTranscription() {
+  haltAudioCapture();
+  const playbackUrl = currentPlaybackUrl();
+  if (/\.m3u8(?:[?#].*)?$/i.test(playbackUrl)) {
+    await transcribeHlsAudio(playbackUrl);
+    return;
+  }
+  await startElementTapTranscription();
+}
+
+async function transcribeHlsAudio(playbackUrl) {
+  const token = ++hlsTranscriptionToken;
+  hlsAbort = new AbortController();
+  audioTrackTranscribing = true;
+  setTranscriptButtons(true);
+  setTranscriptStatus("Reading the saved audio track from the stream.", "working");
+  setStatus("Transcribing the stream's audio segments. Playback can stay paused.");
+
+  try {
+    const plan = await loadHlsAudioPlan(playbackUrl, hlsAbort.signal);
+    if (!stillTranscribingHls(token)) return;
+    let index = hlsSegmentIndexAt(plan.segments, els.videoPlayer.currentTime || 0);
+    if (index >= plan.segments.length) {
+      finishHlsTranscription(token, "The playhead is already at the end of the audio track.");
+      return;
+    }
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("This browser cannot decode the audio track.");
+    if (!audioContext) audioContext = new AudioContextClass();
+    if (audioContext.state === "suspended") await audioContext.resume();
+
+    while (stillTranscribingHls(token) && index < plan.segments.length) {
+      const audioWindow = takeHlsWindow(plan.segments, index, 12);
+      index += audioWindow.length;
+      const start = audioWindow[0].start;
+      const end = audioWindow[audioWindow.length - 1].start + audioWindow[audioWindow.length - 1].duration;
+      setTranscriptStatus(`Reading audio ${formatTime(start)}–${formatTime(end)}.`, "working");
+      const samples = await decodeHlsAudioWindow(audioContext, plan.initUrl, audioWindow, hlsAbort.signal);
+      if (!stillTranscribingHls(token)) return;
+      await submitTranscriptSamples(samples, start, end, hlsAbort.signal);
+    }
+    finishHlsTranscription(token);
+  } catch (error) {
+    if (!stillTranscribingHls(token) || error.name === "AbortError") return;
+    audioTrackTranscribing = false;
+    setTranscriptButtons(false);
+    setTranscriptStatus(`Transcription failed: ${error.message}`, "error");
+    setStatus(`Transcription failed: ${error.message}`);
+  }
+}
+
+function stillTranscribingHls(token) {
+  return audioTrackTranscribing && token === hlsTranscriptionToken && !hlsAbort?.signal.aborted;
+}
+
+function finishHlsTranscription(token, emptyMessage = "") {
+  if (token !== hlsTranscriptionToken) return;
+  audioTrackTranscribing = false;
+  setTranscriptButtons(false);
+  if (els.transcriptText.value.trim()) {
+    setTranscriptStatus("Audio track transcript saved for this video.", "ready");
+    setStatus("Audio track transcript saved for this video.");
+    return;
+  }
+  setTranscriptStatus(emptyMessage || "Reached the end of the audio track without recognized speech.", "ready");
+}
+
+async function loadHlsAudioPlan(playbackUrl, signal) {
+  const playlistUrl = core.toAbsoluteUrl(playbackUrl, window.location.href) || playbackUrl;
+  const first = core.parseHlsPlaylist(await fetchText(playlistUrl, signal), playlistUrl);
+  if (first.segments.length) return first;
+  const mediaUrl = first.audioPlaylistUrl || first.variantUrl;
+  if (!mediaUrl || mediaUrl === playbackUrl) throw new Error("This stream has no audio playlist.");
+  const media = core.parseHlsPlaylist(await fetchText(mediaUrl, signal), mediaUrl);
+  if (!media.segments.length) throw new Error("The audio playlist has no segments.");
+  return media;
+}
+
+async function fetchText(url, signal) {
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error(`Could not read the stream playlist (${response.status}).`);
+  return response.text();
+}
+
+async function fetchArrayBuffer(url, signal) {
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error(`Could not read an audio segment (${response.status}).`);
+  return response.arrayBuffer();
+}
+
+function hlsSegmentIndexAt(segments, time) {
+  const index = segments.findIndex((segment) => segment.start + segment.duration > time + 0.05);
+  return index === -1 ? segments.length : index;
+}
+
+function takeHlsWindow(segments, index, minSeconds) {
+  const window = [];
+  let duration = 0;
+  while (index + window.length < segments.length && (window.length === 0 || duration < minSeconds)) {
+    const segment = segments[index + window.length];
+    window.push(segment);
+    duration += segment.duration;
+  }
+  return window;
+}
+
+async function decodeHlsAudioWindow(context, initUrl, segments, signal) {
+  const init = initUrl ? await fetchArrayBuffer(initUrl, signal) : null;
+  const pieces = [];
+  for (const segment of segments) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const body = await fetchArrayBuffer(segment.url, signal);
+    const combined = init ? concatArrayBuffers([init, body]) : body;
+    const decoded = await context.decodeAudioData(combined.slice(0));
+    pieces.push(audioBufferTo16kMono(decoded));
+  }
+  return concatFloat32(pieces);
+}
+
+function concatArrayBuffers(parts) {
+  const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  parts.forEach((part) => {
+    bytes.set(new Uint8Array(part), offset);
+    offset += part.byteLength;
+  });
+  return bytes.buffer;
+}
+
+function concatFloat32(parts) {
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const merged = new Float32Array(length);
+  let offset = 0;
+  parts.forEach((part) => {
+    merged.set(part, offset);
+    offset += part.length;
+  });
+  return merged;
+}
+
+function audioBufferTo16kMono(audioBuffer) {
+  const length = audioBuffer.length;
+  const channels = audioBuffer.numberOfChannels;
+  const mono = new Float32Array(length);
+  for (let channel = 0; channel < channels; channel += 1) {
+    const data = audioBuffer.getChannelData(channel);
+    for (let i = 0; i < length; i += 1) mono[i] += data[i];
+  }
+  if (channels > 1) {
+    for (let i = 0; i < length; i += 1) mono[i] /= channels;
+  }
+  return downsampleTo16k(mono, audioBuffer.sampleRate);
+}
+
+async function submitTranscriptSamples(samples, chunkStartTime, chunkEndTime, signal) {
+  if (!samples.length) return;
+  let sumSquares = 0;
+  for (let i = 0; i < samples.length; i += 1) sumSquares += samples[i] * samples[i];
+  const rms = Math.sqrt(sumSquares / samples.length);
+  if (rms < 0.005) {
+    setTranscriptStatus(`No speech in ${formatTime(chunkStartTime)}–${formatTime(chunkEndTime)}.`, "working");
+    return;
+  }
+
+  setTranscriptStatus(
+    `Transcribing ${formatTime(chunkStartTime)}–${formatTime(chunkEndTime)}. The first run waits while the speech model loads.`,
+    "working"
+  );
+  const request = linkedAbortSignal(signal, 180000);
+  try {
+    const response = await fetch("/api/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pcmBase64: floatTo16BitPCMBase64(samples),
+        language: els.sourceLang.value,
+        currentTime: chunkStartTime,
+      }),
+      signal: request.signal,
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `Transcription returned ${response.status}.`);
+    if (!data.text) {
+      setTranscriptStatus(`No speech recognized in ${formatTime(chunkStartTime)}–${formatTime(chunkEndTime)}.`, "working");
+      return;
+    }
+    const newText = `[${formatTime(chunkStartTime)}] ${data.text}`;
+    els.transcriptText.value = els.transcriptText.value.trim()
+      ? `${els.transcriptText.value.trim()}\n${newText}`
+      : newText;
+    updateTranscriptFields();
+    const video = selectedVideo();
+    if (video) {
+      video.transcript = els.transcriptText.value;
+      saveState();
+    }
+    setTranscriptStatus(
+      audioTrackTranscribing
+        ? `Saved ${formatTime(chunkStartTime)}–${formatTime(chunkEndTime)}. Continuing through the audio track.`
+        : "Audio track transcript saved for this video."
+    );
+  } finally {
+    request.done();
+  }
+}
+
+function linkedAbortSignal(parent, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onParent = () => controller.abort();
+  parent?.addEventListener("abort", onParent, { once: true });
+  return {
+    signal: controller.signal,
+    done() {
+      clearTimeout(timer);
+      parent?.removeEventListener("abort", onParent);
+    },
+  };
+}
+
+async function startElementTapTranscription() {
   haltAudioCapture();
 
   let tap;
@@ -2072,6 +2306,11 @@ async function processPendingAudioChunk() {
 function stopTranscription() {
   const shouldFlush = !isTranscribingChunk && accumulatedLength > TRANSCRIBE_SAMPLE_RATE / 2;
   audioTrackTranscribing = false;
+  hlsTranscriptionToken += 1;
+  if (hlsAbort) {
+    hlsAbort.abort();
+    hlsAbort = null;
+  }
   if (transcriptionEndedHandler) {
     els.videoPlayer.removeEventListener("ended", transcriptionEndedHandler);
     transcriptionEndedHandler = null;
