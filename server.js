@@ -6,6 +6,7 @@ const net = require("node:net");
 const path = require("node:path");
 
 const ROOT = __dirname;
+const PUBLIC_ROOT = path.join(ROOT, "public");
 const DATA_ROOT = path.join(ROOT, "data");
 const VIDEO_ROOT = path.join(DATA_ROOT, "videos");
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
@@ -746,8 +747,8 @@ function serveOfflineFile(request, response, pathname) {
 function serveStatic(response, pathname) {
   const requested = pathname === "/" ? "/index.html" : pathname;
   const decoded = decodeURIComponent(requested);
-  const filePath = path.resolve(ROOT, `.${decoded}`);
-  if (!filePath.startsWith(`${ROOT}${path.sep}`)) return sendJson(response, 403, { error: "Forbidden." });
+  const filePath = path.resolve(PUBLIC_ROOT, `.${decoded}`);
+  if (!filePath.startsWith(`${PUBLIC_ROOT}${path.sep}`)) return sendJson(response, 403, { error: "Forbidden." });
   fs.stat(filePath, (error, stats) => {
     if (error || !stats.isFile()) return sendJson(response, 404, { error: "Not found." });
     response.writeHead(200, {

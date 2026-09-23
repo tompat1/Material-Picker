@@ -15,6 +15,18 @@ Then open `http://localhost:4173`.
 
 For another phone or tablet on the same network, open `http://YOUR-COMPUTER-IP:4173` while the server is running.
 
+## Cloudflare Deployment
+
+The repository includes `wrangler.jsonc`, which deploys only the browser files in `public/`. Run:
+
+```sh
+npm run deploy
+```
+
+For a connected Cloudflare Workers Build, leave the build command empty and use `npx wrangler deploy` as the deploy command. The explicit asset directory prevents `node_modules`, tests, server code, and local video archives from being uploaded as static assets.
+
+The Cloudflare deployment is the browser-only edition: provider playback, browser storage, notes, folders, and transcript editing work in the browser. Page relay, server translation, server transcription, and disk-backed offline copies require the local Node server because Workers cannot write to this computer's `data/videos` directory. Run `npm start` when those local features are needed.
+
 ## What It Does
 
 - Scans a user-provided page URL for video URLs, embeds, iframes, HLS streams, and direct media links. A guarded same-origin relay handles sites that block browser CORS access.

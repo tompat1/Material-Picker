@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const core = require("../app-core.js");
+const core = require("../public/app-core.js");
 const { assertUnencryptedHls, extractPlayerConfig, selectHlsVariant } = require("../server.js");
 
 const fixture = fs.readFileSync(path.join(__dirname, "fixtures", "summit-day-2.html"), "utf8");

@@ -35,3 +35,6 @@ token.json
 
 # Temporary files
 .tmp/
+.wrangler/
+.dev.vars*
+!.dev.vars.example
