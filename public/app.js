@@ -71,6 +71,7 @@ const els = {
   transcriptText: document.querySelector("#transcriptText"),
   transcriptStatus: document.querySelector("#transcriptStatus"),
   videoCount: document.querySelector("#videoCount"),
+  videoCountLabel: document.querySelector("#videoCountLabel"),
   videoForm: document.querySelector("#videoForm"),
   videoLanguage: document.querySelector("#videoLanguage"),
   videoList: document.querySelector("#videoList"),
@@ -581,7 +582,7 @@ function clearAll() {
 }
 
 function render() {
-  els.videoCount.textContent = state.videos.length;
+  renderVideoCount();
   renderLibrary();
   renderCollectionManager();
   renderScrapeHistory();
@@ -614,7 +615,7 @@ function renderScrapeHistory() {
   els.clearHistoryButton.disabled = !history.length;
 
   if (!history.length) {
-    els.historyList.innerHTML = '<p class="hint">Scanned page links will appear here.</p>';
+    els.historyList.innerHTML = '<p class="hint empty-note">Scanned pages show up here.</p>';
     return;
   }
 
@@ -650,14 +651,23 @@ function clearScrapeHistory() {
   setStatus("Scrape history cleared.");
 }
 
+function renderVideoCount() {
+  els.videoCount.textContent = state.videos.length;
+  if (els.videoCountLabel) els.videoCountLabel.textContent = state.videos.length === 1 ? "reel" : "reels";
+}
+
 function renderLibrary() {
   const filtered = visibleVideos();
 
   els.videoList.innerHTML = "";
   if (!filtered.length) {
-    const message = activeCollectionId === "all" ? "No saved videos match this search." : "This folder has no matching videos.";
-    els.videoList.innerHTML = `<p class="hint">${message}</p>`;
-    els.videoCount.textContent = state.videos.length;
+    const searching = Boolean(els.searchLibrary.value.trim());
+    let message = "This folder has no matching videos.";
+    if (searching) message = "No videos match this search.";
+    else if (activeCollectionId === "all") message = "The library is empty. Scan a folder or a page to add videos.";
+    else if (activeCollectionId === "unfiled") message = "No unfiled videos.";
+    els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p></div>`;
+    renderVideoCount();
     return;
   }
 
@@ -712,7 +722,7 @@ function renderLibrary() {
     }
     els.videoList.append(card);
   });
-  els.videoCount.textContent = state.videos.length;
+  renderVideoCount();
 }
 
 function visibleVideos() {
@@ -825,7 +835,7 @@ function renderCollectionManager() {
     const button = document.createElement("button");
     button.className = "collection-item";
     button.type = "button";
-    button.setAttribute("aria-current", String(view.id === activeCollectionId));
+    if (view.id === activeCollectionId) button.setAttribute("aria-current", "true");
     button.innerHTML = `<strong>${escapeHtml(view.name)}</strong><span>${view.count}</span>`;
     button.addEventListener("click", () => {
       activeCollectionId = view.id;
@@ -1681,6 +1691,8 @@ function setSourceFrame(url, updateInput = true) {
   if (!url) return;
   els.sourceFrame.src = url;
   if (updateInput) els.sourceUrl.value = url;
+  const disclosure = document.querySelector("#sourceDisclosure");
+  if (disclosure) disclosure.open = true;
 }
 
 function openSource() {
