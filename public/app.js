@@ -97,6 +97,13 @@ init();
 function init() {
   bindEvents();
   render();
+  state.videos.forEach((video) => {
+    if (!["downloading", "exporting"].includes(video.offlineDownloadStatus)) return;
+    video.offlineDownloadStatus = "interrupted";
+    video.offlineError = "The download stopped. Download it again to continue from the pieces already saved.";
+  });
+  saveState();
+  void restoreDownloadFolder();
   void reconcileOfflineLibrary();
   void repairLegacyPageRecords({ automatic: true });
 }
@@ -1268,12 +1275,9 @@ async function saveSelectedOfflineVideos() {
     (video) => selectedVideoIds.has(video.id) && canSaveOfflineUrl(video.url) && !hasDiskCopy(video)
   );
   if (!videos.length || !els.libraryOfflinePermission.checked || bulkOfflineRunning) return;
-  if (!offlineExportDirectoryHandle && "showDirectoryPicker" in window) {
-    const chosen = await chooseOfflineFolder();
-    if (!chosen) {
-      setStatus("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
-      return;
-    }
+  if (!(await ensureDownloadFolder())) {
+    setStatus("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
+    return;
   }
   bulkOfflineRunning = true;
   bulkOfflineTotal = videos.length;
@@ -1340,6 +1344,59 @@ async function saveSelectedOfflineVideos() {
   }
 }
 
+function openFolderDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("material-picker-folder", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("handles");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function rememberDownloadFolder(handle) {
+  const db = await openFolderDatabase();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction("handles", "readwrite");
+    tx.objectStore("handles").put(handle, "download");
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+async function storedDownloadFolder() {
+  const db = await openFolderDatabase();
+  const handle = await new Promise((resolve, reject) => {
+    const request = db.transaction("handles", "readonly").objectStore("handles").get("download");
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return handle;
+}
+
+async function restoreDownloadFolder() {
+  const stored = await storedDownloadFolder().catch(() => null);
+  if (!stored?.queryPermission) return;
+  if ((await stored.queryPermission({ mode: "readwrite" })) !== "granted") return;
+  offlineExportDirectoryHandle = stored;
+  renderOfflineDestination();
+  renderLibraryOfflineManager();
+}
+
+async function ensureDownloadFolder() {
+  if (offlineExportDirectoryHandle) return true;
+  const stored = await storedDownloadFolder().catch(() => null);
+  if (stored?.requestPermission) {
+    if ((await stored.requestPermission({ mode: "readwrite" })) === "granted") {
+      offlineExportDirectoryHandle = stored;
+      renderOfflineDestination();
+      return true;
+    }
+  }
+  return chooseOfflineFolder();
+}
+
 async function chooseOfflineFolder() {
   if (!("showDirectoryPicker" in window)) {
     setStatus("This browser cannot pick a folder. Downloads stay in Material Picker storage on the computer running the app.");
@@ -1348,6 +1405,7 @@ async function chooseOfflineFolder() {
   }
   try {
     offlineExportDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: "downloads" });
+    await rememberDownloadFolder(offlineExportDirectoryHandle);
     setStatus(`Downloads will be saved in “${offlineExportDirectoryHandle.name}”.`);
     renderOfflineDestination();
     renderLibraryOfflineManager();
@@ -1382,6 +1440,7 @@ async function writeDownloadPlan(video, plan) {
   const destination = await offlineExportDirectoryHandle.getDirectoryHandle(archiveFolderName(video.title, video.id), {
     create: true,
   });
+  const resumed = new Set(video.offlineResumePaths || []);
   video.offlineDownloadStatus = "exporting";
   video.offlineFilesDone = 0;
   video.offlineFilesTotal = plan.files.length;
@@ -1394,23 +1453,36 @@ async function writeDownloadPlan(video, plan) {
   delete video.offlineError;
   const startedAt = performance.now();
   let lastRender = 0;
+  let sessionBytes = 0;
+  const noteProgress = (bytes, resumedPiece = false) => {
+    video.offlineBytesDownloaded += bytes;
+    if (!resumedPiece) sessionBytes += bytes;
+    const elapsedSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
+    if (sessionBytes > 0) video.offlineSpeedBytesPerSecond = sessionBytes / elapsedSeconds;
+    const remainingBytes = Number(video.offlineTotalBytes || 0) - video.offlineBytesDownloaded;
+    video.offlineEtaSeconds =
+      sessionBytes > 0 && remainingBytes > 0 ? remainingBytes / video.offlineSpeedBytesPerSecond : video.offlineEtaSeconds;
+    if (performance.now() - lastRender > 250) {
+      renderLibrary();
+      renderLibraryOfflineManager();
+      lastRender = performance.now();
+    }
+  };
   renderLibrary();
   renderLibraryOfflineManager();
   for (const file of plan.files) {
-    const copied = await writePlannedFile(destination, file, (bytes) => {
-      video.offlineBytesDownloaded += bytes;
-      const elapsedSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
-      video.offlineSpeedBytesPerSecond = video.offlineBytesDownloaded / elapsedSeconds;
-      video.offlineEtaSeconds = video.offlineTotalBytes
-        ? estimateRemainingSeconds(elapsedSeconds, video.offlineBytesDownloaded, video.offlineTotalBytes)
-        : estimateRemainingSeconds(elapsedSeconds, video.offlineFilesDone, video.offlineFilesTotal);
-      if (performance.now() - lastRender > 250) {
-        renderLibrary();
-        renderLibraryOfflineManager();
-        lastRender = performance.now();
+    if (resumed.has(file.path) && typeof file.text !== "string") {
+      const existing = await plannedFileSize(destination, file.path);
+      if (existing > 0) {
+        noteProgress(existing, true);
+        video.offlineFilesDone += 1;
+        continue;
       }
-    });
+    }
+    await writePlannedFile(destination, file, noteProgress);
     video.offlineFilesDone += 1;
+    video.offlineResumePaths = [...new Set([...(video.offlineResumePaths || []), file.path])];
+    saveState();
     renderLibrary();
     renderLibraryOfflineManager();
   }
@@ -1419,12 +1491,64 @@ async function writeDownloadPlan(video, plan) {
   video.offlineExportedTo = offlineExportDirectoryHandle.name;
   video.offlineExportedAt = new Date().toISOString();
   video.offlineSize = video.offlineBytesDownloaded;
+  delete video.offlineResumePaths;
   saveState();
   renderLibrary();
   renderLibraryOfflineManager();
 }
 
+async function plannedFileSize(root, relativePath) {
+  try {
+    const parts = relativePath.split("/").filter(Boolean);
+    const filename = parts.pop();
+    let folder = root;
+    for (const part of parts) folder = await folder.getDirectoryHandle(part);
+    const handle = await folder.getFileHandle(filename);
+    return (await handle.getFile()).size;
+  } catch {
+    return 0;
+  }
+}
+
+function isTransientDownloadError(error) {
+  const message = String(error?.message || error);
+  return (
+    error?.name === "TypeError" ||
+    error?.name === "TimeoutError" ||
+    error?.name === "NetworkError" ||
+    /failed to fetch|network|timed out|502|503|504|429/i.test(message)
+  );
+}
+
+function waitForDownloadRetry(ms) {
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      window.removeEventListener("online", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    if (navigator.onLine === false) window.addEventListener("online", finish, { once: true });
+  });
+}
+
 async function writePlannedFile(root, file, onBytes) {
+  let lastError;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    try {
+      return await writePlannedFileOnce(root, file, onBytes);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 4 || !isTransientDownloadError(error)) break;
+      await waitForDownloadRetry(Math.min(30000, 2000 * 2 ** (attempt - 1)));
+    }
+  }
+  throw new Error(
+    `The connection dropped while saving ${file.path}. Download it again to continue from the pieces already saved. ${lastError?.message || ""}`.trim()
+  );
+}
+
+async function writePlannedFileOnce(root, file, onBytes) {
   const parts = file.path.split("/").filter(Boolean);
   const filename = parts.pop();
   let folder = root;
@@ -1438,10 +1562,12 @@ async function writePlannedFile(root, file, onBytes) {
       onBytes(file.text.length);
       return file.text.length;
     }
-    const response = await fetch(`/api/media-proxy?url=${encodeURIComponent(file.url)}`);
+    const response = await fetch(`/api/media-proxy?url=${encodeURIComponent(file.url)}`, {
+      signal: AbortSignal.timeout(120000),
+    });
     if (!response.ok || !response.body) {
       const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || `Could not download ${file.path}.`);
+      throw new Error(data.error || `Could not download ${file.path} (${response.status}).`);
     }
     const reader = response.body.getReader();
     let copied = 0;
@@ -1472,9 +1598,8 @@ async function loadDownloadPlan(video) {
 }
 
 async function saveOrExportOfflineVideo(video, preparedPlan) {
-  if (!offlineExportDirectoryHandle) {
-    const chosen = await chooseOfflineFolder();
-    if (!chosen) throw new Error("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
+  if (!(await ensureDownloadFolder())) {
+    throw new Error("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
   }
   const plan = preparedPlan === undefined ? await loadDownloadPlan(video) : preparedPlan;
   if (!plan) {
