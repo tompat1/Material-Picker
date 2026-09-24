@@ -140,6 +140,16 @@ test("formats download throughput and hour/minute estimates for the library", ()
   assert.equal(core.formatDuration(2 * 60 * 60), "2h");
 });
 
+test("sums library run time and file size from known videos", () => {
+  const summary = core.libraryMediaSummary([
+    { durationSeconds: 600, estimatedBytes: 1000 },
+    { durationSeconds: 90, offlineSize: 500, estimatedBytes: 900 },
+    { title: "Unknown" },
+  ]);
+  assert.equal(summary.durationSeconds, 690);
+  assert.equal(summary.bytes, 1500);
+});
+
 test("estimates remaining download time from completed work", () => {
   assert.equal(core.estimateRemainingSeconds(0.2, 100, 1000), null);
   assert.equal(core.estimateRemainingSeconds(10, 0, 1000), null);

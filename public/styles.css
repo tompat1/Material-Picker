@@ -1030,6 +1030,14 @@ progress::-moz-progress-bar {
   white-space: nowrap;
 }
 
+.library-totals {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+
 .card-main span {
   margin-top: 0.12rem;
   overflow: hidden;

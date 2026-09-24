@@ -135,6 +135,17 @@
     return (elapsed * (whole - done)) / done;
   }
 
+  function libraryMediaSummary(videos) {
+    return (videos || []).reduce(
+      (summary, video) => {
+        summary.durationSeconds += Number(video?.durationSeconds) || 0;
+        summary.bytes += Number(video?.offlineSize || video?.estimatedBytes) || 0;
+        return summary;
+      },
+      { durationSeconds: 0, bytes: 0 }
+    );
+  }
+
   function formatDuration(value) {
     const totalMinutes = Math.max(1, Math.ceil(Number(value || 0) / 60));
     const hours = Math.floor(totalMinutes / 60);
@@ -266,6 +277,7 @@
     estimateRemainingSeconds,
     formatBytes,
     formatDuration,
+    libraryMediaSummary,
     inferTitleFromUrl,
     isLikelyVideoUrl,
     loadState,

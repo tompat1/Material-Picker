@@ -1,7 +1,7 @@
 const STORAGE_KEY = "material-picker:v1";
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const core = window.MaterialPickerCore;
-const { archiveFolderName, estimateRemainingSeconds, formatBytes, formatDuration } = core;
+const { archiveFolderName, estimateRemainingSeconds, formatBytes, formatDuration, libraryMediaSummary } = core;
 
 const els = {
   addBlankButton: document.querySelector("#addBlankButton"),
@@ -26,6 +26,7 @@ const els = {
   localFolderInput: document.querySelector("#localFolderInput"),
   htmlPaste: document.querySelector("#htmlPaste"),
   historyCount: document.querySelector("#historyCount"),
+  libraryTotals: document.querySelector("#libraryTotals"),
   historyList: document.querySelector("#historyList"),
   importForm: document.querySelector("#importForm"),
   collectionCount: document.querySelector("#collectionCount"),
@@ -551,6 +552,9 @@ function updateSelectedFromForm() {
     video.playbackMessage = "URL changed; check playback again";
     video.checkedAt = "";
     if (video.offlineUrl) video.offlineStale = true;
+    delete video.durationSeconds;
+    delete video.estimatedBytes;
+    delete video.mediaMeasured;
   }
   saveState();
   renderLibrary();
@@ -673,6 +677,68 @@ function renderVideoCount() {
   if (els.videoCountLabel) els.videoCountLabel.textContent = state.videos.length === 1 ? "reel" : "reels";
 }
 
+function videoRuntimeLabel(video) {
+  const seconds = Number(video?.durationSeconds) || 0;
+  return seconds > 0 ? formatDuration(seconds) : "";
+}
+
+function videoSizeLabel(video) {
+  const bytes = Number(video?.offlineSize || video?.estimatedBytes) || 0;
+  return bytes > 0 ? formatBytes(bytes) : "";
+}
+
+function renderLibraryTotals() {
+  if (!els.libraryTotals) return;
+  const videos = state.videos;
+  if (!videos.length) {
+    els.libraryTotals.textContent = "";
+    return;
+  }
+  const summary = libraryMediaSummary(videos);
+  const parts = [];
+  if (summary.durationSeconds > 0) parts.push(formatDuration(summary.durationSeconds));
+  if (summary.bytes > 0) parts.push(formatBytes(summary.bytes));
+  const waiting = videos.some((video) => !video.mediaMeasured && canSaveOfflineUrl(video.url));
+  if (!parts.length && waiting) {
+    els.libraryTotals.textContent = "Measuring run time and file size…";
+    return;
+  }
+  els.libraryTotals.textContent = parts.join(" · ");
+}
+
+let libraryMeasureRunning = false;
+
+function rememberMediaMeasure(video, plan) {
+  if (Number(plan?.durationSeconds) > 0) video.durationSeconds = plan.durationSeconds;
+  if (Number(plan?.estimatedBytes) > 0) video.estimatedBytes = plan.estimatedBytes;
+  video.mediaMeasured = true;
+}
+
+async function measureLibraryMedia() {
+  if (libraryMeasureRunning) return;
+  const pending = state.videos.filter((video) => !video.mediaMeasured && canSaveOfflineUrl(video.url));
+  if (!pending.length) return;
+  libraryMeasureRunning = true;
+  renderLibraryTotals();
+  try {
+    for (const video of pending) {
+      if (!state.videos.includes(video) || video.mediaMeasured) continue;
+      try {
+        rememberMediaMeasure(video, await loadDownloadPlan(video));
+      } catch {
+        video.mediaMeasured = true;
+      }
+      saveState();
+      renderLibrary();
+    }
+  } finally {
+    libraryMeasureRunning = false;
+    if (state.videos.some((video) => !video.mediaMeasured && canSaveOfflineUrl(video.url))) {
+      void measureLibraryMedia();
+    }
+  }
+}
+
 function renderLibrary() {
   const filtered = visibleVideos();
 
@@ -685,6 +751,8 @@ function renderLibrary() {
     else if (activeCollectionId === "unfiled") message = "No unfiled videos.";
     els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p></div>`;
     renderVideoCount();
+    renderLibraryTotals();
+    void measureLibraryMedia();
     return;
   }
 
@@ -698,6 +766,10 @@ function renderLibrary() {
     const collection = state.collections.find((item) => item.id === video.collectionId);
     const details = [video.speaker || video.language || "No speaker yet", video.tags || "untagged"];
     if (collection) details.push(collection.name);
+    const runtime = videoRuntimeLabel(video);
+    const size = videoSizeLabel(video);
+    if (runtime) details.push(runtime);
+    if (size) details.push(size);
 
     const main = card.querySelector(".card-main");
     main.innerHTML = `
@@ -740,6 +812,8 @@ function renderLibrary() {
     els.videoList.append(card);
   });
   renderVideoCount();
+  renderLibraryTotals();
+  void measureLibraryMedia();
 }
 
 function visibleVideos() {
@@ -1393,6 +1467,7 @@ async function loadDownloadPlan(video) {
   if (planResponse.status === 404) return null;
   const plan = await planResponse.json().catch(() => ({}));
   if (!planResponse.ok) throw new Error(plan.error || `The download could not be prepared (${planResponse.status}).`);
+  rememberMediaMeasure(video, plan);
   return plan;
 }
 
