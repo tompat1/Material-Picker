@@ -104,7 +104,8 @@ function init() {
   state.videos.forEach((video) => {
     if (!["downloading", "exporting"].includes(video.offlineDownloadStatus)) return;
     video.offlineDownloadStatus = "interrupted";
-    video.offlineError = "The download stopped. Download it again to continue from the pieces already saved.";
+    video.offlineError = "The download stopped. Continue to pick up the pieces already saved.";
+    selectedVideoIds.add(video.id);
   });
   saveState();
   void restoreDownloadFolder();
@@ -839,15 +840,28 @@ function renderLibrary() {
     const status =
       ["downloading", "exporting"].includes(video.offlineDownloadStatus)
         ? "saving"
-        : hasDiskCopy(video)
-          ? "offline"
-          : video.playbackStatus || "unchecked";
-    const labels = { blocked: "Blocked", checking: "Checking", ready: "Ready", saving: "Saving", offline: "Offline", unknown: "Manual check", unchecked: "Unchecked" };
+        : canResumeDownload(video)
+          ? "paused"
+          : hasDiskCopy(video)
+            ? "offline"
+            : video.playbackStatus || "unchecked";
+    const labels = {
+      blocked: "Blocked",
+      checking: "Checking",
+      ready: "Ready",
+      saving: "Saving",
+      paused: "Paused",
+      offline: "Offline",
+      unknown: "Manual check",
+      unchecked: "Unchecked",
+    };
     badge.textContent = labels[status] || labels.unchecked;
     badge.dataset.status = status;
-    badge.title = video.playbackMessage || "Not checked yet";
+    badge.title = canResumeDownload(video)
+      ? "Paused. Continue to pick up the saved pieces."
+      : video.playbackMessage || "Not checked yet";
     const downloadProgress = card.querySelector(".card-download-progress");
-    if (["downloading", "exporting"].includes(video.offlineDownloadStatus)) {
+    if (["downloading", "exporting", "interrupted", "failed"].includes(video.offlineDownloadStatus) && offlineProgressFraction(video) !== null) {
       const progress = offlineProgressFraction(video);
       const progressElement = downloadProgress.querySelector("progress");
       downloadProgress.hidden = false;
@@ -893,10 +907,14 @@ function renderLibraryOfflineManager() {
   if (offlineExportDirectoryHandle) els.libraryOfflinePermission.disabled = !actionable || bulkOfflineRunning;
   els.saveSelectedOfflineButton.disabled =
     !actionable || !els.libraryOfflinePermission.checked || bulkOfflineRunning;
-  els.saveSelectedOfflineButton.querySelector("span:last-child").textContent =
-    offlineExportDirectoryHandle && pending.length === 0 ? "Copy marked to folder" : "Download marked";
+  const paused = pending.filter((video) => canResumeDownload(video));
+  els.saveSelectedOfflineButton.querySelector("span:last-child").textContent = paused.length
+    ? "Continue"
+    : offlineExportDirectoryHandle && pending.length === 0
+      ? "Copy marked to folder"
+      : "Download marked";
   renderOfflineDestination();
-  els.bulkDownloadProgress.hidden = !bulkOfflineRunning;
+  els.bulkDownloadProgress.hidden = !bulkOfflineRunning && !paused.length;
   if (bulkOfflineRunning) {
     els.bulkOfflineStatus.textContent = bulkOfflineMessage || "Saving marked videos to disk...";
     const current = state.videos.find((video) => video.id === bulkOfflineCurrentId);
@@ -912,6 +930,15 @@ function renderLibraryOfflineManager() {
     els.bulkOfflineProgressLabel.textContent = current
       ? `Video ${bulkOfflineIndex + 1} of ${bulkOfflineTotal} · ${offlineProgressLabel(current)}${wholeDownload}`
       : bulkOfflineMessage || "Preparing downloads...";
+  } else if (paused.length) {
+    const savedParts = paused.reduce((total, video) => total + Number(video.offlineFilesDone || 0), 0);
+    const allParts = paused.reduce((total, video) => total + Number(video.offlineFilesTotal || 0), 0);
+    const fraction = allParts ? savedParts / allParts : 0;
+    els.bulkOfflineProgress.value = Math.min(100, fraction * 100);
+    els.bulkOfflineProgressLabel.textContent = allParts
+      ? `${savedParts} of ${allParts} parts saved`
+      : "Saved pieces are still in the folder";
+    els.bulkOfflineStatus.textContent = `Download paused. ${savedParts ? `${savedParts} parts are already saved. ` : ""}Continue to pick up the rest.`;
   } else if (marked.length) {
     const saved = marked.filter((video) => video.offlineUrl && !video.offlineStale).length;
     const place = offlineExportDirectoryHandle?.name
@@ -951,7 +978,8 @@ function offlineProgressLabel(video) {
   ];
   const speed = Number(video?.offlineSpeedBytesPerSecond || 0);
   const eta = Number(video?.offlineEtaSeconds);
-  if (speed > 0) details.push(`${formatBytes(speed)}/s`);
+  if (video?.offlineStalled) details.push("paused · continues when the connection returns");
+  else if (speed > 0) details.push(`${formatBytes(speed)}/s`);
   if (Number.isFinite(eta) && eta > 0) details.push(`about ${formatDuration(eta)} left`);
   return details.join(" · ");
 }
@@ -1504,6 +1532,7 @@ async function writeDownloadPlan(video, plan) {
   const noteProgress = (bytes, resumedPiece = false) => {
     video.offlineBytesDownloaded += bytes;
     if (!resumedPiece) sessionBytes += bytes;
+    video.offlineStalled = false;
     const elapsedSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
     if (sessionBytes > 0) video.offlineSpeedBytesPerSecond = sessionBytes / elapsedSeconds;
     const remainingBytes = Number(video.offlineTotalBytes || 0) - video.offlineBytesDownloaded;
@@ -1526,7 +1555,13 @@ async function writeDownloadPlan(video, plan) {
         continue;
       }
     }
-    await writePlannedFile(destination, file, noteProgress);
+    await writePlannedFile(destination, file, noteProgress, () => {
+      video.offlineStalled = true;
+      video.offlineSpeedBytesPerSecond = 0;
+      video.offlineEtaSeconds = null;
+      renderLibrary();
+      renderLibraryOfflineManager();
+    });
     video.offlineFilesDone += 1;
     video.offlineResumePaths = [...new Set([...(video.offlineResumePaths || []), file.path])];
     saveState();
@@ -1539,6 +1574,7 @@ async function writeDownloadPlan(video, plan) {
   video.offlineExportedAt = new Date().toISOString();
   video.offlineSize = video.offlineBytesDownloaded;
   delete video.offlineResumePaths;
+  delete video.offlineStalled;
   saveState();
   renderLibrary();
   renderLibraryOfflineManager();
@@ -1579,7 +1615,13 @@ function waitForDownloadRetry(ms) {
   });
 }
 
-async function writePlannedFile(root, file, onBytes) {
+function canResumeDownload(video) {
+  if (hasDiskCopy(video)) return false;
+  if (!["interrupted", "failed"].includes(video?.offlineDownloadStatus)) return false;
+  return Boolean(video.offlineResumePaths?.length || Number(video.offlineFilesDone || 0));
+}
+
+async function writePlannedFile(root, file, onBytes, onStall) {
   let lastError;
   for (let attempt = 1; attempt <= 4; attempt += 1) {
     try {
@@ -1587,6 +1629,7 @@ async function writePlannedFile(root, file, onBytes) {
     } catch (error) {
       lastError = error;
       if (attempt === 4 || !isTransientDownloadError(error)) break;
+      if (onStall) onStall();
       await waitForDownloadRetry(Math.min(30000, 2000 * 2 ** (attempt - 1)));
     }
   }
