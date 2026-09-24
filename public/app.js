@@ -163,7 +163,151 @@ function bindEvents() {
   els.downloadTranscriptButton.addEventListener("click", downloadTranscript);
 }
 
+function isLocalServer() {
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+}
+
+function addLocalVideoFiles(videoFiles, rootFolderName) {
+  if (!videoFiles || videoFiles.length === 0) {
+    setStatus("Selected folder contains no supported video files.");
+    return 0;
+  }
+
+  if (els.folderPath) {
+    els.folderPath.value = rootFolderName;
+  }
+
+  let collectionId = "";
+  if (els.folderCreateCollection?.checked) {
+    let existing = state.collections.find(
+      (c) => c.name.toLowerCase() === rootFolderName.toLowerCase()
+    );
+    if (!existing) {
+      existing = {
+        id: crypto.randomUUID(),
+        name: rootFolderName,
+        createdAt: new Date().toISOString(),
+      };
+      state.collections.push(existing);
+    }
+    collectionId = existing.id;
+    activeCollectionId = collectionId;
+  }
+
+  let addedCount = 0;
+  let firstAddedId = null;
+
+  videoFiles.forEach(({ file, name, subfolders, relPath }) => {
+    const title = name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
+    const objectUrl = URL.createObjectURL(file);
+
+    const tagsList = [];
+    if (subfolders && subfolders.length > 0) {
+      tagsList.push(...subfolders);
+    } else {
+      tagsList.push("local");
+    }
+
+    const nextVideo = {
+      id: crypto.randomUUID(),
+      title: title || name,
+      speaker: "",
+      url: objectUrl,
+      sourceUrl: relPath,
+      language: "English",
+      tags: tagsList.join(", "),
+      notes: `File: ${relPath} (${formatBytes(file.size)})`,
+      transcript: "",
+      translation: "",
+      collectionId: collectionId || (activeCollectionId !== "all" && activeCollectionId !== "unfiled" ? activeCollectionId : ""),
+      playbackStatus: "ready",
+      playbackMessage: "Local media file ready for playback",
+      checkedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+
+    state.videos.unshift(nextVideo);
+    if (!firstAddedId) firstAddedId = nextVideo.id;
+    addedCount += 1;
+  });
+
+  if (firstAddedId) {
+    state.selectedId = firstAddedId;
+  }
+
+  saveState();
+  render();
+
+  const distinctSubfolders = new Set(videoFiles.flatMap((v) => v.subfolders || []));
+  const subfolderInfo = distinctSubfolders.size > 0 ? ` across ${distinctSubfolders.size} subfolders` : "";
+
+  setStatus(
+    `Imported ${addedCount} video ${addedCount === 1 ? "file" : "files"}${subfolderInfo} into “${rootFolderName}”. Ready to play!`
+  );
+  if (addedCount) showDesk(addedCount === 1 ? "screen" : "reels");
+  return addedCount;
+}
+
+async function importFromDirectoryHandle(dirHandle) {
+  const rootFolderName = dirHandle.name || "Imported Folder";
+  if (els.folderPath) els.folderPath.value = rootFolderName;
+  setStatus(`Scanning “${rootFolderName}” and all subfolders for videos...`);
+  if (els.scanFolderButton) els.scanFolderButton.disabled = true;
+
+  try {
+    const videoFiles = [];
+
+    async function walk(handle, pathParts = []) {
+      for await (const entry of handle.values()) {
+        if (entry.kind === "file") {
+          if (core.isLikelyVideoUrl(entry.name)) {
+            const file = await entry.getFile();
+            videoFiles.push({
+              file,
+              name: entry.name,
+              subfolders: pathParts,
+              relPath: [...pathParts, entry.name].join("/"),
+            });
+          }
+        } else if (entry.kind === "directory") {
+          if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
+            await walk(entry, [...pathParts, entry.name]);
+          }
+        }
+      }
+    }
+
+    await walk(dirHandle, []);
+    addLocalVideoFiles(videoFiles, rootFolderName);
+  } catch (error) {
+    setStatus(`Folder import error: ${error.message}`);
+  } finally {
+    if (els.scanFolderButton) els.scanFolderButton.disabled = false;
+  }
+}
+
 async function handleBrowseFolder() {
+  // On web deployments (Cloudflare Workers / non-localhost), use browser directory picker directly:
+  if (!isLocalServer()) {
+    if (typeof window.showDirectoryPicker === "function") {
+      try {
+        const dirHandle = await window.showDirectoryPicker();
+        await importFromDirectoryHandle(dirHandle);
+        return;
+      } catch (err) {
+        if (err.name === "AbortError") return; // user cancelled dialog
+        console.warn("showDirectoryPicker error, falling back to input:", err);
+      }
+    }
+    // Safari / Firefox / fallback file input on web:
+    if (els.localFolderInput) {
+      els.localFolderInput.click();
+    }
+    return;
+  }
+
+  // Running on local server (localhost):
   try {
     const response = await fetch("/api/choose-folder", { signal: AbortSignal.timeout(120000) });
     if (response.ok) {
@@ -180,7 +324,17 @@ async function handleBrowseFolder() {
       }
     }
   } catch {
-    // If server helper is not available, fallback to browser directory input
+    // If server helper is not available, fallback
+  }
+
+  if (typeof window.showDirectoryPicker === "function") {
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      await importFromDirectoryHandle(dirHandle);
+      return;
+    } catch (err) {
+      if (err.name === "AbortError") return;
+    }
   }
 
   if (els.localFolderInput) {
@@ -191,6 +345,13 @@ async function handleBrowseFolder() {
 async function handleFolderScan(event) {
   event.preventDefault();
   const folderPath = els.folderPath.value.trim();
+
+  if (!isLocalServer()) {
+    setStatus("Select the local folder from your computer to scan videos...");
+    handleBrowseFolder();
+    return;
+  }
+
   if (!folderPath) {
     setStatus("Enter or browse for a local folder path first.");
     return;
@@ -310,86 +471,20 @@ function handleLocalFolderInput(event) {
   if (!fileList || fileList.length === 0) return;
 
   const files = Array.from(fileList);
-  const videoFiles = files.filter((file) => core.isLikelyVideoUrl(file.name));
+  const videoFiles = files
+    .filter((file) => core.isLikelyVideoUrl(file.name))
+    .map((file) => {
+      const relPath = file.webkitRelativePath || file.name;
+      const pathParts = relPath.split("/");
+      const subfolders = pathParts.slice(1, -1);
+      return { file, name: file.name, subfolders, relPath };
+    });
 
-  if (videoFiles.length === 0) {
-    setStatus("Selected folder contains no supported video files.");
-    return;
-  }
-
-  const samplePath = videoFiles[0].webkitRelativePath || "";
+  const samplePath = (fileList[0] && fileList[0].webkitRelativePath) || "";
   const rootFolderName = samplePath.split("/")[0] || "Imported Folder";
 
-  if (els.folderPath && !els.folderPath.value) {
-    els.folderPath.value = rootFolderName;
-  }
-
-  let collectionId = "";
-  if (els.folderCreateCollection?.checked) {
-    let existing = state.collections.find(
-      (c) => c.name.toLowerCase() === rootFolderName.toLowerCase()
-    );
-    if (!existing) {
-      existing = {
-        id: crypto.randomUUID(),
-        name: rootFolderName,
-        createdAt: new Date().toISOString(),
-      };
-      state.collections.push(existing);
-    }
-    collectionId = existing.id;
-    activeCollectionId = collectionId;
-  }
-
-  let addedCount = 0;
-  let firstAddedId = null;
-
-  videoFiles.forEach((file) => {
-    const relPath = file.webkitRelativePath || file.name;
-    const pathParts = relPath.split("/");
-    const subfolders = pathParts.slice(1, -1);
-    const title = file.name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
-    const objectUrl = URL.createObjectURL(file);
-
-    const tagsList = [];
-    if (subfolders.length > 0) {
-      tagsList.push(...subfolders);
-    } else {
-      tagsList.push("local");
-    }
-
-    const nextVideo = {
-      id: crypto.randomUUID(),
-      title: title || file.name,
-      speaker: "",
-      url: objectUrl,
-      sourceUrl: relPath,
-      language: "English",
-      tags: tagsList.join(", "),
-      notes: `File: ${relPath} (${formatBytes(file.size)})`,
-      transcript: "",
-      translation: "",
-      collectionId: collectionId || (activeCollectionId !== "all" && activeCollectionId !== "unfiled" ? activeCollectionId : ""),
-      playbackStatus: "ready",
-      playbackMessage: "Local browser file ready for playback",
-      checkedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    };
-
-    state.videos.unshift(nextVideo);
-    if (!firstAddedId) firstAddedId = nextVideo.id;
-    addedCount += 1;
-  });
-
-  if (firstAddedId) {
-    state.selectedId = firstAddedId;
-  }
-
-  saveState();
-  render();
-
-  setStatus(`Imported ${addedCount} video ${addedCount === 1 ? "file" : "files"} from “${rootFolderName}”. Ready to play!`);
-  if (addedCount) showDesk(addedCount === 1 ? "screen" : "reels");
+  addLocalVideoFiles(videoFiles, rootFolderName);
+  event.target.value = "";
 }
 
 async function handleImport(event) {

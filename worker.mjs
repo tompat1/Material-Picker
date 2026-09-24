@@ -632,6 +632,12 @@ export async function handleApiRequest(request, dependencies = {}) {
   if (request.method === "GET" && url.pathname === "/api/offline/library") {
     return json(200, { videos: [], storagePath: "" });
   }
+  if (request.method === "GET" && url.pathname === "/api/choose-folder") {
+    return json(200, { supported: false, message: "Folder browsing via system dialog is only available on the local server." });
+  }
+  if (request.method === "GET" && url.pathname === "/api/scan-folder") {
+    return json(400, { error: "Scanning local folder paths is only available when running locally. Use the Browse button to select a folder from your device." });
+  }
   if (request.method === "GET" && url.pathname === "/api/media-plan") {
     const target = url.searchParams.get("url");
     if (!target) return json(400, { error: "A video URL is required." });

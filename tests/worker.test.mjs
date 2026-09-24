@@ -254,3 +254,20 @@ test("proofread API supports custom options for timestamps and speaker deduplica
   assert.equal(data.proofread, "[00:01] Speaker A: Hello.\n[00:05] How are you?");
 });
 
+test("choose-folder and scan-folder endpoints provide helpful responses on worker", async () => {
+  const chooseRes = await handleApiRequest(
+    new Request("https://picker.example/api/choose-folder")
+  );
+  assert.equal(chooseRes.status, 200);
+  const chooseData = await chooseRes.json();
+  assert.equal(chooseData.supported, false);
+
+  const scanRes = await handleApiRequest(
+    new Request("https://picker.example/api/scan-folder?path=/Users/example/Videos")
+  );
+  assert.equal(scanRes.status, 400);
+  const scanData = await scanRes.json();
+  assert.match(scanData.error, /local server|locally/i);
+});
+
+
