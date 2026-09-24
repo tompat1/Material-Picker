@@ -134,7 +134,9 @@ function bindEvents() {
   els.markAllOfflineButton.addEventListener("click", toggleMarkAllOffline);
   els.saveSelectedOfflineButton.addEventListener("click", saveSelectedOfflineVideos);
   els.moveSelectedButton.addEventListener("click", moveSelectedVideos);
+  els.videoForm.addEventListener("submit", (event) => event.preventDefault());
   els.videoForm.addEventListener("input", updateSelectedFromForm);
+  els.videoForm.addEventListener("change", updateSelectedFromForm);
   els.transcriptText.addEventListener("input", updateTranscriptFields);
   els.translatedText.addEventListener("input", updateTranscriptFields);
   els.startTranscriptButton.addEventListener("click", startTranscription);
@@ -537,6 +539,7 @@ function updateSelectedFromForm() {
   const video = selectedVideo();
   if (!video) return;
   const previousUrl = video.url;
+  const previousSource = video.sourceUrl;
   Object.assign(video, {
     title: els.videoTitle.value,
     speaker: els.videoSpeaker.value,
@@ -546,7 +549,8 @@ function updateSelectedFromForm() {
     tags: els.videoTags.value,
     notes: els.videoNotes.value,
   });
-  if (previousUrl !== video.url) {
+  const urlChanged = previousUrl !== video.url;
+  if (urlChanged) {
     video.playbackStatus = "unchecked";
     video.playbackMessage = "URL changed; check playback again";
     video.checkedAt = "";
@@ -554,7 +558,9 @@ function updateSelectedFromForm() {
   }
   saveState();
   renderLibrary();
-  renderPlayer();
+  if (urlChanged) renderPlayer();
+  if (previousSource !== video.sourceUrl) setSourceFrame(video.sourceUrl, false);
+  setStatus("Saved.");
 }
 
 function updateTranscriptFields() {
