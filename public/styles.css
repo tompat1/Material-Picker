@@ -213,9 +213,40 @@ button:disabled {
   font-family: var(--mono);
   font-size: 0.74rem;
   line-height: 1.45;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.52rem;
+  transition: color 0.25s var(--ease);
 }
 
-.status-line::before {
+.status-line.is-running {
+  color: var(--ink);
+}
+
+.status-line .status-dot {
+  display: inline-block;
+  width: 0.44rem;
+  height: 0.44rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(232, 162, 58, 0.2), 0 0 8px rgba(232, 162, 58, 0.45);
+  flex-shrink: 0;
+  transition: transform 0.2s var(--ease), opacity 0.2s var(--ease);
+}
+
+.status-line.is-running .status-dot {
+  display: none;
+}
+
+.status-line .status-throbber {
+  display: none;
+}
+
+.status-line.is-running .status-throbber {
+  display: inline-flex;
+}
+
+.status-line:not(:has(.status-dot)):not(:has(.status-throbber))::before {
   content: "";
   display: inline-block;
   width: 0.42rem;
@@ -224,6 +255,181 @@ button:disabled {
   background: var(--accent);
   box-shadow: 0 0 0 3px rgba(232, 162, 58, 0.18);
   vertical-align: 0.05rem;
+}
+
+/* ============================================================
+   Tungsten Film Desk — Brownish / Orange Throbber & Spinner
+   ============================================================ */
+
+@keyframes amber-throbber-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes amber-throbber-reverse-spin {
+  0% {
+    transform: rotate(360deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes amber-throbber-pulse {
+  0%, 100% {
+    transform: scale(0.92);
+    opacity: 0.85;
+    box-shadow:
+      0 0 8px rgba(232, 162, 58, 0.5),
+      0 0 16px rgba(184, 94, 22, 0.3);
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+    box-shadow:
+      0 0 14px rgba(240, 194, 122, 0.8),
+      0 0 28px rgba(232, 162, 58, 0.55),
+      0 0 42px rgba(184, 94, 22, 0.3);
+  }
+}
+
+@keyframes amber-throbber-glow-aura {
+  0%, 100% {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 6px rgba(232, 162, 58, 0.4));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 14px rgba(240, 194, 122, 0.75));
+  }
+}
+
+.amber-throbber {
+  --throbber-size: 1.5rem;
+  --throbber-border: 2px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--throbber-size);
+  height: var(--throbber-size);
+  flex-shrink: 0;
+  vertical-align: middle;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: amber-throbber-glow-aura 2.4s ease-in-out infinite;
+}
+
+/* Base structural track: hairline deep warm bronze rim */
+.amber-throbber-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: var(--throbber-border) solid rgba(140, 78, 26, 0.24);
+}
+
+/* Outer orbital ring: sweeping warm brownish copper to blazing amber/orange */
+.amber-throbber::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: var(--throbber-border);
+  background: conic-gradient(
+    from 0deg,
+    rgba(64, 30, 8, 0.05) 0deg,
+    rgba(140, 78, 26, 0.28) 60deg,
+    #9e5014 140deg,
+    #c96e1b 210deg,
+    #e8a23a 290deg,
+    #f0c27a 340deg,
+    #fff4dc 360deg
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--throbber-border)), #000 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - var(--throbber-border)), #000 0);
+  animation: amber-throbber-spin 0.95s cubic-bezier(0.42, 0.08, 0.58, 0.92) infinite;
+}
+
+/* Inner optical aperture / warm tungsten core */
+.amber-throbber::after {
+  content: "";
+  position: absolute;
+  width: calc(var(--throbber-size) * 0.34);
+  height: calc(var(--throbber-size) * 0.34);
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff7e6 0%, #f0c27a 35%, #e8a23a 70%, #8c4e1a 100%);
+  animation: amber-throbber-pulse 1.8s ease-in-out infinite;
+}
+
+/* Internal film spool spokes (optional element inside amber-throbber) */
+.amber-throbber-spokes {
+  position: absolute;
+  inset: calc(var(--throbber-border) * 1.5);
+  border-radius: 50%;
+  border: 1px dashed rgba(232, 162, 58, 0.32);
+  animation: amber-throbber-reverse-spin 3.6s linear infinite;
+}
+
+/* Size Modifiers */
+.amber-throbber--xs {
+  --throbber-size: 0.82rem;
+  --throbber-border: 1.5px;
+}
+
+.amber-throbber--sm {
+  --throbber-size: 1.15rem;
+  --throbber-border: 2px;
+}
+
+.amber-throbber--md {
+  --throbber-size: 1.85rem;
+  --throbber-border: 2.5px;
+}
+
+.amber-throbber--lg {
+  --throbber-size: 3rem;
+  --throbber-border: 3.5px;
+}
+
+.amber-throbber--xl {
+  --throbber-size: 4.5rem;
+  --throbber-border: 4.5px;
+}
+
+/* Inline progress feedback card / badge */
+.amber-progress-card {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, rgba(27, 24, 20, 0.95), rgba(20, 18, 16, 0.95));
+  border: 1px solid rgba(232, 162, 58, 0.28);
+  border-radius: 4px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35), 0 0 14px rgba(232, 162, 58, 0.08);
+}
+
+.amber-progress-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.amber-progress-card-title {
+  font-family: var(--sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+
+.amber-progress-card-sub {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--muted);
 }
 
 .storage-pill {
@@ -1249,6 +1455,52 @@ progress::-moz-progress-bar {
   max-width: 28ch;
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.player-loading-overlay {
+  position: relative;
+  z-index: 5;
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.15rem;
+  padding: 1.5rem;
+  background:
+    radial-gradient(ellipse at center, rgba(38, 26, 15, 0.92) 0%, rgba(12, 10, 8, 0.96) 70%),
+    #070605;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(232, 162, 58, 0.24);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  transition: opacity 0.3s var(--ease), visibility 0.3s;
+}
+
+.player-loading-overlay[hidden] {
+  display: none !important;
+}
+
+.player-loading-text {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--accent-hot);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 0 16px rgba(232, 162, 58, 0.55);
+}
+
+button.is-busy {
+  cursor: wait !important;
+  opacity: 0.9 !important;
+  pointer-events: none;
+}
+
+button.is-busy .amber-throbber {
+  margin-right: 0.45rem;
 }
 
 .playback-fallback {

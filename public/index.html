@@ -34,7 +34,11 @@
             <h1 class="brand-name">Material <em>Picker</em></h1>
           </div>
         </div>
-        <p class="status-line" id="statusLine" role="status" aria-live="polite">Ready to scan a folder or a page.</p>
+        <p class="status-line" id="statusLine" role="status" aria-live="polite">
+          <span class="status-dot"></span>
+          <span class="status-throbber amber-throbber amber-throbber--xs" aria-hidden="true"></span>
+          <span class="status-text">Ready to scan a folder or a page.</span>
+        </p>
         <div class="storage-pill" aria-live="polite">
           <span id="videoCount">0</span>
           <span id="videoCountLabel">reels</span>
