@@ -156,11 +156,13 @@
 
   function archiveFolderName(title, id) {
     const safeTitle = String(title || "Offline video")
-      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
-      .replace(/[. ]+$/g, "")
+      .replace(/[\u200b-\u200d\uFEFF\u200e\u200f\u202a-\u202e]/g, "")
+      .replace(/[<>:"/\\|?*\u0000-\u001f\u007f-\u009f]/g, " ")
       .replace(/\s+/g, " ")
       .trim()
-      .slice(0, 72) || "Offline video";
+      .slice(0, 72)
+      .replace(/[.\s\-_]+$/g, "")
+      .trim() || "Offline video";
     const safeId = String(id || "video").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 8) || "video";
     return `${safeTitle} - ${safeId}`;
   }

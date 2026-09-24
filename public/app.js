@@ -840,26 +840,31 @@ function renderLibrary() {
     const status =
       ["downloading", "exporting"].includes(video.offlineDownloadStatus)
         ? "saving"
-        : canResumeDownload(video)
-          ? "paused"
-          : hasDiskCopy(video)
-            ? "offline"
-            : video.playbackStatus || "unchecked";
+        : video.offlineDownloadStatus === "failed" && !hasDiskCopy(video)
+          ? "failed"
+          : canResumeDownload(video)
+            ? "paused"
+            : hasDiskCopy(video)
+              ? "offline"
+              : video.playbackStatus || "unchecked";
     const labels = {
       blocked: "Blocked",
       checking: "Checking",
       ready: "Ready",
       saving: "Saving",
       paused: "Paused",
+      failed: "Failed",
       offline: "Offline",
       unknown: "Manual check",
       unchecked: "Unchecked",
     };
     badge.textContent = labels[status] || labels.unchecked;
     badge.dataset.status = status;
-    badge.title = canResumeDownload(video)
-      ? "Paused. Continue to pick up the saved pieces."
-      : video.playbackMessage || "Not checked yet";
+    badge.title = video.offlineError
+      ? `Offline error: ${video.offlineError}`
+      : canResumeDownload(video)
+        ? "Paused. Continue to pick up the saved pieces."
+        : video.playbackMessage || "Not checked yet";
     const downloadProgress = card.querySelector(".card-download-progress");
     if (["downloading", "exporting", "interrupted", "failed"].includes(video.offlineDownloadStatus) && offlineProgressFraction(video) !== null) {
       const progress = offlineProgressFraction(video);
@@ -1484,7 +1489,8 @@ async function saveSelectedOfflineVideos() {
   renderLibraryOfflineManager();
   if (failures.length) {
     const saved = videos.length - failures.length;
-    setStatus(`Saved ${saved} of ${videos.length} marked videos. ${failures.length} could not be saved; select one to see its error.`);
+    const errorDetails = failures.map((f) => `“${f.video.title || "Untitled"}”: ${f.error.message}`).join("; ");
+    setStatus(`Saved ${saved} of ${videos.length} marked videos. ${failures.length} could not be saved: ${errorDetails}`);
   } else {
     setStatus(`Saved all ${videos.length} marked videos to disk for offline playback.`);
   }

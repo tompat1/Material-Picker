@@ -160,6 +160,10 @@ test("estimates remaining download time from completed work", () => {
 test("creates portable destination folder names for offline archives", () => {
   assert.equal(core.archiveFolderName('A talk: body / mind?', "video_123-abc"), "A talk body mind - video_12");
   assert.equal(core.archiveFolderName("...", "../"), "Offline video - video");
+  assert.equal(
+    core.archiveFolderName('Dehumanizing is So Human: Practical Tools to Heal Trauma and Anxiety\u200b\u200b - Paul Linden', '471426345'),
+    "Dehumanizing is So Human Practical Tools to Heal Trauma and Anxiety - Pa - 47142634"
+  );
 });
 
 test("follows a split HLS master to its audio segments", () => {
