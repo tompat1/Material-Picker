@@ -254,7 +254,7 @@ test("scanDirectoryForVideos recognizes master.m3u8 with audio/video folders as 
 
 test("proofreadText removes speech fillers, deduplicates stutters, and fixes sentence capitalization", () => {
   const dirty = "[00:02] um hello world , we are um testing\n[00:05] the the audio track works great";
-  const cleaned = proofreadText(dirty, "en");
+  const cleaned = proofreadText(dirty, "en", { removeTimestamps: false });
 
   assert.equal(
     cleaned,
@@ -262,7 +262,34 @@ test("proofreadText removes speech fillers, deduplicates stutters, and fixes sen
   );
 
   const multilingual = "[00:10] yyy to jest bardzo dobre";
-  assert.equal(proofreadText(multilingual, "pl"), "[00:10] To jest bardzo dobre");
+  assert.equal(proofreadText(multilingual, "pl", { removeTimestamps: false }), "[00:10] To jest bardzo dobre");
+});
+
+test("proofreadText removes timestamps and deduplicates consecutive speaker names by default", () => {
+  const transcript = `[00:00:12] Host Tana Saler: Welcome everyone, um we are glad you're here.
+[00:00:18] Host Tana Saler: Today we talk with Mark.
+[00:00:25] Mark Walsh: Thank you Tana, it is like a pleasure to be here.
+[00:00:31] Mark Walsh: We have lots to cover.
+[00:00:40] Host Tana Saler: Wonderful, let's get started.`;
+
+  const proofread = proofreadText(transcript, "en");
+  assert.equal(
+    proofread,
+    "Host Tana Saler: Welcome everyone, we are glad you're here.\nToday we talk with Mark.\nMark Walsh: Thank you Tana, it is a pleasure to be here.\nWe have lots to cover.\nHost Tana Saler: Wonderful, let's get started."
+  );
+});
+
+test("proofreadText respects removeTimestamps and deduplicateSpeakers flags", () => {
+  const transcript = `[00:01] Alice: Hello.\n[00:04] Alice: World.`;
+
+  const keepAll = proofreadText(transcript, "en", { removeTimestamps: false, deduplicateSpeakers: false });
+  assert.equal(keepAll, "[00:01] Alice: Hello.\n[00:04] Alice: World.");
+
+  const stripTimestampsOnly = proofreadText(transcript, "en", { removeTimestamps: true, deduplicateSpeakers: false });
+  assert.equal(stripTimestampsOnly, "Alice: Hello.\nAlice: World.");
+
+  const groupSpeakersOnly = proofreadText(transcript, "en", { removeTimestamps: false, deduplicateSpeakers: true });
+  assert.equal(groupSpeakersOnly, "[00:01] Alice: Hello.\n[00:04] World.");
 });
 
 test("decodes PCM whose byte offset is not aligned for Int16Array", () => {

@@ -48,6 +48,8 @@ const els = {
   parsePasteButton: document.querySelector("#parsePasteButton"),
   playerShell: document.querySelector(".player-shell"),
   proofreadButton: document.querySelector("#proofreadButton"),
+  proofreadStripTimestamps: document.querySelector("#proofreadStripTimestamps"),
+  proofreadGroupSpeakers: document.querySelector("#proofreadGroupSpeakers"),
   playerStatus: document.querySelector("#playerStatus"),
   retryPlaybackButton: document.querySelector("#retryPlaybackButton"),
   renameCollectionButton: document.querySelector("#renameCollectionButton"),
@@ -3126,6 +3128,9 @@ async function proofreadTranscript() {
     return;
   }
 
+  const removeTimestamps = Boolean(els.proofreadStripTimestamps ? els.proofreadStripTimestamps.checked : true);
+  const deduplicateSpeakers = Boolean(els.proofreadGroupSpeakers ? els.proofreadGroupSpeakers.checked : true);
+
   els.proofreadButton.disabled = true;
   setTranscriptStatus("Proofreading text: formatting sentences, fixing punctuation & cleaning fillers...", "working");
   try {
@@ -3135,6 +3140,8 @@ async function proofreadTranscript() {
       body: JSON.stringify({
         text: original,
         language: els.targetLang.value || els.sourceLang.value || "en",
+        removeTimestamps,
+        deduplicateSpeakers,
       }),
       signal: AbortSignal.timeout(30000),
     });
@@ -3152,7 +3159,7 @@ async function proofreadTranscript() {
     setTranscriptStatus("Proofreading complete: cleaned disfluencies, fixed punctuation & casing.", "ready");
     setStatus("Proofread text with punctuation, casing, filler removal, and clean paragraphs.");
   } catch (error) {
-    const fallback = localProofread(original);
+    const fallback = localProofread(original, { removeTimestamps, deduplicateSpeakers });
     els.translatedText.value = fallback;
     updateTranscriptFields();
     const video = selectedVideo();
@@ -3206,7 +3213,10 @@ function appendTranscriptLine(current, line) {
   return `${current ? `${current}\n` : ""}[${time}] ${line}`.trim();
 }
 
-function localProofread(text) {
+function localProofread(text, options = {}) {
+  if (typeof core?.proofreadText === "function") {
+    return core.proofreadText(text, els.targetLang?.value || els.sourceLang?.value || "en", options);
+  }
   return text
     .replace(/[ \t]+/g, " ")
     .replace(/\s+\n/g, "\n")

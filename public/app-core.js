@@ -466,6 +466,109 @@
     };
   }
 
+  const NON_SPEAKER_LABELS = new Set([
+    "note",
+    "warning",
+    "important",
+    "caution",
+    "tip",
+    "example",
+    "for example",
+    "chapter",
+    "part",
+    "section",
+    "ps",
+    "p.s",
+    "definition",
+    "conclusion",
+    "summary",
+    "time",
+    "date",
+    "source",
+    "http",
+    "https",
+  ]);
+
+  function proofreadText(text, language = "en", options = {}) {
+    if (!text) return "";
+    const removeTimestamps = options.removeTimestamps !== false;
+    const deduplicateSpeakers = options.deduplicateSpeakers !== false;
+
+    const lines = String(text).split(/\r?\n/);
+    let currentSpeaker = "";
+    const processedLines = [];
+
+    for (const rawLine of lines) {
+      let line = rawLine.trim();
+      if (!line) continue;
+
+      let timestampPrefix = "";
+      const timestampMatch = line.match(/^(\[\s*\d{1,2}(?::\d{2}){1,2}(?:\.\d+)?\s*\]\s*)/);
+      if (timestampMatch) {
+        if (!removeTimestamps) {
+          timestampPrefix = timestampMatch[1];
+        }
+        line = line.slice(timestampMatch[0].length).trim();
+      } else if (removeTimestamps) {
+        line = line.replace(/\[\s*\d{1,2}(?::\d{2}){1,2}(?:\.\d+)?\s*\]\s*/g, "").trim();
+      }
+
+      if (!line) continue;
+
+      let speakerPrefix = "";
+      if (deduplicateSpeakers) {
+        const speakerMatch = line.match(/^\[?([A-Z\p{Lu}][\p{L}\p{N}\s.,'()\-#]{0,50}?)\]?:\s*(.*)$/u);
+        if (speakerMatch && !NON_SPEAKER_LABELS.has(speakerMatch[1].trim().toLowerCase())) {
+          const speaker = speakerMatch[1].trim().replace(/^\[|\]$/g, "");
+          const restOfLine = speakerMatch[2].trim();
+
+          if (speaker.toLowerCase() === currentSpeaker.toLowerCase()) {
+            line = restOfLine;
+          } else {
+            currentSpeaker = speaker;
+            speakerPrefix = `${speaker}: `;
+            line = restOfLine;
+          }
+        }
+      }
+
+      let cleaned = line
+        .replace(/\b(um|uh|er|erm|ah|umm|uhh)\b/gi, "")
+        .replace(/\b(yyy|eee|ymm)\b/gi, "")
+        .replace(/\b(äh|ehm)\b/gi, "")
+        .replace(/\b(euh)\b/gi, "")
+        .replace(/\b(you know|wiesz|tu sais|weißt du)\b(?=[,\s]|$)/gi, "")
+        .replace(/\b(like|liksom|jakby)\b(?=[,\s]+(you|we|they|he|she|it|I|to|the|that|a|an)\b)/gi, "");
+
+      cleaned = cleaned.replace(/\b(\w+)\s+\1\b/gi, "$1");
+      cleaned = cleaned.replace(/\b(\w+)\s+\1\b/gi, "$1");
+
+      cleaned = cleaned
+        .replace(/[ \t]+/g, " ")
+        .replace(/\s+([,.!?;:])/g, "$1")
+        .replace(/([.!?])([A-Za-z\p{L}])/gu, "$1 $2")
+        .trim();
+
+      if (!cleaned && !speakerPrefix) continue;
+
+      if (cleaned) {
+        cleaned = cleaned
+          .split(/(?<=[.!?]\s+)/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+          .join(" ");
+      }
+
+      const finalLine = `${timestampPrefix}${speakerPrefix}${cleaned}`.trim();
+      if (finalLine) {
+        processedLines.push(finalLine);
+      }
+    }
+
+    return processedLines.join("\n");
+  }
+
   return {
     cleanUrl,
     archiveFolderName,
@@ -483,6 +586,7 @@
     parseOfflineArchiveRequirements,
     moveVideosToCollection,
     playbackKind,
+    proofreadText,
     removeCollection,
     saveState,
     toAbsoluteUrl,

@@ -269,3 +269,22 @@ test("parses offline archive requirements and verifies integrity", async () => {
   assert.equal(missingResult.missingFiles.includes("audio/segments/00001.m4s"), true);
   assert.equal(missingResult.audioSegments.found, 1);
 });
+
+test("proofreadText removes timestamps and deduplicates consecutive speakers", () => {
+  const input = `[00:00:05] Host Tana Saler: Welcome back, um we are glad you are here.
+[00:00:10] Host Tana Saler: In today's session we talk about somatic practice.
+[00:00:15] Mark Walsh: Thank you Tana, it is like a real pleasure.
+[00:00:22] Mark Walsh: Let's start with a grounding breath.
+[00:00:30] Host Tana Saler: Beautiful.`;
+
+  const output = core.proofreadText(input, "en");
+  assert.equal(
+    output,
+    "Host Tana Saler: Welcome back, we are glad you are here.\nIn today's session we talk about somatic practice.\nMark Walsh: Thank you Tana, it is a real pleasure.\nLet's start with a grounding breath.\nHost Tana Saler: Beautiful."
+  );
+
+  const keptTimestamps = core.proofreadText(input, "en", { removeTimestamps: false, deduplicateSpeakers: true });
+  assert.ok(keptTimestamps.includes("[00:00:05] Host Tana Saler:"));
+  assert.ok(keptTimestamps.includes("[00:00:10] In today's session"));
+});
+

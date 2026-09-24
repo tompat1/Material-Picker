@@ -222,7 +222,7 @@ test("stream API resolves Vimeo HLS stream URL", async () => {
   assert.equal(data.provider, "Vimeo public HLS");
 });
 
-test("proofread API cleans stutter and filler words", async () => {
+test("proofread API cleans stutter and filler words and removes timestamps by default", async () => {
   const response = await handleApiRequest(
     new Request("https://picker.example/api/proofread", {
       method: "POST",
@@ -233,6 +233,24 @@ test("proofread API cleans stutter and filler words", async () => {
 
   assert.equal(response.status, 200);
   const data = await response.json();
-  assert.equal(data.proofread, "[00:01] Hello world.");
+  assert.equal(data.proofread, "Hello world.");
+});
+
+test("proofread API supports custom options for timestamps and speaker deduplication", async () => {
+  const response = await handleApiRequest(
+    new Request("https://picker.example/api/proofread", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: "[00:01] Speaker A: Um hello.\n[00:05] Speaker A: How are you?",
+        removeTimestamps: false,
+        deduplicateSpeakers: true,
+      }),
+    })
+  );
+
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.proofread, "[00:01] Speaker A: Hello.\n[00:05] How are you?");
 });
 

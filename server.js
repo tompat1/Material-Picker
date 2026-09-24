@@ -389,19 +389,73 @@ async function handleTranscribe(request, response) {
   }
 }
 
-function proofreadText(text, language = "en") {
+const NON_SPEAKER_LABELS = new Set([
+  "note",
+  "warning",
+  "important",
+  "caution",
+  "tip",
+  "example",
+  "for example",
+  "chapter",
+  "part",
+  "section",
+  "ps",
+  "p.s",
+  "definition",
+  "conclusion",
+  "summary",
+  "time",
+  "date",
+  "source",
+  "http",
+  "https",
+]);
+
+function proofreadText(text, language = "en", options = {}) {
   if (!text) return "";
-  const lines = text.split("\n");
-  const processedLines = lines.map((line) => {
-    let prefix = "";
-    let content = line;
-    const timestampMatch = line.match(/^(\[\d{1,2}:\d{2}(?::\d{2})?\]\s*)/);
+  const removeTimestamps = options.removeTimestamps !== false;
+  const deduplicateSpeakers = options.deduplicateSpeakers !== false;
+
+  const lines = String(text).split(/\r?\n/);
+  let currentSpeaker = "";
+  const processedLines = [];
+
+  for (const rawLine of lines) {
+    let line = rawLine.trim();
+    if (!line) continue;
+
+    let timestampPrefix = "";
+    const timestampMatch = line.match(/^(\[\s*\d{1,2}(?::\d{2}){1,2}(?:\.\d+)?\s*\]\s*)/);
     if (timestampMatch) {
-      prefix = timestampMatch[1];
-      content = line.slice(prefix.length);
+      if (!removeTimestamps) {
+        timestampPrefix = timestampMatch[1];
+      }
+      line = line.slice(timestampMatch[0].length).trim();
+    } else if (removeTimestamps) {
+      line = line.replace(/\[\s*\d{1,2}(?::\d{2}){1,2}(?:\.\d+)?\s*\]\s*/g, "").trim();
     }
 
-    let cleaned = content
+    if (!line) continue;
+
+    let speakerPrefix = "";
+    if (deduplicateSpeakers) {
+      const speakerMatch = line.match(/^\[?([A-Z\p{Lu}][\p{L}\p{N}\s.,'()\-#]{0,50}?)\]?:\s*(.*)$/u);
+      if (speakerMatch && !NON_SPEAKER_LABELS.has(speakerMatch[1].trim().toLowerCase())) {
+        const speaker = speakerMatch[1].trim().replace(/^\[|\]$/g, "");
+        const restOfLine = speakerMatch[2].trim();
+
+        if (speaker.toLowerCase() === currentSpeaker.toLowerCase()) {
+          line = restOfLine;
+        } else {
+          currentSpeaker = speaker;
+          speakerPrefix = `${speaker}: `;
+          line = restOfLine;
+        }
+      }
+    }
+
+    let cleaned = line
       .replace(/\b(um|uh|er|erm|ah|umm|uhh)\b/gi, "")
       .replace(/\b(yyy|eee|ymm)\b/gi, "")
       .replace(/\b(äh|ehm)\b/gi, "")
@@ -415,19 +469,25 @@ function proofreadText(text, language = "en") {
     cleaned = cleaned
       .replace(/[ \t]+/g, " ")
       .replace(/\s+([,.!?;:])/g, "$1")
-      .replace(/([.!?])([A-Za-z])/g, "$1 $2")
+      .replace(/([.!?])([A-Za-z\p{L}])/gu, "$1 $2")
       .trim();
 
-    cleaned = cleaned
-      .split(/(?<=[.!?]\s+)/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-      .join(" ");
+    if (!cleaned && !speakerPrefix) continue;
 
-    if (!cleaned) return "";
-    return prefix + cleaned;
-  }).filter(Boolean);
+    if (cleaned) {
+      cleaned = cleaned
+        .split(/(?<=[.!?]\s+)/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+        .join(" ");
+    }
+
+    const finalLine = `${timestampPrefix}${speakerPrefix}${cleaned}`.trim();
+    if (finalLine) {
+      processedLines.push(finalLine);
+    }
+  }
 
   return processedLines.join("\n");
 }
@@ -440,7 +500,11 @@ async function handleProofread(request, response) {
       return sendJson(response, 400, { error: "Text is required to proofread." });
     }
     const language = String(body.language || "en").toLowerCase();
-    const proofread = proofreadText(text, language);
+    const options = {
+      removeTimestamps: body.removeTimestamps !== false,
+      deduplicateSpeakers: body.deduplicateSpeakers !== false,
+    };
+    const proofread = proofreadText(text, language, options);
     return sendJson(response, 200, { proofread, original: text });
   } catch (error) {
     return sendJson(response, 500, { error: error.message || "Proofreading failed." });

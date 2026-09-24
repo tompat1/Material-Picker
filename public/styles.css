@@ -908,6 +908,15 @@ select {
   accent-color: var(--accent);
 }
 
+.proofread-options-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: -0.25rem;
+  padding: 0.15rem 0.1rem;
+}
+
 .bulk-download-progress,
 .card-download-progress {
   display: grid;
