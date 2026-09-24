@@ -189,7 +189,22 @@
           </details>
         </section>
 
-        <p class="colophon">Offline copies stay on this computer, in <code>data/videos</code>.</p>
+        <div class="recent-sources" aria-label="Recent sources">
+          <article class="history-item">
+            <div>
+              <span class="history-meta">Offline copies</span>
+              <strong id="latestOfflineSource" class="recent-source-value">None yet</strong>
+            </div>
+            <button class="ghost-button history-use" id="useOfflineSourceButton" type="button" disabled>Use</button>
+          </article>
+          <article class="history-item">
+            <div>
+              <span class="history-meta">Scanned folder</span>
+              <strong id="latestScannedFolder" class="recent-source-value">None yet</strong>
+            </div>
+            <button class="ghost-button history-use" id="useScannedFolderButton" type="button" disabled>Use</button>
+          </article>
+        </div>
       </aside>
 
       <main id="workspace" class="bench">

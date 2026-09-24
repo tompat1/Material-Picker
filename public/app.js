@@ -28,6 +28,10 @@ const els = {
   historyCount: document.querySelector("#historyCount"),
   libraryTotals: document.querySelector("#libraryTotals"),
   historyList: document.querySelector("#historyList"),
+  latestOfflineSource: document.querySelector("#latestOfflineSource"),
+  latestScannedFolder: document.querySelector("#latestScannedFolder"),
+  useOfflineSourceButton: document.querySelector("#useOfflineSourceButton"),
+  useScannedFolderButton: document.querySelector("#useScannedFolderButton"),
   importForm: document.querySelector("#importForm"),
   collectionCount: document.querySelector("#collectionCount"),
   collectionForm: document.querySelector("#collectionForm"),
@@ -124,6 +128,8 @@ function bindEvents() {
   els.collectionForm.addEventListener("submit", createCollection);
   els.clearSelectionButton.addEventListener("click", clearVideoSelection);
   els.clearHistoryButton.addEventListener("click", clearScrapeHistory);
+  els.useOfflineSourceButton.addEventListener("click", useLatestOfflineSource);
+  els.useScannedFolderButton.addEventListener("click", useLatestScannedFolder);
   els.deleteCollectionButton.addEventListener("click", deleteActiveCollection);
   els.openSourceButton.addEventListener("click", openSource);
   els.openVideoButton.addEventListener("click", openVideoSource);
@@ -183,6 +189,9 @@ async function handleFolderScan(event) {
     return;
   }
 
+  state.lastScannedFolder = folderPath;
+  saveState();
+  renderRecentSources();
   setStatus(`Scanning folder “${folderPath}” and all nested subfolders...`);
   if (els.scanFolderButton) els.scanFolderButton.disabled = true;
 
@@ -602,6 +611,8 @@ function clearAll() {
     videos: [],
     collections: state.collections || [],
     scrapeHistory: state.scrapeHistory || [],
+    lastOfflineFolderName: state.lastOfflineFolderName || "",
+    lastScannedFolder: state.lastScannedFolder || "",
   };
   selectedVideoIds.clear();
   saveState();
@@ -614,6 +625,7 @@ function render() {
   renderLibrary();
   renderCollectionManager();
   renderScrapeHistory();
+  renderRecentSources();
   renderForm();
   renderPlayer();
   renderLibraryOfflineManager();
@@ -634,6 +646,33 @@ function recordScrape(url, details) {
   state.scrapeHistory = [entry, ...(state.scrapeHistory || [])].slice(0, 100);
   saveState();
   renderScrapeHistory();
+}
+
+function renderRecentSources() {
+  const offlineFolder = state.lastOfflineFolderName || "";
+  const scannedFolder = state.lastScannedFolder || "";
+  els.latestOfflineSource.textContent = offlineFolder || "None yet";
+  els.latestOfflineSource.title = offlineFolder;
+  els.useOfflineSourceButton.disabled = !offlineFolder;
+  els.latestScannedFolder.textContent = scannedFolder || "None yet";
+  els.latestScannedFolder.title = scannedFolder;
+  els.useScannedFolderButton.disabled = !scannedFolder;
+}
+
+async function useLatestOfflineSource() {
+  if (!state.lastOfflineFolderName) return;
+  const ready = await ensureDownloadFolder();
+  if (!ready) return;
+  setStatus(`Downloads will be saved in “${offlineExportDirectoryHandle.name}”.`);
+  renderOfflineDestination();
+  renderLibraryOfflineManager();
+}
+
+function useLatestScannedFolder() {
+  if (!state.lastScannedFolder || !els.folderPath) return;
+  els.folderPath.value = state.lastScannedFolder;
+  els.folderPath.focus();
+  setStatus(`Folder restored. Select Scan to import “${state.lastScannedFolder}” again.`);
 }
 
 function renderScrapeHistory() {
@@ -1380,8 +1419,10 @@ async function restoreDownloadFolder() {
   if (!stored?.queryPermission) return;
   if ((await stored.queryPermission({ mode: "readwrite" })) !== "granted") return;
   offlineExportDirectoryHandle = stored;
+  if (!state.lastOfflineFolderName) state.lastOfflineFolderName = stored.name || "";
   renderOfflineDestination();
   renderLibraryOfflineManager();
+  renderRecentSources();
 }
 
 async function ensureDownloadFolder() {
@@ -1390,6 +1431,9 @@ async function ensureDownloadFolder() {
   if (stored?.requestPermission) {
     if ((await stored.requestPermission({ mode: "readwrite" })) === "granted") {
       offlineExportDirectoryHandle = stored;
+      state.lastOfflineFolderName = stored.name || state.lastOfflineFolderName || "";
+      saveState();
+      renderRecentSources();
       renderOfflineDestination();
       return true;
     }
@@ -1405,6 +1449,9 @@ async function chooseOfflineFolder() {
   }
   try {
     offlineExportDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: "downloads" });
+    state.lastOfflineFolderName = offlineExportDirectoryHandle.name;
+    saveState();
+    renderRecentSources();
     await rememberDownloadFolder(offlineExportDirectoryHandle);
     setStatus(`Downloads will be saved in “${offlineExportDirectoryHandle.name}”.`);
     renderOfflineDestination();
