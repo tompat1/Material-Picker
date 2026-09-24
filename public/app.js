@@ -109,6 +109,17 @@ class PackageHlsLoader {
     this.config = config;
     const BaseLoader = window.Hls?.DefaultConfig?.loader;
     this.defaultLoader = BaseLoader ? new BaseLoader(config) : null;
+    this.stats = {
+      aborted: false,
+      loaded: 0,
+      retry: 0,
+      total: 0,
+      chunkCount: 0,
+      bwEstimate: 0,
+      loading: { start: 0, first: 0, end: 0 },
+      parsing: { start: 0, end: 0 },
+      buffering: { start: 0, first: 0, end: 0 },
+    };
   }
 
   destroy() {
@@ -122,60 +133,110 @@ class PackageHlsLoader {
   load(context, config, callbacks) {
     const url = context?.url || "";
     const match = url.match(/\/hls-package\/([^/]+)\/(.+)$/);
-    if (match) {
-      const packageId = match[1];
-      let requestedPath = decodeURIComponent(match[2]).split("?")[0].replace(/^\/+/, "");
-      const fileMap = offlinePackageFiles.get(packageId);
-      if (fileMap) {
-        let target = fileMap.get(requestedPath) || fileMap.get(requestedPath.toLowerCase());
-        if (!target) {
-          for (const [key, val] of fileMap.entries()) {
-            const lKey = key.toLowerCase();
-            const lReq = requestedPath.toLowerCase();
-            if (lKey === lReq || lKey.endsWith("/" + lReq) || lReq.endsWith("/" + lKey)) {
-              target = val;
-              break;
-            }
-          }
-        }
-        if (target) {
-          const resolveFile = () => {
-            if (target instanceof File) return Promise.resolve(target);
-            if (target.file instanceof File) return Promise.resolve(target.file);
-            if (typeof target.handle?.getFile === "function") return target.handle.getFile();
-            return Promise.reject(new Error("File handle not readable"));
-          };
+    if (!match) {
+      if (this.defaultLoader) {
+        this.defaultLoader.load(context, config, callbacks);
+      } else if (callbacks?.onError) {
+        callbacks.onError({ code: 404, text: "Loader unavailable" }, context);
+      }
+      return;
+    }
 
-          const isText = context.responseType === "text" || requestedPath.endsWith(".m3u8");
-          const trequest = performance.now();
-          resolveFile()
-            .then((file) => {
-              const readPromise = isText ? file.text() : file.arrayBuffer();
-              return readPromise.then((data) => {
-                const tload = performance.now();
-                const stats = {
-                  trequest,
-                  tfirst: tload,
-                  tload,
-                  loaded: file.size,
-                  total: file.size,
-                  bwQuote: file.size,
-                };
-                callbacks.onSuccess({ url: context.url, data, code: 200 }, stats, context);
-              });
-            })
-            .catch((err) => {
-              callbacks.onError({ code: 404, text: err.message }, context);
-            });
-          return;
+    const packageId = match[1];
+    let rawPath = decodeURIComponent(match[2]).split("?")[0].split("#")[0].replace(/^\/+/, "");
+    const pathParts = [];
+    rawPath.split("/").forEach((p) => {
+      if (p === "..") pathParts.pop();
+      else if (p && p !== ".") pathParts.push(p);
+    });
+    const requestedPath = pathParts.join("/");
+    const fileMap = offlinePackageFiles.get(packageId);
+
+    if (!fileMap) {
+      console.warn("Offline package files not in memory:", packageId);
+      if (callbacks?.onError) {
+        callbacks.onError({ code: 404, text: `Offline package ${packageId} files not in memory. Re-select folder to play.` }, context);
+      }
+      return;
+    }
+
+    let target = fileMap.get(requestedPath) || fileMap.get(requestedPath.toLowerCase());
+    if (!target) {
+      const reqBase = requestedPath.split("/").pop().toLowerCase();
+      for (const [key, val] of fileMap.entries()) {
+        const lKey = key.toLowerCase();
+        const lReq = requestedPath.toLowerCase();
+        if (lKey === lReq || lKey.endsWith("/" + lReq) || lReq.endsWith("/" + lKey) || lKey.split("/").pop() === reqBase) {
+          target = val;
+          break;
         }
       }
     }
-    if (this.defaultLoader) {
-      this.defaultLoader.load(context, config, callbacks);
-    } else if (callbacks?.onError) {
-      callbacks.onError({ code: 404, text: "Loader unavailable" }, context);
+
+    if (!target) {
+      console.warn("File not found in package:", requestedPath, "Available entries:", Array.from(fileMap.keys()).slice(0, 15));
+      if (callbacks?.onError) {
+        callbacks.onError({ code: 404, text: `File “${requestedPath}” not found in package` }, context);
+      }
+      return;
     }
+
+    const resolveFile = () => {
+      if (target instanceof File) return Promise.resolve(target);
+      if (target.file instanceof File) return Promise.resolve(target.file);
+      if (typeof target.handle?.getFile === "function") return target.handle.getFile();
+      return Promise.reject(new Error(`File handle not readable for ${requestedPath}`));
+    };
+
+    const isPlaylist =
+      context.type === "manifest" ||
+      context.type === "level" ||
+      context.type === "audioTrack" ||
+      context.type === "subtitleTrack" ||
+      context.responseType === "text" ||
+      requestedPath.endsWith(".m3u8") ||
+      requestedPath.endsWith(".vtt");
+
+    const trequest = performance.now();
+    this.stats = {
+      aborted: false,
+      loaded: 0,
+      retry: 0,
+      total: 0,
+      chunkCount: 0,
+      bwEstimate: 0,
+      loading: { start: trequest, first: trequest, end: 0 },
+      parsing: { start: trequest, end: trequest },
+      buffering: { start: 0, first: 0, end: 0 },
+    };
+
+    resolveFile()
+      .then((file) => {
+        if (!file) throw new Error(`File is unavailable: ${requestedPath}`);
+        const tfirst = performance.now();
+        this.stats.loading.first = tfirst;
+        const readPromise = isPlaylist ? file.text() : file.arrayBuffer();
+        return readPromise.then((data) => {
+          const tload = performance.now();
+          this.stats.loading.end = tload;
+          this.stats.tload = tload;
+          this.stats.loaded = file.size;
+          this.stats.total = file.size;
+          this.stats.bwEstimate = file.size > 0 ? (file.size * 8000) / Math.max(1, tload - trequest) : 0;
+
+          try {
+            callbacks.onSuccess({ url: context.url, data, code: 200 }, this.stats, context);
+          } catch (callErr) {
+            console.error("Hls.js onSuccess callback error:", callErr);
+          }
+        });
+      })
+      .catch((err) => {
+        console.error("PackageHlsLoader failed to read file:", requestedPath, err);
+        if (callbacks?.onError) {
+          callbacks.onError({ code: 404, text: err.message }, context);
+        }
+      });
   }
 }
 
@@ -342,6 +403,8 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       offlineSize: meta?.size || totalBytes,
       offlineSavedAt: meta?.savedAt || meta?.downloadedAt || new Date().toISOString(),
       offlineProvider: meta?.provider || "vimeo",
+      mediaMeasured: true,
+      estimatedBytes: meta?.size || totalBytes,
     };
 
     state.videos.unshift(nextVideo);
@@ -1544,6 +1607,20 @@ function renderPlayer() {
   if (hasOfflineCopy) {
     els.playerShell.dataset.mode = "video";
     if (video.format === "hls" || video.offlineFormat === "hls" || /\.m3u8([?#].*)?$/i.test(video.offlineUrl)) {
+      if (video.offlineUrl.includes("/hls-package/")) {
+        const match = video.offlineUrl.match(/\/hls-package\/([^/]+)\//);
+        const packageId = match ? match[1] : "";
+        if (packageId && !offlinePackageFiles.has(packageId)) {
+          setPlayerStatus("Offline package files were cleared by page reload. Click Browse to select your video folder again.");
+          const emptyTitle = els.emptyPlayer.querySelector("strong");
+          const emptyCopy = els.emptyPlayer.querySelector("span");
+          if (emptyTitle) emptyTitle.textContent = "Folder re-connect required";
+          if (emptyCopy) emptyCopy.textContent = "Click Browse under Intake to re-open this folder for playback.";
+          els.playerShell.dataset.mode = "empty";
+          hidePlayerLoading();
+          return;
+        }
+      }
       loadHlsVideo(video.offlineUrl, true);
     } else {
       els.videoPlayer.onloadedmetadata = () => setPlayerStatus("Offline copy ready.");
@@ -1646,6 +1723,7 @@ function loadHlsVideo(url, isOffline = false) {
       if (state.selectedId) markSelectedPlaybackReady(state.selectedId, msg);
     });
     hlsPlayer.on(window.Hls.Events.ERROR, (_, data) => {
+      hidePlayerLoading();
       if (!data.fatal) return;
       if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && !recoveredMediaError) {
         recoveredMediaError = true;
@@ -2585,7 +2663,11 @@ async function pollOfflineJob(videoId) {
 }
 
 function canSaveOfflineUrl(url) {
-  return /vimeo\.com|\.(?:m3u8|mp4|webm|ogv|ogg|mov|m4v)(?:[?#].*)?$/i.test(String(url || ""));
+  const clean = String(url || "");
+  if (clean.includes("/hls-package/") || clean.startsWith("/local-media/") || clean.startsWith("/offline-media/")) {
+    return false;
+  }
+  return /vimeo\.com|\.(?:m3u8|mp4|webm|ogv|ogg|mov|m4v)(?:[?#].*)?$/i.test(clean);
 }
 
 async function checkLibraryPlayback() {
