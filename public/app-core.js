@@ -127,6 +127,14 @@
     return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
   }
 
+  function estimateRemainingSeconds(elapsedSeconds, completed, total) {
+    const elapsed = Number(elapsedSeconds);
+    const done = Number(completed);
+    const whole = Number(total);
+    if (!(elapsed >= 1) || !(done > 0) || !(whole > done)) return null;
+    return (elapsed * (whole - done)) / done;
+  }
+
   function formatDuration(value) {
     const totalMinutes = Math.max(1, Math.ceil(Number(value || 0) / 60));
     const hours = Math.floor(totalMinutes / 60);
@@ -255,6 +263,7 @@
     archiveFolderName,
     decodeHtml,
     extractVideos,
+    estimateRemainingSeconds,
     formatBytes,
     formatDuration,
     inferTitleFromUrl,

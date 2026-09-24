@@ -140,6 +140,13 @@ test("formats download throughput and hour/minute estimates for the library", ()
   assert.equal(core.formatDuration(2 * 60 * 60), "2h");
 });
 
+test("estimates remaining download time from completed work", () => {
+  assert.equal(core.estimateRemainingSeconds(0.2, 100, 1000), null);
+  assert.equal(core.estimateRemainingSeconds(10, 0, 1000), null);
+  assert.equal(core.estimateRemainingSeconds(10, 250, 1000), 30);
+  assert.equal(core.estimateRemainingSeconds(10, 1000, 1000), null);
+});
+
 test("creates portable destination folder names for offline archives", () => {
   assert.equal(core.archiveFolderName('A talk: body / mind?', "video_123-abc"), "A talk body mind - video_12");
   assert.equal(core.archiveFolderName("...", "../"), "Offline video - video");

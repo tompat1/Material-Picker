@@ -131,6 +131,8 @@ test("download plan rewrites a split HLS stream into local files", async () => {
   assert.equal(response.status, 200);
   const plan = await response.json();
   assert.equal(plan.format, "hls");
+  assert.equal(plan.estimatedBytes, 750);
+  assert.equal(plan.durationSeconds, 6);
   assert.equal(plan.files[0].path, "master.m3u8");
   assert.match(plan.files[0].text, /video\/playlist\.m3u8/);
   assert.ok(plan.files.some((file) => file.path === "video/segments/00000.mp4" && file.url.endsWith("/init.mp4")));

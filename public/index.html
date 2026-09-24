@@ -291,39 +291,6 @@
             </div>
           </div>
 
-          <div class="offline-manager" aria-labelledby="offlineTitle">
-            <div class="offline-heading">
-              <div>
-                <strong id="offlineTitle">Offline copy</strong>
-                <span id="offlineStatus">Select a video to manage its local copy.</span>
-              </div>
-              <div class="button-row tight">
-                <button class="primary-button" id="saveOfflineButton" type="button">
-                  <span class="glyph" aria-hidden="true">
-                    <svg viewBox="0 0 16 16"><path d="M8 2.5v8M4.5 7.5 8 11.5l3.5-4M3 13.5h10" /></svg>
-                  </span>
-                  <span>Download to folder</span>
-                </button>
-                <button class="danger-button" id="removeOfflineButton" type="button">
-                  <span>Remove copy</span>
-                </button>
-              </div>
-            </div>
-            <label class="permission-check">
-              <input id="offlinePermission" type="checkbox" />
-              <span>I have permission to save this video for offline use.</span>
-            </label>
-            <div class="offline-destination compact">
-              <div>
-                <strong>Download location</strong>
-                <span id="offlineDestinationStatus">Material Picker storage</span>
-              </div>
-              <button class="ghost-button" id="chooseOfflineFolderButton" type="button">Choose folder</button>
-            </div>
-            <progress id="offlineProgress" max="100" value="0" hidden></progress>
-            <p class="hint" id="offlinePath">Copies are stored by the Material Picker server, outside browser storage.</p>
-          </div>
-
           <form id="videoForm" class="metadata-grid">
             <label>
               Title

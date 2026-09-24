@@ -1,7 +1,7 @@
 const STORAGE_KEY = "material-picker:v1";
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const core = window.MaterialPickerCore;
-const { archiveFolderName, formatBytes, formatDuration } = core;
+const { archiveFolderName, estimateRemainingSeconds, formatBytes, formatDuration } = core;
 
 const els = {
   addBlankButton: document.querySelector("#addBlankButton"),
@@ -11,7 +11,6 @@ const els = {
   bulkOfflineProgressLabel: document.querySelector("#bulkOfflineProgressLabel"),
   checkLibraryButton: document.querySelector("#checkLibraryButton"),
   chooseLibraryFolderButton: document.querySelector("#chooseLibraryFolderButton"),
-  chooseOfflineFolderButton: document.querySelector("#chooseOfflineFolderButton"),
   clearSelectionButton: document.querySelector("#clearSelectionButton"),
   clearHistoryButton: document.querySelector("#clearHistoryButton"),
   clearAllButton: document.querySelector("#clearAllButton"),
@@ -40,11 +39,6 @@ const els = {
   markAllOfflineButton: document.querySelector("#markAllOfflineButton"),
   moveCollectionSelect: document.querySelector("#moveCollectionSelect"),
   moveSelectedButton: document.querySelector("#moveSelectedButton"),
-  offlinePath: document.querySelector("#offlinePath"),
-  offlineDestinationStatus: document.querySelector("#offlineDestinationStatus"),
-  offlinePermission: document.querySelector("#offlinePermission"),
-  offlineProgress: document.querySelector("#offlineProgress"),
-  offlineStatus: document.querySelector("#offlineStatus"),
   openSourceButton: document.querySelector("#openSourceButton"),
   openVideoButton: document.querySelector("#openVideoButton"),
   parsePasteButton: document.querySelector("#parsePasteButton"),
@@ -52,7 +46,6 @@ const els = {
   proofreadButton: document.querySelector("#proofreadButton"),
   playerStatus: document.querySelector("#playerStatus"),
   retryPlaybackButton: document.querySelector("#retryPlaybackButton"),
-  removeOfflineButton: document.querySelector("#removeOfflineButton"),
   renameCollectionButton: document.querySelector("#renameCollectionButton"),
   searchLibrary: document.querySelector("#searchLibrary"),
   saveSelectedOfflineButton: document.querySelector("#saveSelectedOfflineButton"),
@@ -61,7 +54,6 @@ const els = {
   sourceUrl: document.querySelector("#sourceUrl"),
   selectVisibleButton: document.querySelector("#selectVisibleButton"),
   selectedCount: document.querySelector("#selectedCount"),
-  saveOfflineButton: document.querySelector("#saveOfflineButton"),
   startTranscriptButton: document.querySelector("#startTranscriptButton"),
   statusLine: document.querySelector("#statusLine"),
   stopTranscriptButton: document.querySelector("#stopTranscriptButton"),
@@ -93,6 +85,10 @@ let bulkOfflineMessage = "";
 let bulkOfflineCurrentId = "";
 let bulkOfflineIndex = 0;
 let bulkOfflineTotal = 0;
+let bulkOfflineStartedAt = 0;
+let bulkOfflineEstimatedBytes = 0;
+let bulkOfflineCompletedBytes = 0;
+let bulkOfflineEstimateByFiles = false;
 let state = loadState();
 let activeCollectionId = "all";
 const selectedVideoIds = new Set();
@@ -119,7 +115,6 @@ function bindEvents() {
   els.clearAllButton.addEventListener("click", clearAll);
   els.checkLibraryButton.addEventListener("click", checkLibraryPlayback);
   els.chooseLibraryFolderButton.addEventListener("click", chooseOfflineFolder);
-  els.chooseOfflineFolderButton.addEventListener("click", chooseOfflineFolder);
   els.collectionForm.addEventListener("submit", createCollection);
   els.clearSelectionButton.addEventListener("click", clearVideoSelection);
   els.clearHistoryButton.addEventListener("click", clearScrapeHistory);
@@ -128,7 +123,6 @@ function bindEvents() {
   els.duplicateVideoButton.addEventListener("click", duplicateSelected);
   els.openSourceButton.addEventListener("click", openSource);
   els.openVideoButton.addEventListener("click", openVideoSource);
-  els.offlinePermission.addEventListener("change", renderOfflineManager);
   els.libraryOfflinePermission.addEventListener("change", renderLibraryOfflineManager);
   els.retryPlaybackButton.addEventListener("click", renderPlayer);
   els.renameCollectionButton.addEventListener("click", renameActiveCollection);
@@ -138,9 +132,7 @@ function bindEvents() {
   });
   els.selectVisibleButton.addEventListener("click", selectVisibleVideos);
   els.markAllOfflineButton.addEventListener("click", toggleMarkAllOffline);
-  els.saveOfflineButton.addEventListener("click", saveOfflineVideo);
   els.saveSelectedOfflineButton.addEventListener("click", saveSelectedOfflineVideos);
-  els.removeOfflineButton.addEventListener("click", removeOfflineVideo);
   els.moveSelectedButton.addEventListener("click", moveSelectedVideos);
   els.videoForm.addEventListener("input", updateSelectedFromForm);
   els.transcriptText.addEventListener("input", updateTranscriptFields);
@@ -634,7 +626,6 @@ function render() {
   renderScrapeHistory();
   renderForm();
   renderPlayer();
-  renderOfflineManager();
   renderLibraryOfflineManager();
   renderTranscript();
 }
@@ -815,9 +806,13 @@ function renderLibraryOfflineManager() {
       ? (bulkOfflineIndex + (fraction === null ? 0 : fraction)) / bulkOfflineTotal
       : 0;
     els.bulkOfflineProgress.value = Math.min(100, aggregate * 100);
+    const totalRemaining = bulkDownloadRemainingSeconds(current);
+    const wholeDownload = bulkOfflineTotal > 1 && totalRemaining
+      ? ` · about ${formatDuration(totalRemaining)} left for the whole download`
+      : "";
     els.bulkOfflineProgressLabel.textContent = current
-      ? `Video ${bulkOfflineIndex + 1} of ${bulkOfflineTotal} · ${offlineProgressLabel(current)}`
-      : "Preparing downloads...";
+      ? `Video ${bulkOfflineIndex + 1} of ${bulkOfflineTotal} · ${offlineProgressLabel(current)}${wholeDownload}`
+      : bulkOfflineMessage || "Preparing downloads...";
   } else if (marked.length) {
     const saved = marked.filter((video) => video.offlineUrl && !video.offlineStale).length;
     const place = offlineExportDirectoryHandle?.name
@@ -829,6 +824,14 @@ function renderLibraryOfflineManager() {
   } else {
     els.bulkOfflineStatus.textContent = "Mark videos below to save them to disk.";
   }
+}
+
+function bulkDownloadRemainingSeconds(current) {
+  const elapsedSeconds = bulkOfflineStartedAt ? (performance.now() - bulkOfflineStartedAt) / 1000 : 0;
+  const done = bulkOfflineEstimateByFiles
+    ? bulkOfflineCompletedBytes + Number(current?.offlineFilesDone || 0)
+    : bulkOfflineCompletedBytes + Number(current?.offlineBytesDownloaded || 0);
+  return estimateRemainingSeconds(elapsedSeconds, done, bulkOfflineEstimatedBytes);
 }
 
 function offlineProgressFraction(video) {
@@ -1167,64 +1170,6 @@ function openVideoSource() {
   window.open(video.url, "_blank", "noopener,noreferrer");
 }
 
-function renderOfflineManager() {
-  const video = selectedVideo();
-  const isDownloading = ["downloading", "exporting"].includes(video?.offlineDownloadStatus);
-  const hasCopy = hasDiskCopy(video);
-  const canSave = canSaveOfflineUrl(video?.url);
-  els.offlinePermission.disabled = !canSave || isDownloading || hasCopy;
-  els.saveOfflineButton.disabled = !canSave || !els.offlinePermission.checked || isDownloading || hasCopy;
-  els.saveOfflineButton.querySelector("span:last-child").textContent = "Download to folder";
-  els.removeOfflineButton.disabled = !video?.offlineUrl || isDownloading;
-  els.offlineProgress.hidden = !isDownloading;
-  renderOfflineDestination();
-
-  if (!video) {
-    els.offlineStatus.textContent = "Select a video to manage its local copy.";
-    els.offlinePath.textContent = offlineStoragePath
-      ? `Disk archive: ${offlineStoragePath}`
-      : "Copies are stored by the Material Picker server, not in browser localStorage.";
-    return;
-  }
-
-  if (isDownloading) {
-    const total = Number(video.offlineTotalBytes || 0);
-    const downloaded = Number(video.offlineBytesDownloaded || 0);
-    const filesTotal = Number(video.offlineFilesTotal || 0);
-    const filesDone = Number(video.offlineFilesDone || 0);
-    if (total > 0) {
-      els.offlineProgress.value = Math.min(100, (downloaded / total) * 100);
-    } else if (filesTotal > 0) {
-      els.offlineProgress.value = Math.min(100, (filesDone / filesTotal) * 100);
-    } else {
-      els.offlineProgress.removeAttribute("value");
-    }
-    els.offlineStatus.textContent = `Saving to the chosen folder · ${offlineProgressLabel(video)}`;
-  } else if (video.offlineExportedTo) {
-    els.offlineProgress.value = 100;
-    els.offlineStatus.textContent = `Saved in “${video.offlineExportedTo}” · ${video.offlineFormat === "hls" ? "local HLS" : "video file"}`;
-  } else if (hasCopy) {
-    els.offlineProgress.value = 100;
-    els.offlineStatus.textContent = `Saved on disk · ${formatBytes(video.offlineSize)} · ${video.offlineFormat === "hls" ? "local HLS" : "video file"}`;
-  } else if (video.offlineStale) {
-    els.offlineStatus.textContent = "The video URL changed. Remove the old copy or save the updated video again.";
-  } else if (video.offlineDownloadStatus === "failed") {
-    els.offlineStatus.textContent = `Offline save failed: ${video.offlineError || "Unknown error"}`;
-  } else if (!canSave) {
-    els.offlineStatus.textContent = "This provider does not expose a downloadable file or public unencrypted HLS source.";
-  } else {
-    els.offlineStatus.textContent = "No disk copy yet. Confirm permission, then download it to a folder you created.";
-  }
-
-  const archiveId = video.offlineCopyId || video.id;
-  const relativePath = video.offlineUrl ? `data/videos/${archiveId}` : "";
-  els.offlinePath.textContent = relativePath
-    ? `Stored at ${offlineStoragePath ? `${offlineStoragePath}/${archiveId}` : relativePath}`
-    : offlineStoragePath
-      ? `Disk archive: ${offlineStoragePath}`
-      : "Copies are stored in data/videos on the computer running Material Picker.";
-}
-
 async function reconcileOfflineLibrary() {
   try {
     const response = await fetch("/api/offline/library", { signal: AbortSignal.timeout(10000) });
@@ -1258,24 +1203,8 @@ async function reconcileOfflineLibrary() {
     renderLibrary();
     renderLibraryOfflineManager();
     renderPlayer();
-    renderOfflineManager();
   } catch (error) {
-    els.offlineStatus.textContent = `Offline storage is unavailable: ${error.message}`;
-    els.saveOfflineButton.disabled = true;
-  }
-}
-
-async function saveOfflineVideo() {
-  const video = selectedVideo();
-  if (!video?.url || !els.offlinePermission.checked) return;
-  setStatus(`Saving “${video.title || "Untitled video"}” to disk...`);
-  try {
-    await saveOrExportOfflineVideo(video);
-    els.offlinePermission.checked = false;
-    renderOfflineManager();
-  } catch (error) {
-    markOfflineFailure(video, error);
-    setStatus(`Offline save failed: ${error.message}`);
+    setStatus(`Offline storage is unavailable: ${error.message}`);
   }
 }
 
@@ -1298,18 +1227,43 @@ async function saveSelectedOfflineVideos() {
   bulkOfflineRunning = true;
   bulkOfflineTotal = videos.length;
   bulkOfflineIndex = 0;
-  bulkOfflineCurrentId = videos[0]?.id || "";
+  bulkOfflineCurrentId = "";
+  bulkOfflineStartedAt = performance.now();
+  bulkOfflineCompletedBytes = 0;
+  bulkOfflineEstimatedBytes = 0;
+  bulkOfflineEstimateByFiles = false;
   const failures = [];
+  const jobs = [];
+  for (let index = 0; index < videos.length; index += 1) {
+    bulkOfflineMessage = `Estimating download ${index + 1} of ${videos.length}...`;
+    renderLibraryOfflineManager();
+    try {
+      jobs.push({ video: videos[index], plan: await loadDownloadPlan(videos[index]) });
+    } catch (error) {
+      jobs.push({ video: videos[index], planError: error });
+    }
+  }
+  const byteEstimates = jobs.map((job) => Number(job.plan?.estimatedBytes || 0));
+  bulkOfflineEstimateByFiles = byteEstimates.some((value) => value <= 0);
+  bulkOfflineEstimatedBytes = bulkOfflineEstimateByFiles
+    ? jobs.reduce((total, job) => total + (job.plan?.files?.length || 1), 0)
+    : byteEstimates.reduce((total, value) => total + value, 0);
+  const sizeNote = bulkOfflineEstimateByFiles ? "" : ` About ${formatBytes(bulkOfflineEstimatedBytes)} in total.`;
+  setStatus(`Starting the download.${sizeNote} The remaining time appears once the first data arrives.`);
   renderLibraryOfflineManager();
 
-  for (let index = 0; index < videos.length; index += 1) {
-    const video = videos[index];
+  for (let index = 0; index < jobs.length; index += 1) {
+    const { video, plan } = jobs[index];
     bulkOfflineIndex = index;
     bulkOfflineCurrentId = video.id;
     bulkOfflineMessage = `Saving ${index + 1} of ${videos.length}: ${video.title || "Untitled video"}`;
     renderLibraryOfflineManager();
     try {
-      await saveOrExportOfflineVideo(video);
+      if (jobs[index].planError) throw jobs[index].planError;
+      await saveOrExportOfflineVideo(video, plan);
+      bulkOfflineCompletedBytes += bulkOfflineEstimateByFiles
+        ? plan?.files?.length || 1
+        : Number(video.offlineBytesDownloaded || plan?.estimatedBytes || 0);
     } catch (error) {
       failures.push({ video, error });
       markOfflineFailure(video, error);
@@ -1321,6 +1275,9 @@ async function saveSelectedOfflineVideos() {
   bulkOfflineCurrentId = "";
   bulkOfflineIndex = 0;
   bulkOfflineTotal = 0;
+  bulkOfflineStartedAt = 0;
+  bulkOfflineEstimatedBytes = 0;
+  bulkOfflineCompletedBytes = 0;
   els.libraryOfflinePermission.checked = false;
   renderLibrary();
   renderLibraryOfflineManager();
@@ -1343,7 +1300,6 @@ async function chooseOfflineFolder() {
     setStatus(`Downloads will be saved in “${offlineExportDirectoryHandle.name}”.`);
     renderOfflineDestination();
     renderLibraryOfflineManager();
-    renderOfflineManager();
     return true;
   } catch (error) {
     if (error.name === "AbortError") {
@@ -1366,12 +1322,9 @@ function renderOfflineDestination() {
       ? "Choose a folder on this computer"
       : "Material Picker storage (this browser cannot choose a folder)";
   els.libraryDestinationStatus.textContent = label;
-  els.offlineDestinationStatus.textContent = label;
   const buttonLabel = offlineExportDirectoryHandle ? "Change folder" : "Choose folder";
   els.chooseLibraryFolderButton.textContent = buttonLabel;
-  els.chooseOfflineFolderButton.textContent = buttonLabel;
   els.chooseLibraryFolderButton.disabled = !supported || bulkOfflineRunning || operationRunning;
-  els.chooseOfflineFolderButton.disabled = !supported || bulkOfflineRunning || operationRunning;
 }
 
 async function writeDownloadPlan(video, plan) {
@@ -1382,7 +1335,7 @@ async function writeDownloadPlan(video, plan) {
   video.offlineFilesDone = 0;
   video.offlineFilesTotal = plan.files.length;
   video.offlineBytesDownloaded = 0;
-  video.offlineTotalBytes = 0;
+  video.offlineTotalBytes = Number(plan.estimatedBytes || 0);
   video.offlineSpeedBytesPerSecond = 0;
   video.offlineEtaSeconds = null;
   video.offlineFormat = plan.format;
@@ -1392,24 +1345,23 @@ async function writeDownloadPlan(video, plan) {
   let lastRender = 0;
   renderLibrary();
   renderLibraryOfflineManager();
-  if (state.selectedId === video.id) renderOfflineManager();
-
   for (const file of plan.files) {
     const copied = await writePlannedFile(destination, file, (bytes) => {
       video.offlineBytesDownloaded += bytes;
       const elapsedSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
       video.offlineSpeedBytesPerSecond = video.offlineBytesDownloaded / elapsedSeconds;
+      video.offlineEtaSeconds = video.offlineTotalBytes
+        ? estimateRemainingSeconds(elapsedSeconds, video.offlineBytesDownloaded, video.offlineTotalBytes)
+        : estimateRemainingSeconds(elapsedSeconds, video.offlineFilesDone, video.offlineFilesTotal);
       if (performance.now() - lastRender > 250) {
         renderLibrary();
         renderLibraryOfflineManager();
-        if (state.selectedId === video.id) renderOfflineManager();
         lastRender = performance.now();
       }
     });
     video.offlineFilesDone += 1;
     renderLibrary();
     renderLibraryOfflineManager();
-    if (state.selectedId === video.id) renderOfflineManager();
   }
 
   video.offlineDownloadStatus = "completed";
@@ -1419,7 +1371,6 @@ async function writeDownloadPlan(video, plan) {
   saveState();
   renderLibrary();
   renderLibraryOfflineManager();
-  if (state.selectedId === video.id) renderOfflineManager();
 }
 
 async function writePlannedFile(root, file, onBytes) {
@@ -1458,21 +1409,27 @@ async function writePlannedFile(root, file, onBytes) {
   }
 }
 
-async function saveOrExportOfflineVideo(video) {
+async function loadDownloadPlan(video) {
+  const planResponse = await fetch(`/api/media-plan?url=${encodeURIComponent(video.url)}`, {
+    signal: AbortSignal.timeout(30000),
+  });
+  if (planResponse.status === 404) return null;
+  const plan = await planResponse.json().catch(() => ({}));
+  if (!planResponse.ok) throw new Error(plan.error || `The download could not be prepared (${planResponse.status}).`);
+  return plan;
+}
+
+async function saveOrExportOfflineVideo(video, preparedPlan) {
   if (!offlineExportDirectoryHandle) {
     const chosen = await chooseOfflineFolder();
     if (!chosen) throw new Error("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
   }
-  const planResponse = await fetch(`/api/media-plan?url=${encodeURIComponent(video.url)}`, {
-    signal: AbortSignal.timeout(30000),
-  });
-  if (planResponse.status === 404) {
+  const plan = preparedPlan === undefined ? await loadDownloadPlan(video) : preparedPlan;
+  if (!plan) {
     if (!video.offlineUrl || video.offlineStale) await startOfflineDownload(video);
     if (offlineExportDirectoryHandle) await exportOfflineCopy(video);
     return;
   }
-  const plan = await planResponse.json().catch(() => ({}));
-  if (!planResponse.ok) throw new Error(plan.error || `The download could not be prepared (${planResponse.status}).`);
   await writeDownloadPlan(video, plan);
 }
 
@@ -1499,7 +1456,6 @@ async function exportOfflineCopy(video) {
   let lastRender = 0;
   renderLibrary();
   renderLibraryOfflineManager();
-  renderOfflineManager();
 
   for (const file of archive.files) {
     const parts = file.path.split("/");
@@ -1524,10 +1480,9 @@ async function exportOfflineCopy(video) {
           ? Math.max(0, (archive.size - copied) / video.offlineSpeedBytesPerSecond)
           : null;
         if (performance.now() - lastRender > 250) {
-          renderLibrary();
-          renderLibraryOfflineManager();
-          if (state.selectedId === video.id) renderOfflineManager();
-          lastRender = performance.now();
+        renderLibrary();
+        renderLibraryOfflineManager();
+        lastRender = performance.now();
         }
       }
       await writable.close();
@@ -1543,7 +1498,6 @@ async function exportOfflineCopy(video) {
   saveState();
   renderLibrary();
   renderLibraryOfflineManager();
-  if (state.selectedId === video.id) renderOfflineManager();
   setStatus(`Copied “${video.title || "Untitled video"}” to “${offlineExportDirectoryHandle.name}”.`);
 }
 
@@ -1563,7 +1517,6 @@ async function startOfflineDownload(video) {
   delete video.offlineError;
   saveState();
   renderLibrary();
-  renderOfflineManager();
   renderLibraryOfflineManager();
   const response = await fetch("/api/offline/save", {
     method: "POST",
@@ -1593,7 +1546,6 @@ function markOfflineFailure(video, error) {
   saveState();
   renderLibrary();
   renderLibraryOfflineManager();
-  if (state.selectedId === video.id) renderOfflineManager();
 }
 
 async function pollOfflineJob(videoId) {
@@ -1626,7 +1578,6 @@ async function pollOfflineJob(videoId) {
       renderLibrary();
       renderLibraryOfflineManager();
       renderPlayer();
-      renderOfflineManager();
       setStatus(`Saved “${video.title || "Untitled video"}” to disk for offline playback.`);
       return;
     }
@@ -1634,43 +1585,6 @@ async function pollOfflineJob(videoId) {
     saveState();
     renderLibrary();
     renderLibraryOfflineManager();
-    if (state.selectedId === videoId) renderOfflineManager();
-  }
-}
-
-async function removeOfflineVideo() {
-  const video = selectedVideo();
-  if (!video?.offlineUrl) return;
-  if (!confirm(`Remove the disk copy of “${video.title || "Untitled video"}”? The library record and transcript will remain.`)) return;
-  try {
-    const copyId = video.offlineCopyId || video.id;
-    const response = await fetch(`/api/offline/${encodeURIComponent(copyId)}`, { method: "DELETE" });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || `Remove request returned ${response.status}.`);
-    [
-      "offlineUrl",
-      "offlineCopyId",
-      "offlineSize",
-      "offlineSavedAt",
-      "offlineFormat",
-      "offlineProvider",
-      "offlineStale",
-      "offlineDownloadStatus",
-      "offlineBytesDownloaded",
-      "offlineTotalBytes",
-      "offlineSpeedBytesPerSecond",
-      "offlineEtaSeconds",
-      "offlineStartedAt",
-      "offlineFilesDone",
-      "offlineFilesTotal",
-    ].forEach((key) => delete video[key]);
-    saveState();
-    renderLibrary();
-    renderPlayer();
-    renderOfflineManager();
-    setStatus("The offline disk copy was removed. The video record and transcript were kept.");
-  } catch (error) {
-    setStatus(`The offline copy could not be removed: ${error.message}`);
   }
 }
 

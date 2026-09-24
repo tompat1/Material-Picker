@@ -846,16 +846,13 @@ select {
 }
 
 .library-offline-copy strong,
-.offline-destination strong,
-.offline-heading strong {
+.offline-destination strong {
   font-size: 0.84rem;
   font-weight: 600;
 }
 
 .library-offline-copy span,
-.offline-destination span,
-.offline-heading span,
-#offlinePath {
+.offline-destination span {
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.4;
@@ -874,15 +871,13 @@ select {
 }
 
 .library-offline-copy,
-.offline-heading > div:first-child,
 .offline-destination > div {
   display: grid;
   gap: 0.12rem;
   min-width: 0;
 }
 
-.offline-destination .ghost-button,
-.offline-destination.compact .ghost-button {
+.offline-destination .ghost-button {
   flex: none;
 }
 
@@ -1215,32 +1210,6 @@ progress::-moz-progress-bar {
   font-size: 0.75rem;
 }
 
-.offline-manager {
-  display: grid;
-  gap: 0.7rem;
-  margin-bottom: 1rem;
-  padding: 0.85rem;
-  border: 1px solid var(--line);
-  background:
-    linear-gradient(var(--accent), var(--accent)) left top / 10px 1px no-repeat,
-    linear-gradient(var(--accent), var(--accent)) left top / 1px 10px no-repeat,
-    rgba(243, 234, 223, 0.03);
-}
-
-.offline-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.offline-heading > div:first-child {
-  display: grid;
-  gap: 0.18rem;
-  min-width: 0;
-}
-
 .metadata-grid,
 .transcript-grid {
   grid-template-columns: 1fr;
@@ -1481,7 +1450,6 @@ progress::-moz-progress-bar {
   .filter-row,
   .section-heading,
   .playback-fallback,
-  .offline-heading,
   .offline-destination,
   .bulk-heading {
     align-items: stretch;

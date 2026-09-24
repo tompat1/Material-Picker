@@ -282,7 +282,10 @@ function planMediaPlaylist(playlistText, playlistUrl, directory) {
       if (!line.trim() || line.startsWith("#")) return line;
       return register(line.trim());
     });
-  return { text: `${rewritten.join("\n")}\n`, files };
+  const durationSeconds = String(playlistText)
+    .split(/\r?\n/)
+    .reduce((total, line) => (line.startsWith("#EXTINF:") ? total + (Number.parseFloat(line.slice("#EXTINF:".length)) || 0) : total), 0);
+  return { text: `${rewritten.join("\n")}\n`, files, durationSeconds };
 }
 
 async function fetchPlaylistText(url, fetchImpl) {
@@ -301,7 +304,11 @@ async function planHlsDownload(sourceUrl, fetchImpl) {
   const variant = selectHlsVariant(master.text);
   if (!variant) {
     const media = planMediaPlaylist(master.text, master.finalUrl, "");
-    return [{ path: "playlist.m3u8", text: media.text }, ...media.files];
+    return {
+      files: [{ path: "playlist.m3u8", text: media.text }, ...media.files],
+      estimatedBytes: 0,
+      durationSeconds: media.durationSeconds,
+    };
   }
 
   const files = [];
@@ -328,7 +335,10 @@ async function planHlsDownload(sourceUrl, fetchImpl) {
   const infoLine = removeHlsAttribute(removeHlsAttribute(variant.infoLine, "SUBTITLES"), "CLOSED-CAPTIONS");
   masterLines.push(infoLine, "video/playlist.m3u8");
   files.unshift({ path: "master.m3u8", text: `${masterLines.join("\n")}\n` });
-  return files;
+  const bandwidth = Number(variant.attributes["AVERAGE-BANDWIDTH"] || variant.attributes.BANDWIDTH || 0);
+  const durationSeconds = video.durationSeconds || 0;
+  const estimatedBytes = bandwidth > 0 && durationSeconds > 0 ? Math.round((durationSeconds * bandwidth) / 8) : 0;
+  return { files, estimatedBytes, durationSeconds };
 }
 
 export async function buildDownloadPlan(pageUrl, fetchImpl = fetch) {
@@ -368,7 +378,14 @@ export async function buildDownloadPlan(pageUrl, fetchImpl = fetch) {
     const safeExtension = /^\.[a-z0-9]{1,8}$/.test(extension) ? extension : ".mp4";
     return { provider, format: "file", files: [{ path: `video${safeExtension}`, url: sourceUrl }] };
   }
-  return { provider, format: "hls", files: await planHlsDownload(sourceUrl, fetchImpl) };
+  const planned = await planHlsDownload(sourceUrl, fetchImpl);
+  return {
+    provider,
+    format: "hls",
+    files: planned.files,
+    estimatedBytes: planned.estimatedBytes,
+    durationSeconds: planned.durationSeconds,
+  };
 }
 
 export async function proxyMedia(target, fetchImpl = fetch) {
