@@ -14,10 +14,8 @@ const els = {
   clearSelectionButton: document.querySelector("#clearSelectionButton"),
   clearHistoryButton: document.querySelector("#clearHistoryButton"),
   clearAllButton: document.querySelector("#clearAllButton"),
-  deleteVideoButton: document.querySelector("#deleteVideoButton"),
   deleteCollectionButton: document.querySelector("#deleteCollectionButton"),
   downloadTranscriptButton: document.querySelector("#downloadTranscriptButton"),
-  duplicateVideoButton: document.querySelector("#duplicateVideoButton"),
   embedPlayer: document.querySelector("#embedPlayer"),
   emptyPlayer: document.querySelector("#emptyPlayer"),
   folderScanForm: document.querySelector("#folderScanForm"),
@@ -118,9 +116,7 @@ function bindEvents() {
   els.collectionForm.addEventListener("submit", createCollection);
   els.clearSelectionButton.addEventListener("click", clearVideoSelection);
   els.clearHistoryButton.addEventListener("click", clearScrapeHistory);
-  els.deleteVideoButton.addEventListener("click", deleteSelected);
   els.deleteCollectionButton.addEventListener("click", deleteActiveCollection);
-  els.duplicateVideoButton.addEventListener("click", duplicateSelected);
   els.openSourceButton.addEventListener("click", openSource);
   els.openVideoButton.addEventListener("click", openVideoSource);
   els.libraryOfflinePermission.addEventListener("change", renderLibraryOfflineManager);
@@ -586,29 +582,6 @@ function showDesk(name) {
   tab.checked = true;
 }
 
-function duplicateSelected() {
-  const video = selectedVideo();
-  if (!video) return;
-  addVideo({
-    ...video,
-    title: `${video.title || "Untitled video"} copy`,
-  });
-  setStatus("Duplicated the selected video.");
-}
-
-function deleteSelected() {
-  const video = selectedVideo();
-  if (!video) return;
-  const shouldDelete = confirm(`Delete "${video.title || "Untitled video"}"?`);
-  if (!shouldDelete) return;
-  state.videos = state.videos.filter((item) => item.id !== video.id);
-  selectedVideoIds.delete(video.id);
-  state.selectedId = state.videos[0]?.id || null;
-  saveState();
-  render();
-  setStatus("Deleted the selected video.");
-}
-
 function clearAll() {
   if (!state.videos.length) return;
   const shouldClear = confirm("Clear all saved videos and transcripts from this browser?");
@@ -1024,8 +997,6 @@ function renderForm() {
   els.videoLanguage.value = video?.language || "";
   els.videoTags.value = video?.tags || "";
   els.videoNotes.value = video?.notes || "";
-  els.deleteVideoButton.disabled = !video;
-  els.duplicateVideoButton.disabled = !video;
   els.openSourceButton.disabled = !video?.sourceUrl;
   if (video?.sourceUrl) setSourceFrame(video.sourceUrl, false);
 }
