@@ -271,6 +271,201 @@
     return { selectedId: null, videos: [], collections: [], scrapeHistory: [] };
   }
 
+  function parseOfflineArchiveRequirements(masterText, subPlaylists = {}) {
+    if (!masterText || !String(masterText).trim().startsWith("#EXTM3U")) {
+      return {
+        format: "file",
+        playlists: [],
+        videoSegments: ["video.mp4"],
+        audioSegments: [],
+        totalDuration: 0,
+      };
+    }
+
+    const lines = String(masterText).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const audioPlaylistUris = [];
+    const variantUris = [];
+    let sawStreamInf = false;
+
+    lines.forEach((line) => {
+      if (line.startsWith("#EXT-X-MEDIA:") && /TYPE=AUDIO/i.test(line)) {
+        const uri = hlsAttribute(line, "URI");
+        if (uri) audioPlaylistUris.push(uri);
+        return;
+      }
+      if (line.startsWith("#EXT-X-STREAM-INF")) {
+        sawStreamInf = true;
+        return;
+      }
+      if (line.startsWith("#")) return;
+      if (sawStreamInf) {
+        variantUris.push(line);
+        sawStreamInf = false;
+        return;
+      }
+    });
+
+    if (!variantUris.length && !audioPlaylistUris.length) {
+      variantUris.push("playlist.m3u8");
+      subPlaylists["playlist.m3u8"] = masterText;
+    }
+
+    const playlists = ["master.m3u8"];
+    const videoSegments = [];
+    const audioSegments = [];
+    let totalDuration = 0;
+
+    function parseMediaPlaylist(playlistPath, text, isAudio) {
+      if (!playlists.includes(playlistPath)) playlists.push(playlistPath);
+      const dir = playlistPath.includes("/") ? playlistPath.slice(0, playlistPath.lastIndexOf("/")) : "";
+      const resolvePath = (uri) => (dir ? `${dir}/${uri}` : uri);
+
+      const pLines = String(text || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      let pendingDuration = 0;
+
+      pLines.forEach((line) => {
+        if (line.startsWith("#EXT-X-MAP:")) {
+          const uri = hlsAttribute(line, "URI");
+          if (uri) {
+            const path = resolvePath(uri);
+            if (isAudio) {
+              if (!audioSegments.includes(path)) audioSegments.push(path);
+            } else {
+              if (!videoSegments.includes(path)) videoSegments.push(path);
+            }
+          }
+          return;
+        }
+        if (line.startsWith("#EXTINF:")) {
+          pendingDuration = Number.parseFloat(line.slice("#EXTINF:".length)) || 0;
+          return;
+        }
+        if (line.startsWith("#")) return;
+        if (pendingDuration > 0) {
+          const path = resolvePath(line);
+          if (isAudio) {
+            if (!audioSegments.includes(path)) audioSegments.push(path);
+          } else {
+            if (!videoSegments.includes(path)) videoSegments.push(path);
+            totalDuration += pendingDuration;
+          }
+          pendingDuration = 0;
+        }
+      });
+    }
+
+    variantUris.forEach((vPath) => {
+      const text = subPlaylists[vPath] || "";
+      parseMediaPlaylist(vPath, text, false);
+    });
+
+    audioPlaylistUris.forEach((aPath) => {
+      const text = subPlaylists[aPath] || "";
+      parseMediaPlaylist(aPath, text, true);
+    });
+
+    return {
+      format: "hls",
+      playlists,
+      videoSegments,
+      audioSegments,
+      totalDuration: Math.round(totalDuration),
+    };
+  }
+
+  function isLikelyValidMediaChunk(bytes) {
+    if (!bytes || bytes.length < 8) return false;
+    const sample = String.fromCharCode(...bytes.subarray(0, Math.min(bytes.length, 64))).toLowerCase();
+    if (sample.includes("<!doctype") || sample.includes("<html") || sample.includes("error") || sample.includes("{\"")) {
+      return false;
+    }
+    if (bytes[0] === 0x47) return true;
+    const box = String.fromCharCode(...bytes.subarray(4, 8)).toLowerCase();
+    const validBoxes = ["ftyp", "moof", "mdat", "styp", "free", "skip", "wide"];
+    if (validBoxes.includes(box)) return true;
+    if (bytes[0] === 0x1A && bytes[1] === 0x45 && bytes[2] === 0xDF && bytes[3] === 0xA3) return true;
+    return bytes.some((b) => b === 0 || b > 127);
+  }
+
+  async function verifyArchive(requirements, fileChecker) {
+    const missing = [];
+    const corrupt = [];
+    let totalBytes = 0;
+    let videoFound = 0;
+    let audioFound = 0;
+    const validFiles = [];
+
+    for (const path of requirements.playlists) {
+      const info = await fileChecker(path);
+      if (!info.exists) {
+        missing.push(path);
+      } else if (info.size <= 0) {
+        corrupt.push(path);
+      } else {
+        validFiles.push(path);
+        totalBytes += info.size;
+      }
+    }
+
+    for (const path of requirements.videoSegments) {
+      const info = await fileChecker(path, { sampleBytes: 32 });
+      if (!info.exists) {
+        missing.push(path);
+      } else if (info.size <= 0 || (info.sample && !isLikelyValidMediaChunk(info.sample))) {
+        corrupt.push(path);
+      } else {
+        videoFound += 1;
+        validFiles.push(path);
+        totalBytes += info.size;
+      }
+    }
+
+    for (const path of requirements.audioSegments) {
+      const info = await fileChecker(path, { sampleBytes: 32 });
+      if (!info.exists) {
+        missing.push(path);
+      } else if (info.size <= 0 || (info.sample && !isLikelyValidMediaChunk(info.sample))) {
+        corrupt.push(path);
+      } else {
+        audioFound += 1;
+        validFiles.push(path);
+        totalBytes += info.size;
+      }
+    }
+
+    const expectedVideo = requirements.videoSegments.length;
+    const expectedAudio = requirements.audioSegments.length;
+    const totalExpected = expectedVideo + expectedAudio + requirements.playlists.length;
+    const healthy = missing.length === 0 && corrupt.length === 0 && totalExpected > 0;
+    const playable = healthy && (videoFound > 0 || requirements.format === "file");
+
+    let message = "";
+    if (healthy) {
+      const parts = [];
+      if (expectedVideo > 0) parts.push(`${videoFound} video`);
+      if (expectedAudio > 0) parts.push(`${audioFound} audio`);
+      const pieces = parts.length ? parts.join(" + ") + " segments" : "files";
+      message = `Verified: all ${pieces} intact (${formatBytes(totalBytes)}). Playable.`;
+    } else {
+      const issues = [];
+      if (missing.length) issues.push(`${missing.length} missing`);
+      if (corrupt.length) issues.push(`${corrupt.length} corrupted`);
+      message = `Incomplete: ${issues.join(", ")} (${videoFound}/${expectedVideo} video, ${audioFound}/${expectedAudio} audio).`;
+    }
+
+    return {
+      healthy,
+      playable,
+      totalBytes,
+      validFiles,
+      videoSegments: { expected: expectedVideo, found: videoFound },
+      audioSegments: { expected: expectedAudio, found: audioFound },
+      missingFiles: missing,
+      corruptedFiles: corrupt,
+      message,
+    };
+  }
+
   return {
     cleanUrl,
     archiveFolderName,
@@ -281,14 +476,17 @@
     formatDuration,
     libraryMediaSummary,
     inferTitleFromUrl,
+    isLikelyValidMediaChunk,
     isLikelyVideoUrl,
     loadState,
     parseHlsPlaylist,
+    parseOfflineArchiveRequirements,
     moveVideosToCollection,
     playbackKind,
     removeCollection,
     saveState,
     toAbsoluteUrl,
     toEmbedUrl,
+    verifyArchive,
   };
 });

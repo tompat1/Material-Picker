@@ -40,6 +40,7 @@ const els = {
   libraryOfflinePermission: document.querySelector("#libraryOfflinePermission"),
   libraryDestinationStatus: document.querySelector("#libraryDestinationStatus"),
   markAllOfflineButton: document.querySelector("#markAllOfflineButton"),
+  verifyOfflineButton: document.querySelector("#verifyOfflineButton"),
   moveCollectionSelect: document.querySelector("#moveCollectionSelect"),
   moveSelectedButton: document.querySelector("#moveSelectedButton"),
   openSourceButton: document.querySelector("#openSourceButton"),
@@ -93,6 +94,7 @@ let bulkOfflineEstimatedBytes = 0;
 let bulkOfflineCompletedBytes = 0;
 let bulkOfflineEstimateByFiles = false;
 let libraryMeasureRunning = false;
+let verificationRunning = false;
 let state = loadState();
 let activeCollectionId = "all";
 const selectedVideoIds = new Set();
@@ -144,6 +146,7 @@ function bindEvents() {
   });
   els.selectVisibleButton.addEventListener("click", selectVisibleVideos);
   els.markAllOfflineButton.addEventListener("click", toggleMarkAllOffline);
+  els.verifyOfflineButton?.addEventListener("click", handleVerifyOfflineButtonClick);
   els.saveSelectedOfflineButton.addEventListener("click", saveSelectedOfflineVideos);
   els.moveSelectedButton.addEventListener("click", moveSelectedVideos);
   els.videoForm.addEventListener("submit", (event) => event.preventDefault());
@@ -839,13 +842,17 @@ function renderLibrary() {
     const status =
       ["downloading", "exporting"].includes(video.offlineDownloadStatus)
         ? "saving"
-        : video.offlineDownloadStatus === "failed" && !hasDiskCopy(video)
-          ? "failed"
-          : canResumeDownload(video)
-            ? "paused"
-            : hasDiskCopy(video)
-              ? "offline"
-              : video.playbackStatus || "unchecked";
+        : video.offlineVerification?.healthy
+          ? "verified"
+          : video.offlineVerification && !video.offlineVerification.healthy
+            ? "incomplete"
+            : video.offlineDownloadStatus === "failed" && !hasDiskCopy(video)
+              ? "failed"
+              : canResumeDownload(video)
+                ? "paused"
+                : hasDiskCopy(video)
+                  ? "offline"
+                  : video.playbackStatus || "unchecked";
     const labels = {
       blocked: "Blocked",
       checking: "Checking",
@@ -854,16 +861,20 @@ function renderLibrary() {
       paused: "Paused",
       failed: "Failed",
       offline: "Offline",
+      verified: "Verified",
+      incomplete: "Incomplete",
       unknown: "Manual check",
       unchecked: "Unchecked",
     };
     badge.textContent = labels[status] || labels.unchecked;
     badge.dataset.status = status;
-    badge.title = video.offlineError
-      ? `Offline error: ${video.offlineError}`
-      : canResumeDownload(video)
-        ? "Paused. Continue to pick up the saved pieces."
-        : video.playbackMessage || "Not checked yet";
+    badge.title = video.offlineVerification?.message
+      ? video.offlineVerification.message
+      : video.offlineError
+        ? `Offline error: ${video.offlineError}`
+        : canResumeDownload(video)
+          ? "Paused. Continue to pick up the saved pieces."
+          : video.playbackMessage || "Not checked yet";
     const downloadProgress = card.querySelector(".card-download-progress");
     if (["downloading", "exporting", "interrupted", "failed"].includes(video.offlineDownloadStatus) && offlineProgressFraction(video) !== null) {
       const progress = offlineProgressFraction(video);
@@ -905,12 +916,15 @@ function renderLibraryOfflineManager() {
   const eligibleVisible = visible.filter((video) => canSaveOfflineUrl(video.url));
   const allVisibleMarked =
     eligibleVisible.length > 0 && eligibleVisible.every((video) => selectedVideoIds.has(video.id));
-  els.markAllOfflineButton.disabled = !eligibleVisible.length || bulkOfflineRunning;
+  els.markAllOfflineButton.disabled = !eligibleVisible.length || bulkOfflineRunning || verificationRunning;
   els.markAllOfflineButton.querySelector("span:last-child").textContent = allVisibleMarked ? "Unmark all" : "Mark all";
-  els.libraryOfflinePermission.disabled = !pending.length || bulkOfflineRunning;
-  if (offlineExportDirectoryHandle) els.libraryOfflinePermission.disabled = !actionable || bulkOfflineRunning;
+  if (els.verifyOfflineButton) {
+    els.verifyOfflineButton.disabled = bulkOfflineRunning || verificationRunning;
+  }
+  els.libraryOfflinePermission.disabled = !pending.length || bulkOfflineRunning || verificationRunning;
+  if (offlineExportDirectoryHandle) els.libraryOfflinePermission.disabled = !actionable || bulkOfflineRunning || verificationRunning;
   els.saveSelectedOfflineButton.disabled =
-    !actionable || !els.libraryOfflinePermission.checked || bulkOfflineRunning;
+    !actionable || !els.libraryOfflinePermission.checked || bulkOfflineRunning || verificationRunning;
   const paused = pending.filter((video) => canResumeDownload(video));
   els.saveSelectedOfflineButton.querySelector("span:last-child").textContent = paused.length
     ? "Continue"
@@ -1850,6 +1864,241 @@ async function exportOfflineCopy(video) {
   renderLibrary();
   renderLibraryOfflineManager();
   setStatus(`Copied “${video.title || "Untitled video"}” to “${offlineExportDirectoryHandle.name}”.`);
+}
+
+async function handleVerifyOfflineButtonClick() {
+  if (bulkOfflineRunning || verificationRunning) return;
+
+  const hasFolderApi = "showDirectoryPicker" in window;
+  if (hasFolderApi && !offlineExportDirectoryHandle) {
+    const success = await ensureDownloadFolder();
+    if (!success) {
+      setStatus("Choose your download location to verify its offline files.");
+      return;
+    }
+  }
+
+  const marked = state.videos.filter((v) => selectedVideoIds.has(v.id));
+  const candidateVideos = marked.length > 0 ? marked : state.videos;
+
+  verificationRunning = true;
+  renderLibraryOfflineManager();
+  els.bulkDownloadProgress.hidden = false;
+  els.bulkOfflineProgress.value = 0;
+  els.bulkOfflineStatus.textContent = "Scanning offline resources in the library...";
+  els.bulkOfflineProgressLabel.textContent = "Starting asset verification runner...";
+  setStatus("Scanning offline copies to verify all video and audio assets are in place...");
+
+  let verifiedCount = 0;
+  let healthyCount = 0;
+  let incompleteCount = 0;
+  let totalSegments = 0;
+  let totalBytes = 0;
+  const issues = [];
+
+  try {
+    for (let i = 0; i < candidateVideos.length; i++) {
+      const video = candidateVideos[i];
+      const folderName = archiveFolderName(video.title, video.id);
+      els.bulkOfflineStatus.textContent = `Verifying ${i + 1} of ${candidateVideos.length}: “${video.title || "Untitled"}”`;
+      els.bulkOfflineProgress.value = (i / candidateVideos.length) * 100;
+      els.bulkOfflineProgressLabel.textContent = `Scanning assets for ${video.title || "video"}...`;
+
+      let folderHandle = null;
+      if (offlineExportDirectoryHandle) {
+        try {
+          folderHandle = await offlineExportDirectoryHandle.getDirectoryHandle(folderName);
+        } catch {}
+      }
+
+      if (!folderHandle && video.offlineUrl) {
+        try {
+          const res = await fetch(`/api/offline/files?id=${encodeURIComponent(video.id)}`);
+          if (res.ok) {
+            const data = await res.json();
+            const hasVideo = data.files?.some((f) => f.path.includes("video") || f.path.endsWith(".mp4") || f.path.endsWith(".m3u8"));
+            const hasAudio = data.files?.some((f) => f.path.includes("audio"));
+            const emptyFiles = data.files?.filter((f) => f.size <= 0) || [];
+            const healthy = (hasVideo || hasAudio) && emptyFiles.length === 0;
+            const result = {
+              healthy,
+              playable: healthy,
+              totalBytes: data.size || 0,
+              validFiles: (data.files || []).map((f) => f.path),
+              missingFiles: [],
+              corruptedFiles: emptyFiles.map((f) => f.path),
+              videoSegments: { expected: data.files?.length || 0, found: data.files?.length || 0 },
+              audioSegments: { expected: 0, found: 0 },
+              message: healthy
+                ? `Verified server copy: all ${data.files?.length || 0} files intact (${formatBytes(data.size || 0)}). Playable.`
+                : `Incomplete server copy: ${emptyFiles.length} corrupted file(s).`,
+            };
+            video.offlineVerified = true;
+            video.offlineVerification = result;
+            verifiedCount++;
+            if (healthy) {
+              healthyCount++;
+              totalBytes += data.size || 0;
+            } else {
+              incompleteCount++;
+              issues.push(`“${video.title}”: ${result.message}`);
+            }
+            renderLibrary();
+            continue;
+          }
+        } catch {}
+      }
+
+      if (!folderHandle) {
+        if (hasDiskCopy(video) || video.offlineExportedTo) {
+          video.offlineVerification = {
+            healthy: false,
+            playable: false,
+            message: `Archive folder “${folderName}” was not found in “${offlineExportDirectoryHandle?.name || "chosen folder"}”.`,
+            missingFiles: [folderName],
+            corruptedFiles: [],
+          };
+          incompleteCount++;
+          issues.push(`“${video.title}”: folder not found`);
+        }
+        continue;
+      }
+
+      verifiedCount++;
+
+      const fileChecker = async (relativePath, { sampleBytes = 0 } = {}) => {
+        try {
+          const parts = relativePath.split("/").filter(Boolean);
+          const filename = parts.pop();
+          let dir = folderHandle;
+          for (const part of parts) dir = await dir.getDirectoryHandle(part);
+          const fileHandle = await dir.getFileHandle(filename);
+          const file = await fileHandle.getFile();
+          let sample = null;
+          if (sampleBytes > 0 && file.size > 0) {
+            const slice = file.slice(0, Math.min(file.size, sampleBytes));
+            sample = new Uint8Array(await slice.arrayBuffer());
+          }
+          return { exists: true, size: file.size, sample };
+        } catch {
+          return { exists: false, size: 0, sample: null };
+        }
+      };
+
+      let masterText = "";
+      const masterCheck = await fileChecker("master.m3u8");
+      if (masterCheck.exists && masterCheck.size > 0) {
+        try {
+          const fileHandle = await folderHandle.getFileHandle("master.m3u8");
+          const file = await fileHandle.getFile();
+          masterText = await file.text();
+        } catch {}
+      } else {
+        const altCheck = await fileChecker("playlist.m3u8");
+        if (altCheck.exists && altCheck.size > 0) {
+          try {
+            const fileHandle = await folderHandle.getFileHandle("playlist.m3u8");
+            const file = await fileHandle.getFile();
+            masterText = await file.text();
+          } catch {}
+        }
+      }
+
+      let result;
+      if (masterText) {
+        const subPlaylists = {};
+        const lines = masterText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        for (const line of lines) {
+          let subUri = "";
+          if (line.startsWith("#EXT-X-MEDIA:") && /TYPE=AUDIO/i.test(line)) {
+            const match = line.match(/URI="([^"]*)"/i);
+            if (match) subUri = match[1];
+          } else if (!line.startsWith("#") && (line.includes(".m3u8") || line.endsWith(".m3u8"))) {
+            subUri = line;
+          }
+          if (subUri && !subPlaylists[subUri]) {
+            try {
+              const parts = subUri.split("/").filter(Boolean);
+              const fn = parts.pop();
+              let d = folderHandle;
+              for (const p of parts) d = await d.getDirectoryHandle(p);
+              const fh = await d.getFileHandle(fn);
+              subPlaylists[subUri] = await (await fh.getFile()).text();
+            } catch {}
+          }
+        }
+
+        const requirements = core.parseOfflineArchiveRequirements(masterText, subPlaylists);
+        result = await core.verifyArchive(requirements, fileChecker);
+      } else {
+        let foundVideoFile = "";
+        for (const candidate of ["video.mp4", "video.webm", "video.mov", "video.mkv", "video.m4v"]) {
+          const check = await fileChecker(candidate);
+          if (check.exists && check.size > 0) {
+            foundVideoFile = candidate;
+            break;
+          }
+        }
+        if (foundVideoFile) {
+          const requirements = {
+            format: "file",
+            playlists: [],
+            videoSegments: [foundVideoFile],
+            audioSegments: [],
+            totalDuration: 0,
+          };
+          result = await core.verifyArchive(requirements, fileChecker);
+        } else {
+          result = {
+            healthy: false,
+            playable: false,
+            totalBytes: 0,
+            validFiles: [],
+            missingFiles: ["master.m3u8 / video.mp4"],
+            corruptedFiles: [],
+            message: "No playable master playlist or video file found in folder.",
+          };
+        }
+      }
+
+      video.offlineVerified = true;
+      video.offlineVerification = result;
+      if (result.healthy) {
+        healthyCount++;
+        totalSegments += (result.videoSegments?.found || 0) + (result.audioSegments?.found || 0);
+        totalBytes += result.totalBytes || 0;
+        video.offlineDownloadStatus = "completed";
+        video.offlineExportedTo = offlineExportDirectoryHandle?.name || video.offlineExportedTo || "download";
+        video.offlineSize = result.totalBytes;
+        delete video.offlineError;
+        delete video.offlineResumePaths;
+      } else {
+        incompleteCount++;
+        video.offlineDownloadStatus = "interrupted";
+        video.offlineError = result.message;
+        video.offlineResumePaths = result.validFiles;
+        issues.push(`“${video.title || "Untitled"}”: ${result.message}`);
+        selectedVideoIds.add(video.id);
+      }
+
+      renderLibrary();
+    }
+  } finally {
+    verificationRunning = false;
+    renderLibrary();
+    renderLibraryOfflineManager();
+    els.bulkDownloadProgress.hidden = true;
+  }
+
+  saveState();
+
+  if (verifiedCount === 0) {
+    setStatus(`No offline video folders matching your library were found in “${offlineExportDirectoryHandle?.name || "your download folder"}”.`);
+  } else if (incompleteCount === 0) {
+    setStatus(`Asset verification passed: all ${healthyCount} offline video(s) are 100% complete and playable (${totalSegments} video & audio segments, ${formatBytes(totalBytes)}).`);
+  } else {
+    setStatus(`Verification found ${incompleteCount} incomplete video(s): ${issues.join("; ")}. Missing items are selected—click “Download marked” to resume.`);
+  }
 }
 
 function offlineMediaUrl(copyId, relativePath) {

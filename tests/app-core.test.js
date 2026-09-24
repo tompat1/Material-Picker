@@ -202,3 +202,70 @@ test("recognizes common video container extensions including mkv, avi, and ts", 
   assert.equal(core.isLikelyVideoUrl("file:///videos/clip.mp4"), true);
   assert.equal(core.isLikelyVideoUrl("file:///docs/readme.txt"), false);
 });
+
+test("parses offline archive requirements and verifies integrity", async () => {
+  const master = [
+    "#EXTM3U",
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio-high",NAME="Original",DEFAULT=YES,URI="audio/playlist.m3u8"',
+    '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="audio-high"',
+    "video/playlist.m3u8",
+  ].join("\n");
+  const videoMedia = [
+    "#EXTM3U",
+    '#EXT-X-MAP:URI="segments/00000.mp4"',
+    "#EXTINF:6,",
+    "segments/00001.m4s",
+  ].join("\n");
+  const audioMedia = [
+    "#EXTM3U",
+    '#EXT-X-MAP:URI="segments/00000.mp4"',
+    "#EXTINF:6,",
+    "segments/00001.m4s",
+  ].join("\n");
+
+  const reqs = core.parseOfflineArchiveRequirements(master, {
+    "video/playlist.m3u8": videoMedia,
+    "audio/playlist.m3u8": audioMedia,
+  });
+
+  assert.equal(reqs.format, "hls");
+  assert.deepEqual(reqs.playlists, ["master.m3u8", "video/playlist.m3u8", "audio/playlist.m3u8"]);
+  assert.deepEqual(reqs.videoSegments, ["video/segments/00000.mp4", "video/segments/00001.m4s"]);
+  assert.deepEqual(reqs.audioSegments, ["audio/segments/00000.mp4", "audio/segments/00001.m4s"]);
+
+  // Test healthy verification
+  const validFtyp = new Uint8Array([0, 0, 0, 20, 102, 116, 121, 112, 105, 115, 111, 109]); // "ftyp"
+  const filesMap = new Map([
+    ["master.m3u8", { size: master.length }],
+    ["video/playlist.m3u8", { size: videoMedia.length }],
+    ["audio/playlist.m3u8", { size: audioMedia.length }],
+    ["video/segments/00000.mp4", { size: 1000, sample: validFtyp }],
+    ["video/segments/00001.m4s", { size: 2000, sample: validFtyp }],
+    ["audio/segments/00000.mp4", { size: 800, sample: validFtyp }],
+    ["audio/segments/00001.m4s", { size: 1500, sample: validFtyp }],
+  ]);
+
+  const healthyResult = await core.verifyArchive(reqs, async (path, opts) => {
+    const item = filesMap.get(path);
+    if (!item) return { exists: false, size: 0, sample: null };
+    return { exists: true, size: item.size, sample: opts?.sampleBytes ? item.sample : null };
+  });
+
+  assert.equal(healthyResult.healthy, true);
+  assert.equal(healthyResult.playable, true);
+  assert.equal(healthyResult.videoSegments.found, 2);
+  assert.equal(healthyResult.audioSegments.found, 2);
+  assert.equal(healthyResult.missingFiles.length, 0);
+
+  // Test missing audio segment
+  filesMap.delete("audio/segments/00001.m4s");
+  const missingResult = await core.verifyArchive(reqs, async (path, opts) => {
+    const item = filesMap.get(path);
+    if (!item) return { exists: false, size: 0, sample: null };
+    return { exists: true, size: item.size, sample: opts?.sampleBytes ? item.sample : null };
+  });
+
+  assert.equal(missingResult.healthy, false);
+  assert.equal(missingResult.missingFiles.includes("audio/segments/00001.m4s"), true);
+  assert.equal(missingResult.audioSegments.found, 1);
+});

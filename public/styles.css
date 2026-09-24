@@ -1070,7 +1070,8 @@ progress::-moz-progress-bar {
   text-transform: uppercase;
 }
 
-.playback-badge[data-status="ready"] {
+.playback-badge[data-status="ready"],
+.playback-badge[data-status="verified"] {
   background: var(--good-bg);
   color: var(--good);
 }
@@ -1078,6 +1079,11 @@ progress::-moz-progress-bar {
 .playback-badge[data-status="offline"] {
   background: var(--info-bg);
   color: var(--info);
+}
+
+.playback-badge[data-status="incomplete"] {
+  background: var(--warn-bg);
+  color: var(--warn);
 }
 
 .playback-badge[data-status="blocked"] {
