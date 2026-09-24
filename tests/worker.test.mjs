@@ -152,3 +152,87 @@ test("hosted offline library reports no disk copies", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { videos: [], storagePath: "" });
 });
+
+test("transcript API extracts Vimeo WebVTT captions into cue text", async () => {
+  const mockVtt = `WEBVTT
+
+00:00:01.000 --> 00:00:04.000
+Welcome to the summit.
+
+00:00:04.500 --> 00:00:08.000
+Today we discuss embodiment.
+`;
+  const playerHtml = `<html><script>window.playerConfig = {
+    "request": {
+      "text_tracks": [
+        { "id": 123, "lang": "en", "url": "https://captions.example/123.vtt", "label": "English", "default": true }
+      ]
+    }
+  };</script></html>`;
+
+  const response = await handleApiRequest(
+    request(`/api/transcript?url=${encodeURIComponent("https://vimeo.com/471161461")}`),
+    {
+      fetchImpl: async (input) => {
+        const href = input instanceof URL ? input.href : String(input);
+        if (href.includes("player.vimeo.com")) return htmlResponse(playerHtml);
+        if (href.includes("captions.example")) return new Response(mockVtt, { status: 200, headers: { "content-type": "text/vtt" } });
+        throw new Error(`Unexpected fetch: ${href}`);
+      },
+    }
+  );
+
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.cueCount, 2);
+  assert.equal(data.language, "en");
+  assert.match(data.text, /\[00:00:01\] Welcome to the summit\./);
+  assert.match(data.text, /\[00:00:04\] Today we discuss embodiment\./);
+});
+
+test("stream API resolves Vimeo HLS stream URL", async () => {
+  const playerHtml = `<html><script>window.playerConfig = {
+    "request": {
+      "files": {
+        "hls": {
+          "default_cdn": "ak",
+          "cdns": {
+            "ak": { "url": "https://vod.example/master.m3u8" }
+          }
+        }
+      }
+    }
+  };</script></html>`;
+
+  const response = await handleApiRequest(
+    request(`/api/stream?url=${encodeURIComponent("https://vimeo.com/471161461")}`),
+    {
+      fetchImpl: async (input) => {
+        const href = input instanceof URL ? input.href : String(input);
+        if (href.includes("player.vimeo.com")) return htmlResponse(playerHtml);
+        throw new Error(`Unexpected fetch: ${href}`);
+      },
+    }
+  );
+
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.type, "hls");
+  assert.equal(data.url, "https://vod.example/master.m3u8");
+  assert.equal(data.provider, "Vimeo public HLS");
+});
+
+test("proofread API cleans stutter and filler words", async () => {
+  const response = await handleApiRequest(
+    new Request("https://picker.example/api/proofread", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "[00:01] Um um hello hello world." }),
+    })
+  );
+
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.proofread, "[00:01] Hello world.");
+});
+

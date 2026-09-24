@@ -401,6 +401,171 @@ export async function proxyMedia(target, fetchImpl = fetch) {
   return new Response(response.body, { status: 200, headers });
 }
 
+export async function resolveOfflineSource(videoUrl, fetchImpl = fetch) {
+  if (/vimeo\.com/i.test(videoUrl)) {
+    const videoId = vimeoIdFromUrl(videoUrl);
+    if (!videoId) throw fail(400, "This is not a supported Vimeo video URL.");
+    const player = await fetchPublic(`https://player.vimeo.com/video/${videoId}`, fetchImpl, "text/html");
+    if (!player.response.ok) throw fail(502, `Vimeo returned ${player.response.status}.`);
+    const config = extractPlayerConfig(await readLimitedText(player.response));
+    const progressive = [...(config.request?.files?.progressive || [])].sort((a, b) => Number(b.height) - Number(a.height));
+    if (progressive[0]?.url) return { type: "file", url: progressive[0].url, provider: "Vimeo public download" };
+    const hls = config.request?.files?.hls;
+    const hlsUrl = hls?.cdns?.[hls.default_cdn]?.url || Object.values(hls?.cdns || {})[0]?.url;
+    if (hlsUrl) return { type: "hls", url: hlsUrl, provider: "Vimeo public HLS" };
+    throw fail(502, "Vimeo did not expose a public downloadable file or unencrypted stream.");
+  }
+  if (/\.m3u8([?#].*)?$/i.test(videoUrl)) return { type: "hls", url: videoUrl, provider: "Direct HLS" };
+  if (/\.(mp4|webm|ogv|ogg|mov|m4v)([?#].*)?$/i.test(videoUrl)) {
+    return { type: "file", url: videoUrl, provider: "Direct file" };
+  }
+  throw fail(400, "Offline saving supports public Vimeo media, direct video files, and unencrypted HLS streams.");
+}
+
+function decodeEntities(value) {
+  return String(value || "")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)));
+}
+
+function parseVtt(vtt) {
+  const cues = [];
+  const blocks = String(vtt || "").replace(/^\uFEFF/, "").split(/\r?\n\r?\n+/);
+  blocks.forEach((block) => {
+    const lines = block.split(/\r?\n/).map((line) => line.trim());
+    const timingIndex = lines.findIndex((line) => line.includes("-->"));
+    if (timingIndex < 0 || /^(WEBVTT|NOTE|STYLE|REGION)/.test(lines[0] || "")) return;
+    const start = lines[timingIndex].split("-->")[0].trim();
+    const text = decodeEntities(
+      lines
+        .slice(timingIndex + 1)
+        .join(" ")
+        .replace(/<[^>]+>/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+    );
+    if (!text || text === cues.at(-1)?.text) return;
+    cues.push({ start, text });
+  });
+  return cues;
+}
+
+function transcriptFromCues(cues) {
+  return cues.map((cue) => `[${cue.start.replace(/\.\d+$/, "")}] ${cue.text}`).join("\n");
+}
+
+export async function getVimeoTranscript(videoUrl, language, fetchImpl = fetch) {
+  const videoId = vimeoIdFromUrl(videoUrl);
+  if (!videoId) throw fail(400, "This is not a supported Vimeo video URL.");
+  const player = await fetchPublic(`https://player.vimeo.com/video/${videoId}`, fetchImpl, "text/html");
+  if (!player.response.ok) throw fail(502, `Vimeo returned ${player.response.status}.`);
+  const config = extractPlayerConfig(await readLimitedText(player.response));
+  const tracks = config.request?.text_tracks || [];
+  const requested = language === "auto" ? null : language;
+  const track =
+    tracks.find((item) => requested && item.lang?.toLowerCase().startsWith(requested.toLowerCase())) ||
+    tracks.find((item) => item.default) ||
+    tracks[0];
+  if (!track?.url) throw fail(404, "This Vimeo video does not provide a public caption track.");
+
+  const caption = await fetchPublic(track.url, fetchImpl, "text/vtt,text/plain,*/*");
+  if (!caption.response.ok) throw fail(502, `Vimeo captions returned ${caption.response.status}.`);
+  const vttText = await readLimitedText(caption.response);
+  const cues = parseVtt(vttText);
+  if (!cues.length) throw fail(404, "The caption track was empty.");
+  return { cues, language: track.lang || language || "auto", label: track.label || "Captions" };
+}
+
+function splitTranslationText(text, maxLength = 3500) {
+  const chunks = [];
+  let current = "";
+  String(text || "")
+    .split(/(\n+)/)
+    .forEach((part) => {
+      if (current && current.length + part.length > maxLength) {
+        chunks.push(current);
+        current = "";
+      }
+      if (part.length <= maxLength) {
+        current += part;
+        return;
+      }
+      for (let index = 0; index < part.length; index += maxLength) {
+        if (current) chunks.push(current);
+        chunks.push(part.slice(index, index + maxLength));
+        current = "";
+      }
+    });
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+export async function translateText(text, sourceLanguage, targetLanguage, fetchImpl = fetch) {
+  const translated = [];
+  for (const chunk of splitTranslationText(text)) {
+    const endpoint = new URL("https://translate.googleapis.com/translate_a/single");
+    endpoint.searchParams.set("client", "gtx");
+    endpoint.searchParams.set("sl", sourceLanguage || "auto");
+    endpoint.searchParams.set("tl", targetLanguage);
+    endpoint.searchParams.set("dt", "t");
+    endpoint.searchParams.set("q", chunk);
+    const response = await fetchImpl(endpoint, {
+      headers: { "User-Agent": BROWSER_USER_AGENT },
+    });
+    if (!response.ok) throw fail(502, `The translation service returned ${response.status}.`);
+    const payload = JSON.parse(await readLimitedText(response));
+    translated.push((payload[0] || []).map((segment) => segment[0] || "").join(""));
+  }
+  return translated.join("");
+}
+
+export function proofreadText(text, language = "en") {
+  if (!text) return "";
+  const lines = text.split("\n");
+  const processedLines = lines.map((line) => {
+    let prefix = "";
+    let content = line;
+    const timestampMatch = line.match(/^(\[\d{1,2}:\d{2}(?::\d{2})?\]\s*)/);
+    if (timestampMatch) {
+      prefix = timestampMatch[1];
+      content = line.slice(prefix.length);
+    }
+
+    let cleaned = content
+      .replace(/\b(um|uh|er|erm|ah|umm|uhh)\b/gi, "")
+      .replace(/\b(yyy|eee|ymm)\b/gi, "")
+      .replace(/\b(äh|ehm)\b/gi, "")
+      .replace(/\b(euh)\b/gi, "")
+      .replace(/\b(you know|wiesz|tu sais|weißt du)\b(?=[,\s]|$)/gi, "")
+      .replace(/\b(like|liksom|jakby)\b(?=[,\s]+(you|we|they|he|she|it|I|to|the|that|a|an)\b)/gi, "");
+
+    cleaned = cleaned.replace(/\b(\w+)\s+\1\b/gi, "$1");
+    cleaned = cleaned.replace(/\b(\w+)\s+\1\b/gi, "$1");
+
+    cleaned = cleaned
+      .replace(/[ \t]+/g, " ")
+      .replace(/\s+([,.!?;:])/g, "$1")
+      .replace(/([.!?])([A-Za-z])/g, "$1 $2")
+      .trim();
+
+    cleaned = cleaned
+      .split(/(?<=[.!?]\s+)/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+      .join(" ");
+
+    if (!cleaned) return "";
+    return prefix + cleaned;
+  }).filter(Boolean);
+
+  return processedLines.join("\n");
+}
+
 export async function handleApiRequest(request, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch;
   const url = new URL(request.url);
@@ -438,6 +603,65 @@ export async function handleApiRequest(request, dependencies = {}) {
       return json(200, { html, finalUrl: page.finalUrl });
     } catch (error) {
       return json(error.status || 502, { error: error.message || "The page could not be scanned." });
+    }
+  }
+  if (request.method === "GET" && url.pathname === "/api/transcript") {
+    const target = url.searchParams.get("url");
+    const language = url.searchParams.get("language") || "auto";
+    if (!target) return json(400, { error: "A video URL is required." });
+    try {
+      const transcript = await getVimeoTranscript(target, language, fetchImpl);
+      return json(200, {
+        text: transcriptFromCues(transcript.cues),
+        cueCount: transcript.cues.length,
+        language: transcript.language,
+        label: transcript.label,
+        source: "provider-captions",
+      });
+    } catch (error) {
+      return json(error.status || 404, { error: error.message || "A transcript could not be loaded." });
+    }
+  }
+  if (request.method === "GET" && url.pathname === "/api/stream") {
+    const target = url.searchParams.get("url");
+    if (!target) return json(400, { error: "A video URL is required." });
+    try {
+      const source = await resolveOfflineSource(target, fetchImpl);
+      return json(200, {
+        url: source.url,
+        type: source.type,
+        provider: source.provider,
+      });
+    } catch (error) {
+      return json(error.status || 404, { error: error.message || "A stream could not be resolved." });
+    }
+  }
+  if (request.method === "POST" && url.pathname === "/api/translate") {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const text = String(body.text || "").trim();
+      const sourceLanguage = String(body.sourceLanguage || "auto").toLowerCase();
+      const targetLanguage = String(body.targetLanguage || "").toLowerCase();
+      if (!text) return json(400, { error: "Transcript text is required." });
+      if (!/^(auto|[a-z]{2,3})$/.test(sourceLanguage) || !/^[a-z]{2,3}$/.test(targetLanguage)) {
+        return json(400, { error: "The selected language is not supported." });
+      }
+      const translation = await translateText(text, sourceLanguage, targetLanguage, fetchImpl);
+      return json(200, { translation, service: "Google Translate" });
+    } catch (error) {
+      return json(502, { error: error.message || "Translation failed." });
+    }
+  }
+  if (request.method === "POST" && url.pathname === "/api/proofread") {
+    try {
+      const body = await request.json().catch(() => ({}));
+      const text = String(body.text || "").trim();
+      if (!text) return json(400, { error: "Text is required to proofread." });
+      const language = String(body.language || "en").toLowerCase();
+      const proofread = proofreadText(text, language);
+      return json(200, { proofread, original: text });
+    } catch (error) {
+      return json(500, { error: error.message || "Proofreading failed." });
     }
   }
   return json(404, { error: "This API is only available in the local app." });

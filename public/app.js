@@ -92,6 +92,7 @@ let bulkOfflineStartedAt = 0;
 let bulkOfflineEstimatedBytes = 0;
 let bulkOfflineCompletedBytes = 0;
 let bulkOfflineEstimateByFiles = false;
+let libraryMeasureRunning = false;
 let state = loadState();
 let activeCollectionId = "all";
 const selectedVideoIds = new Set();
@@ -752,8 +753,6 @@ function renderLibraryTotals() {
   }
   els.libraryTotals.textContent = parts.join(" · ");
 }
-
-let libraryMeasureRunning = false;
 
 function rememberMediaMeasure(video, plan) {
   if (Number(plan?.durationSeconds) > 0) video.durationSeconds = plan.durationSeconds;
@@ -2342,6 +2341,10 @@ async function startTranscription() {
         els.playerShell.dataset.mode = "video";
         loadHlsVideo(streamUrl, false);
       }
+    } else if (els.playerShell.dataset.mode === "embed") {
+      setTranscriptButtons(false);
+      setTranscriptStatus("Could not resolve an audio stream for this video. A direct stream or caption track is required.", "error");
+      return;
     }
   }
 
@@ -2388,10 +2391,21 @@ async function startAudioTrackTranscription(video = selectedVideo()) {
   if (!/\.m3u8(?:[?#].*)?$/i.test(playbackUrl) && video?.url && /vimeo\.com/i.test(video.url)) {
     setTranscriptStatus("Resolving audio stream...", "working");
     const stream = await resolveVideoStream(video);
-    if (stream) playbackUrl = stream;
+    if (stream) {
+      playbackUrl = stream;
+      if (els.playerShell.dataset.mode !== "video" || !els.videoPlayer.src) {
+        els.playerShell.dataset.mode = "video";
+        loadHlsVideo(stream, false);
+      }
+    }
   }
   if (/\.m3u8(?:[?#].*)?$/i.test(playbackUrl)) {
     await transcribeHlsAudio(playbackUrl);
+    return;
+  }
+  if (els.playerShell.dataset.mode === "embed") {
+    setTranscriptButtons(false);
+    setTranscriptStatus("Could not resolve an unencrypted audio stream for this video.", "error");
     return;
   }
   await startElementTapTranscription();
