@@ -330,8 +330,8 @@
             const path = resolvePath(uri);
             if (isAudio) {
               if (!audioSegments.includes(path)) audioSegments.push(path);
-            } else {
-              if (!videoSegments.includes(path)) videoSegments.push(path);
+            } else if (!videoSegments.includes(path)) {
+              videoSegments.push(path);
             }
           }
           return;
