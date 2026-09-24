@@ -569,6 +569,98 @@
     return processedLines.join("\n");
   }
 
+  function groupFolderEntries(entries) {
+    const hlsPackages = [];
+    const manifestPattern = /^(master|index)\.m3u8$/i;
+
+    (entries || []).forEach((e) => {
+      const name = e.name || "";
+      if (manifestPattern.test(name)) {
+        const rel = e.relPath || name;
+        const parts = rel.split("/").filter(Boolean);
+        parts.pop();
+        const rootPrefix = parts.join("/");
+        if (!hlsPackages.some((p) => p.rootPrefix === rootPrefix)) {
+          hlsPackages.push({ rootPrefix, manifestName: name, entries: [], metadataEntry: null });
+        }
+      }
+    });
+
+    (entries || []).forEach((e) => {
+      const name = (e.name || "").toLowerCase();
+      if (name === "playlist.m3u8") {
+        const rel = e.relPath || e.name;
+        const parts = rel.split("/").filter(Boolean);
+        parts.pop();
+        const rootPrefix = parts.join("/");
+
+        if (
+          rootPrefix.endsWith("/audio") ||
+          rootPrefix.endsWith("/video") ||
+          rootPrefix.endsWith("/segments") ||
+          rootPrefix === "audio" ||
+          rootPrefix === "video" ||
+          rootPrefix === "segments" ||
+          hlsPackages.some((p) => p.rootPrefix === "" || rootPrefix === p.rootPrefix || rootPrefix.startsWith(p.rootPrefix + "/"))
+        ) {
+          return;
+        }
+
+        const hasSegmentsOrTracks = (entries || []).some((item) => {
+          const itemRel = (item.relPath || item.name || "").toLowerCase();
+          const target = rootPrefix ? `${rootPrefix.toLowerCase()}/` : "";
+          return (
+            itemRel.startsWith(target) &&
+            (itemRel.includes("/audio/") || itemRel.includes("/video/") || itemRel.includes("/segments/"))
+          );
+        });
+        if (hasSegmentsOrTracks && !hlsPackages.some((p) => p.rootPrefix === rootPrefix)) {
+          hlsPackages.push({ rootPrefix, manifestName: e.name, entries: [], metadataEntry: null });
+        }
+      }
+    });
+
+    hlsPackages.sort((a, b) => b.rootPrefix.length - a.rootPrefix.length);
+
+    const standaloneEntries = [];
+
+    (entries || []).forEach((e) => {
+      const rel = e.relPath || e.name || "";
+      let matchedPackage = null;
+      for (const pkg of hlsPackages) {
+        if (pkg.rootPrefix === "" || rel === pkg.rootPrefix || rel.startsWith(`${pkg.rootPrefix}/`)) {
+          matchedPackage = pkg;
+          break;
+        }
+      }
+
+      if (matchedPackage) {
+        if ((e.name || "").toLowerCase() === "metadata.json") {
+          matchedPackage.metadataEntry = e;
+        }
+        matchedPackage.entries.push(e);
+      } else {
+        const lowerName = (e.name || "").toLowerCase();
+        const lowerRel = rel.toLowerCase();
+        const isInternal =
+          lowerName === "playlist.m3u8" ||
+          lowerName === "master.m3u8" ||
+          lowerName === "index.m3u8" ||
+          lowerName === "metadata.json" ||
+          lowerRel.includes("/segments/") ||
+          lowerRel.includes("/audio/") ||
+          lowerRel.includes("/video/") ||
+          /^\d{5,}\.(mp4|m4s|ts)$/i.test(lowerName);
+
+        if (!isInternal && isLikelyVideoUrl(e.name)) {
+          standaloneEntries.push(e);
+        }
+      }
+    });
+
+    return { hlsPackages, standaloneEntries };
+  }
+
   return {
     cleanUrl,
     archiveFolderName,
@@ -577,6 +669,7 @@
     estimateRemainingSeconds,
     formatBytes,
     formatDuration,
+    groupFolderEntries,
     libraryMediaSummary,
     inferTitleFromUrl,
     isLikelyValidMediaChunk,

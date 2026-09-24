@@ -43,7 +43,7 @@ const CONTENT_TYPES = {
 };
 
 const SUPPORTED_VIDEO_EXTENSIONS = new Set(Object.keys(CONTENT_TYPES).filter((ext) => ext !== ".css" && ext !== ".html" && ext !== ".js" && ext !== ".json" && ext !== ".map" && ext !== ".svg"));
-const STANDALONE_VIDEO_EXTENSIONS = new Set(Array.from(SUPPORTED_VIDEO_EXTENSIONS).filter((ext) => ext !== ".m4s"));
+const STANDALONE_VIDEO_EXTENSIONS = new Set(Array.from(SUPPORTED_VIDEO_EXTENSIONS).filter((ext) => ext !== ".m4s" && ext !== ".m3u8"));
 
 function isPublicIp(address) {
   if (!net.isIP(address)) return false;
@@ -136,7 +136,11 @@ async function fetchPage(value) {
 }
 
 function sendJson(response, status, data) {
-  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  response.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": "*",
+  });
   response.end(JSON.stringify(data));
 }
 
@@ -955,18 +959,109 @@ async function listArchiveFiles(directory, prefix = "") {
   return files;
 }
 
-async function handleOfflineFiles(response, idValue) {
+async function handleOfflineFiles(response, idValue, pathParam) {
   try {
-    const id = safeVideoId(idValue);
-    const directory = path.join(VIDEO_ROOT, id);
-    const metadata = JSON.parse(await fsp.readFile(path.join(directory, "metadata.json"), "utf8"));
+    let directory;
+    let id = idValue || "";
+    if (pathParam) {
+      directory = resolveLocalPath(pathParam);
+      if (!id) id = path.basename(directory);
+    } else if (idValue) {
+      id = safeVideoId(idValue);
+      directory = path.join(VIDEO_ROOT, id);
+    } else {
+      return sendJson(response, 400, { error: "An id or path is required." });
+    }
+
+    let metadata = null;
+    try {
+      metadata = JSON.parse(await fsp.readFile(path.join(directory, "metadata.json"), "utf8"));
+    } catch {}
+
     const files = await listArchiveFiles(directory);
+    const filePaths = new Set(files.map((f) => f.path));
+    const emptyFiles = files.filter((f) => f.size <= 0).map((f) => f.path);
+
+    let masterText = "";
+    try {
+      masterText = await fsp.readFile(path.join(directory, "master.m3u8"), "utf8");
+    } catch {}
+
+    const missingFiles = [];
+    let expectedCount = files.length;
+    let healthy = false;
+
+    if (masterText) {
+      const subPlaylists = {};
+      const lines = masterText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        let subUri = "";
+        if (line.startsWith("#EXT-X-MEDIA:") && /TYPE=AUDIO/i.test(line)) {
+          const match = line.match(/URI="([^"]*)"/i);
+          if (match) subUri = match[1];
+        } else if (!line.startsWith("#") && (line.includes(".m3u8") || line.endsWith(".m3u8"))) {
+          subUri = line;
+        }
+        if (subUri && !subPlaylists[subUri]) {
+          try {
+            subPlaylists[subUri] = await fsp.readFile(path.join(directory, subUri), "utf8");
+          } catch {
+            missingFiles.push(subUri);
+          }
+        }
+      }
+
+      const checkSegments = (subUri, text) => {
+        const dir = subUri.includes("/") ? subUri.slice(0, subUri.lastIndexOf("/")) : "";
+        const resolve = (u) => (dir ? `${dir}/${u}` : u);
+        const pLines = String(text || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        pLines.forEach((l) => {
+          let segPath = null;
+          if (l.startsWith("#EXT-X-MAP:")) {
+            const m = l.match(/URI="([^"]*)"/i);
+            if (m) segPath = resolve(m[1]);
+          } else if (!l.startsWith("#")) {
+            segPath = resolve(l);
+          }
+          if (segPath && !filePaths.has(segPath)) {
+            missingFiles.push(segPath);
+          }
+        });
+      };
+
+      for (const [subUri, pText] of Object.entries(subPlaylists)) {
+        checkSegments(subUri, pText);
+      }
+
+      expectedCount = files.length + missingFiles.length;
+      healthy = missingFiles.length === 0 && emptyFiles.length === 0 && files.length > 0;
+    } else {
+      healthy =
+        files.some((f) => f.path.endsWith(".mp4") || f.path.endsWith(".m3u8") || f.path.endsWith(".webm")) &&
+        emptyFiles.length === 0;
+    }
+
+    const message = healthy
+      ? `All ${files.length} segments intact and playable.`
+      : missingFiles.length > 0
+      ? `Incomplete copy: missing ${missingFiles.length} segment(s) (e.g. ${missingFiles[0]}).`
+      : emptyFiles.length > 0
+      ? `Corrupted copy: ${emptyFiles.length} empty file(s).`
+      : "Archive is empty or unplayable.";
+
     return sendJson(response, 200, {
-      id,
-      title: metadata.title,
-      format: metadata.format,
+      id: metadata?.id || id,
+      title: metadata?.title || path.basename(directory),
+      format: metadata?.format || (masterText ? "hls" : "file"),
       size: files.reduce((total, file) => total + file.size, 0),
       files,
+      healthy,
+      playable: healthy,
+      missingFiles,
+      emptyFiles,
+      expectedCount,
+      foundCount: files.length,
+      message,
     });
   } catch (error) {
     const status = error.code === "ENOENT" ? 404 : 400;
@@ -1132,6 +1227,7 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
 
     return [
       {
+        id: meta?.id || undefined,
         name: hlsManifestName,
         title: title || hlsManifestName,
         relativePath: rel,
@@ -1140,6 +1236,12 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
         size: totalSize,
         format: "hls",
         url: `/local-media/${encodeURIComponent(resolved)}/${hlsManifestName}`,
+        sourceUrl: meta?.sourceUrl || undefined,
+        offlineUrl: `/local-media/${encodeURIComponent(resolved)}/${hlsManifestName}`,
+        offlineFormat: meta?.format || "hls",
+        offlineSize: totalSize,
+        offlineSavedAt: meta?.savedAt || meta?.downloadedAt || undefined,
+        offlineProvider: meta?.provider || undefined,
       },
     ];
   }
@@ -1156,6 +1258,15 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
       const nested = await scanDirectoryForVideos(full, rel, visitedDirs);
       results.push(...nested);
     } else if (entry.isFile()) {
+      const lowerName = entry.name.toLowerCase();
+      const isInternalHls =
+        lowerName === "playlist.m3u8" ||
+        lowerName === "master.m3u8" ||
+        lowerName === "index.m3u8" ||
+        lowerName === "metadata.json" ||
+        /^\d{5,}\.(mp4|m4s|ts)$/i.test(lowerName);
+      if (isInternalHls) continue;
+
       const ext = path.extname(entry.name).toLowerCase();
       if (STANDALONE_VIDEO_EXTENSIONS.has(ext)) {
         try {
@@ -1171,6 +1282,7 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
             absolutePath: full,
             subfolder: relativePrefix || "",
             size: stats.size,
+            format: ext.replace(".", ""),
             url: `/local-media/${encodeURIComponent(resolved)}/${entry.name}`,
           });
         } catch {
@@ -1292,6 +1404,14 @@ function handleChooseFolder(response) {
 function startServer() {
   fs.mkdirSync(VIDEO_ROOT, { recursive: true });
   const server = http.createServer(async (request, response) => {
+    if (request.method === "OPTIONS") {
+      response.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, POST, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+      });
+      return response.end();
+    }
     const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
     if (request.method === "GET" && requestUrl.pathname === "/api/scrape") {
       return handleScrape(request, response, requestUrl);
@@ -1333,7 +1453,7 @@ function startServer() {
       }
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/offline/files") {
-      return handleOfflineFiles(response, requestUrl.searchParams.get("id"));
+      return handleOfflineFiles(response, requestUrl.searchParams.get("id"), requestUrl.searchParams.get("path"));
     }
     if (request.method === "DELETE" && requestUrl.pathname.startsWith("/api/offline/")) {
       return handleOfflineDelete(response, requestUrl.pathname.slice("/api/offline/".length));
@@ -1369,6 +1489,7 @@ module.exports = {
   extractPlayerConfig,
   fetchPage,
   getVimeoTranscript,
+  handleOfflineFiles,
   handleProofread,
   handleScanFolder,
   handleStream,

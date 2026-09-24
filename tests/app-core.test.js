@@ -288,3 +288,32 @@ test("proofreadText removes timestamps and deduplicates consecutive speakers", (
   assert.ok(keptTimestamps.includes("[00:00:10] In today's session"));
 });
 
+test("groupFolderEntries correctly groups HLS packages with master.m3u8, audio/video segments, and metadata", () => {
+  const entries = [
+    { name: "master.m3u8", relPath: "talk/master.m3u8" },
+    { name: "metadata.json", relPath: "talk/metadata.json" },
+    { name: "playlist.m3u8", relPath: "talk/audio/playlist.m3u8" },
+    { name: "00000.mp4", relPath: "talk/audio/segments/00000.mp4" },
+    { name: "00001.m4s", relPath: "talk/audio/segments/00001.m4s" },
+    { name: "playlist.m3u8", relPath: "talk/video/playlist.m3u8" },
+    { name: "00000.mp4", relPath: "talk/video/segments/00000.mp4" },
+    { name: "00001.m4s", relPath: "talk/video/segments/00001.m4s" },
+    { name: "independent-video.mp4", relPath: "independent-video.mp4" },
+  ];
+
+  const { hlsPackages, standaloneEntries } = core.groupFolderEntries(entries);
+
+  assert.equal(hlsPackages.length, 1);
+  const pkg = hlsPackages[0];
+  assert.equal(pkg.rootPrefix, "talk");
+  assert.equal(pkg.manifestName, "master.m3u8");
+  assert.ok(pkg.metadataEntry);
+  assert.equal(pkg.metadataEntry.name, "metadata.json");
+  assert.equal(pkg.entries.length, 8);
+
+  // Standalone entries should only contain independent-video.mp4, not 00000.mp4 or internal playlist.m3u8!
+  assert.equal(standaloneEntries.length, 1);
+  assert.equal(standaloneEntries[0].name, "independent-video.mp4");
+});
+
+

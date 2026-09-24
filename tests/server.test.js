@@ -8,6 +8,7 @@ const {
   assertUnencryptedHls,
   downloadMetrics,
   extractPlayerConfig,
+  handleOfflineFiles,
   isHlsPackageDirectory,
   isPublicIp,
   listArchiveFiles,
@@ -312,4 +313,72 @@ test("resolves direct media and HLS stream sources", async () => {
   assert.equal(hls.type, "hls");
   assert.equal(hls.url, "https://example.com/stream.m3u8");
 });
+
+test("handleOfflineFiles accurately checks HLS playlist segments integrity and detects missing files", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "material-picker-verify-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const audioDir = path.join(root, "audio");
+  const audioSeg = path.join(audioDir, "segments");
+  const videoDir = path.join(root, "video");
+  const videoSeg = path.join(videoDir, "segments");
+  fs.mkdirSync(audioSeg, { recursive: true });
+  fs.mkdirSync(videoSeg, { recursive: true });
+
+  fs.writeFileSync(path.join(root, "master.m3u8"), '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,URI="audio/playlist.m3u8"\nvideo/playlist.m3u8');
+  fs.writeFileSync(path.join(root, "metadata.json"), JSON.stringify({ id: "my-hls-talk", title: "My HLS Talk", format: "hls" }));
+  fs.writeFileSync(path.join(audioDir, "playlist.m3u8"), '#EXTM3U\n#EXT-X-MAP:URI="segments/00000.mp4"\n#EXTINF:6,\nsegments/00001.m4s');
+  fs.writeFileSync(path.join(audioSeg, "00000.mp4"), "init-audio");
+  fs.writeFileSync(path.join(audioSeg, "00001.m4s"), "audio-seg-1");
+
+  // Video playlist specifies 00000.mp4 and 00001.m4s, but we only create 00001.m4s (missing 00000.mp4):
+  fs.writeFileSync(path.join(videoDir, "playlist.m3u8"), '#EXTM3U\n#EXT-X-MAP:URI="segments/00000.mp4"\n#EXTINF:6,\nsegments/00001.m4s');
+  fs.writeFileSync(path.join(videoSeg, "00001.m4s"), "video-seg-1");
+
+  const mockRes = {
+    statusCode: 0,
+    headers: {},
+    body: "",
+    writeHead(code, headers) {
+      this.statusCode = code;
+      this.headers = headers;
+    },
+    end(data) {
+      this.body = data;
+    },
+  };
+
+  await handleOfflineFiles(mockRes, "my-hls-talk", root);
+  assert.equal(mockRes.statusCode, 200);
+  const data = JSON.parse(mockRes.body);
+
+  assert.equal(data.healthy, false);
+  assert.equal(data.playable, false);
+  assert.ok(data.missingFiles.includes("video/segments/00000.mp4"));
+  assert.ok(data.message.includes("missing 1 segment"));
+
+  // Now create the missing file:
+  fs.writeFileSync(path.join(videoSeg, "00000.mp4"), "init-video");
+  const mockResHealthy = {
+    statusCode: 0,
+    headers: {},
+    body: "",
+    writeHead(code, headers) {
+      this.statusCode = code;
+      this.headers = headers;
+    },
+    end(data) {
+      this.body = data;
+    },
+  };
+
+  await handleOfflineFiles(mockResHealthy, "my-hls-talk", root);
+  assert.equal(mockResHealthy.statusCode, 200);
+  const healthyData = JSON.parse(mockResHealthy.body);
+  assert.equal(healthyData.healthy, true);
+  assert.equal(healthyData.playable, true);
+  assert.equal(healthyData.missingFiles.length, 0);
+  assert.ok(healthyData.message.includes("intact and playable"));
+});
+
 

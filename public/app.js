@@ -100,6 +100,73 @@ let verificationRunning = false;
 let state = loadState();
 let activeCollectionId = "all";
 const selectedVideoIds = new Set();
+const offlinePackageFiles = new Map();
+
+class PackageHlsLoader {
+  constructor(config) {
+    this.config = config;
+    const BaseLoader = window.Hls?.DefaultConfig?.loader;
+    this.defaultLoader = BaseLoader ? new BaseLoader(config) : null;
+  }
+
+  destroy() {
+    this.defaultLoader?.destroy?.();
+  }
+
+  abort() {
+    this.defaultLoader?.abort?.();
+  }
+
+  load(context, config, callbacks) {
+    const url = context?.url || "";
+    const match = url.match(/\/hls-package\/([^/]+)\/(.+)$/);
+    if (match) {
+      const packageId = match[1];
+      let requestedPath = decodeURIComponent(match[2]).split("?")[0].replace(/^\/+/, "");
+      const fileMap = offlinePackageFiles.get(packageId);
+      if (fileMap) {
+        let file = fileMap.get(requestedPath) || fileMap.get(requestedPath.toLowerCase());
+        if (!file) {
+          for (const [key, val] of fileMap.entries()) {
+            const lKey = key.toLowerCase();
+            const lReq = requestedPath.toLowerCase();
+            if (lKey === lReq || lKey.endsWith("/" + lReq) || lReq.endsWith("/" + lKey)) {
+              file = val;
+              break;
+            }
+          }
+        }
+        if (file) {
+          const isText = context.responseType === "text" || requestedPath.endsWith(".m3u8");
+          const readPromise = isText ? file.text() : file.arrayBuffer();
+          const trequest = performance.now();
+          readPromise
+            .then((data) => {
+              const tload = performance.now();
+              const stats = {
+                trequest,
+                tfirst: tload,
+                tload,
+                loaded: file.size,
+                total: file.size,
+                bwQuote: file.size,
+              };
+              callbacks.onSuccess({ url: context.url, data, code: 200 }, stats, context);
+            })
+            .catch((err) => {
+              callbacks.onError({ code: 404, text: err.message }, context);
+            });
+          return;
+        }
+      }
+    }
+    if (this.defaultLoader) {
+      this.defaultLoader.load(context, config, callbacks);
+    } else if (callbacks?.onError) {
+      callbacks.onError({ code: 404, text: "Loader unavailable" }, context);
+    }
+  }
+}
 
 init();
 
@@ -168,8 +235,8 @@ function isLocalServer() {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }
 
-function addLocalVideoFiles(videoFiles, rootFolderName) {
-  if (!videoFiles || videoFiles.length === 0) {
+async function processImportedFolderEntries(entries, rootFolderName, defaultCollectionId = "") {
+  if (!entries || entries.length === 0) {
     setStatus("Selected folder contains no supported video files.");
     return 0;
   }
@@ -178,8 +245,10 @@ function addLocalVideoFiles(videoFiles, rootFolderName) {
     els.folderPath.value = rootFolderName;
   }
 
-  let collectionId = "";
-  if (els.folderCreateCollection?.checked) {
+  const { hlsPackages, standaloneEntries } = core.groupFolderEntries(entries);
+
+  let collectionId = defaultCollectionId;
+  if (els.folderCreateCollection?.checked && rootFolderName) {
     let existing = state.collections.find(
       (c) => c.name.toLowerCase() === rootFolderName.toLowerCase()
     );
@@ -198,26 +267,90 @@ function addLocalVideoFiles(videoFiles, rootFolderName) {
   let addedCount = 0;
   let firstAddedId = null;
 
-  videoFiles.forEach(({ file, name, subfolders, relPath }) => {
+  // Process HLS packages
+  for (const pkg of hlsPackages) {
+    const packageId = "pkg-" + crypto.randomUUID();
+    const fileMap = new Map();
+    let totalBytes = 0;
+
+    pkg.entries.forEach((e) => {
+      const rel = e.relPath || e.name;
+      const innerPath = pkg.rootPrefix
+        ? rel.startsWith(pkg.rootPrefix + "/")
+          ? rel.slice(pkg.rootPrefix.length + 1)
+          : rel
+        : rel;
+      fileMap.set(innerPath, e.file);
+      fileMap.set(innerPath.toLowerCase(), e.file);
+      fileMap.set(e.name, e.file);
+      fileMap.set(e.name.toLowerCase(), e.file);
+      totalBytes += Number(e.file?.size || 0);
+    });
+    offlinePackageFiles.set(packageId, fileMap);
+
+    let meta = null;
+    if (pkg.metadataEntry) {
+      try {
+        meta = JSON.parse(await pkg.metadataEntry.file.text());
+      } catch {}
+    }
+
+    const folderTitle = pkg.rootPrefix
+      ? pkg.rootPrefix.split("/").pop().replace(/[-_]+/g, " ").trim()
+      : rootFolderName !== "videos" && rootFolderName !== "data"
+      ? rootFolderName.replace(/[-_]+/g, " ").trim()
+      : "";
+    const title = meta?.title || folderTitle || "Offline HLS Video";
+    const packageUrl = `/hls-package/${packageId}/${pkg.manifestName}`;
+    const tagsList = pkg.rootPrefix ? pkg.rootPrefix.split("/").filter(Boolean) : ["local", "hls"];
+
+    const nextVideo = {
+      id: meta?.id || crypto.randomUUID(),
+      title,
+      speaker: "",
+      url: packageUrl,
+      sourceUrl: meta?.sourceUrl || (pkg.rootPrefix ? `${pkg.rootPrefix}/${pkg.manifestName}` : pkg.manifestName),
+      language: "English",
+      tags: tagsList.join(", "),
+      notes: `HLS Package: ${pkg.rootPrefix || rootFolderName} (${formatBytes(meta?.size || totalBytes)})`,
+      transcript: "",
+      translation: "",
+      collectionId: collectionId || (activeCollectionId !== "all" && activeCollectionId !== "unfiled" ? activeCollectionId : ""),
+      playbackStatus: "ready",
+      playbackMessage: "Offline HLS package ready with audio/video segments",
+      checkedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      format: "hls",
+      packageId,
+      offlineUrl: packageUrl,
+      offlineFormat: "hls",
+      offlineSize: meta?.size || totalBytes,
+      offlineSavedAt: meta?.savedAt || meta?.downloadedAt || new Date().toISOString(),
+      offlineProvider: meta?.provider || "vimeo",
+    };
+
+    state.videos.unshift(nextVideo);
+    if (!firstAddedId) firstAddedId = nextVideo.id;
+    addedCount += 1;
+  }
+
+  // Process standalone video entries
+  standaloneEntries.forEach(({ file, name, relPath }) => {
     const title = name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
     const objectUrl = URL.createObjectURL(file);
-
-    const tagsList = [];
-    if (subfolders && subfolders.length > 0) {
-      tagsList.push(...subfolders);
-    } else {
-      tagsList.push("local");
-    }
+    const pathParts = (relPath || "").split("/");
+    const subfolders = pathParts.slice(0, -1);
+    const tagsList = subfolders.length > 0 ? subfolders : ["local"];
 
     const nextVideo = {
       id: crypto.randomUUID(),
       title: title || name,
       speaker: "",
       url: objectUrl,
-      sourceUrl: relPath,
+      sourceUrl: relPath || name,
       language: "English",
       tags: tagsList.join(", "),
-      notes: `File: ${relPath} (${formatBytes(file.size)})`,
+      notes: `File: ${relPath || name} (${formatBytes(file.size)})`,
       transcript: "",
       translation: "",
       collectionId: collectionId || (activeCollectionId !== "all" && activeCollectionId !== "unfiled" ? activeCollectionId : ""),
@@ -239,14 +372,15 @@ function addLocalVideoFiles(videoFiles, rootFolderName) {
   saveState();
   render();
 
-  const distinctSubfolders = new Set(videoFiles.flatMap((v) => v.subfolders || []));
-  const subfolderInfo = distinctSubfolders.size > 0 ? ` across ${distinctSubfolders.size} subfolders` : "";
-
   setStatus(
-    `Imported ${addedCount} video ${addedCount === 1 ? "file" : "files"}${subfolderInfo} into “${rootFolderName}”. Ready to play!`
+    `Imported ${addedCount} video ${addedCount === 1 ? "item" : "items"} from “${rootFolderName}”. Ready to play!`
   );
   if (addedCount) showDesk(addedCount === 1 ? "screen" : "reels");
   return addedCount;
+}
+
+function addLocalVideoFiles(videoFiles, rootFolderName, defaultCollectionId = "") {
+  return processImportedFolderEntries(videoFiles, rootFolderName, defaultCollectionId);
 }
 
 async function importFromDirectoryHandle(dirHandle) {
@@ -256,14 +390,20 @@ async function importFromDirectoryHandle(dirHandle) {
   if (els.scanFolderButton) els.scanFolderButton.disabled = true;
 
   try {
-    const videoFiles = [];
+    const entries = [];
 
     async function walk(handle, pathParts = []) {
       for await (const entry of handle.values()) {
         if (entry.kind === "file") {
-          if (core.isLikelyVideoUrl(entry.name)) {
+          const lowerName = entry.name.toLowerCase();
+          if (
+            core.isLikelyVideoUrl(entry.name) ||
+            lowerName.endsWith(".m3u8") ||
+            lowerName.endsWith(".m4s") ||
+            lowerName === "metadata.json"
+          ) {
             const file = await entry.getFile();
-            videoFiles.push({
+            entries.push({
               file,
               name: entry.name,
               subfolders: pathParts,
@@ -279,7 +419,7 @@ async function importFromDirectoryHandle(dirHandle) {
     }
 
     await walk(dirHandle, []);
-    addLocalVideoFiles(videoFiles, rootFolderName);
+    await processImportedFolderEntries(entries, rootFolderName);
   } catch (error) {
     setStatus(`Folder import error: ${error.message}`);
   } finally {
@@ -407,11 +547,16 @@ async function handleFolderScan(event) {
     let firstAddedId = null;
 
     videos.forEach((item) => {
-      const existing = state.videos.find((v) => v.url === item.url);
+      const existing = state.videos.find((v) => v.url === item.url || (item.id && v.id === item.id));
       if (existing) {
         if (collectionId && !existing.collectionId) {
           existing.collectionId = collectionId;
         }
+        if (item.format) existing.format = item.format;
+        if (item.offlineUrl) existing.offlineUrl = item.offlineUrl;
+        if (item.offlineFormat) existing.offlineFormat = item.offlineFormat;
+        if (item.offlineSize) existing.offlineSize = item.offlineSize;
+        if (item.sourceUrl && !existing.sourceUrl) existing.sourceUrl = item.sourceUrl;
         return;
       }
 
@@ -423,11 +568,11 @@ async function handleFolderScan(event) {
       }
 
       const nextVideo = {
-        id: crypto.randomUUID(),
+        id: item.id || crypto.randomUUID(),
         title: item.title,
         speaker: "",
         url: item.url,
-        sourceUrl: item.relativePath || folderPath,
+        sourceUrl: item.sourceUrl || item.relativePath || folderPath,
         language: "English",
         tags: tagsList.join(", "),
         notes: `File: ${item.relativePath || item.name} (${formatBytes(item.size)})`,
@@ -435,9 +580,15 @@ async function handleFolderScan(event) {
         translation: "",
         collectionId: collectionId || (activeCollectionId !== "all" && activeCollectionId !== "unfiled" ? activeCollectionId : ""),
         playbackStatus: "ready",
-        playbackMessage: "Local media file ready for playback",
+        playbackMessage: item.format === "hls" ? "Local HLS package ready for playback" : "Local media file ready for playback",
         checkedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
+        format: item.format || (item.url?.endsWith(".m3u8") ? "hls" : undefined),
+        offlineUrl: item.offlineUrl || item.url,
+        offlineFormat: item.offlineFormat || item.format,
+        offlineSize: item.offlineSize || item.size,
+        offlineSavedAt: item.offlineSavedAt,
+        offlineProvider: item.offlineProvider,
       };
 
       state.videos.unshift(nextVideo);
@@ -466,13 +617,21 @@ async function handleFolderScan(event) {
   }
 }
 
-function handleLocalFolderInput(event) {
+async function handleLocalFolderInput(event) {
   const fileList = event.target.files;
   if (!fileList || fileList.length === 0) return;
 
   const files = Array.from(fileList);
-  const videoFiles = files
-    .filter((file) => core.isLikelyVideoUrl(file.name))
+  const entries = files
+    .filter((file) => {
+      const lower = file.name.toLowerCase();
+      return (
+        core.isLikelyVideoUrl(file.name) ||
+        lower.endsWith(".m3u8") ||
+        lower.endsWith(".m4s") ||
+        lower === "metadata.json"
+      );
+    })
     .map((file) => {
       const relPath = file.webkitRelativePath || file.name;
       const pathParts = relPath.split("/");
@@ -483,7 +642,7 @@ function handleLocalFolderInput(event) {
   const samplePath = (fileList[0] && fileList[0].webkitRelativePath) || "";
   const rootFolderName = samplePath.split("/")[0] || "Imported Folder";
 
-  addLocalVideoFiles(videoFiles, rootFolderName);
+  await processImportedFolderEntries(entries, rootFolderName);
   event.target.value = "";
 }
 
@@ -1338,7 +1497,7 @@ function renderPlayer() {
   const hasOfflineCopy = Boolean(video.offlineUrl && !video.offlineStale);
   if (hasOfflineCopy) {
     els.playerShell.dataset.mode = "video";
-    if (/\.m3u8([?#].*)?$/i.test(video.offlineUrl)) {
+    if (video.format === "hls" || video.offlineFormat === "hls" || /\.m3u8([?#].*)?$/i.test(video.offlineUrl)) {
       loadHlsVideo(video.offlineUrl, true);
     } else {
       els.videoPlayer.onloadedmetadata = () => setPlayerStatus("Offline copy ready.");
@@ -1391,7 +1550,7 @@ function renderPlayer() {
   }
 
   els.playerShell.dataset.mode = "video";
-  if (/\.m3u8([?#].*)?$/i.test(video.url)) {
+  if (video.format === "hls" || /\.m3u8([?#].*)?$/i.test(video.url)) {
     loadHlsVideo(video.url, false);
     return;
   }
@@ -1418,16 +1577,22 @@ function loadHlsVideo(url, isOffline = false) {
   if (window.Hls?.isSupported()) {
     let recoveredMediaError = false;
     destroyHlsPlayer();
-    hlsPlayer = new window.Hls({
+    const hlsConfig = {
       enableWorker: true,
       lowLatencyMode: false,
       backBufferLength: 90,
-    });
+    };
+    if (url.includes("/hls-package/")) {
+      hlsConfig.loader = PackageHlsLoader;
+    }
+    hlsPlayer = new window.Hls(hlsConfig);
     hlsPlayer.loadSource(url);
     hlsPlayer.attachMedia(els.videoPlayer);
     hlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, () => {
       const msg = isOffline
         ? "Offline copy ready to play from disk."
+        : url.includes("/hls-package/")
+        ? "Offline HLS package ready with audio/video segments."
         : url.includes("/local-media/")
         ? "Local HLS video ready to play with audio/video segments."
         : "Video stream ready to play.";
@@ -2008,27 +2173,96 @@ async function handleVerifyOfflineButtonClick() {
         } catch {}
       }
 
+      if (video.packageId && offlinePackageFiles.has(video.packageId)) {
+        const fileMap = offlinePackageFiles.get(video.packageId);
+        const manifestFile = fileMap.get("master.m3u8") || fileMap.get("playlist.m3u8");
+        let healthy = false;
+        let missingFiles = [];
+        let emptyFiles = [];
+        let pkgBytes = 0;
+        for (const [k, f] of fileMap.entries()) {
+          if (!k.includes("/")) {
+            pkgBytes += f.size || 0;
+          }
+          if (f.size <= 0) emptyFiles.push(k);
+        }
+
+        if (manifestFile) {
+          try {
+            const masterText = await manifestFile.text();
+            const subPlaylists = {};
+            for (const [k, f] of fileMap.entries()) {
+              if (k.endsWith(".m3u8") && f !== manifestFile) {
+                subPlaylists[k] = await f.text();
+              }
+            }
+            const reqs = core.parseOfflineArchiveRequirements(masterText, subPlaylists);
+            const verifyRes = await core.verifyArchive(reqs, async (p) => {
+              const file = fileMap.get(p) || fileMap.get(p.toLowerCase());
+              if (!file) return { exists: false, size: 0, sample: null };
+              return { exists: true, size: file.size, sample: null };
+            });
+            healthy = verifyRes.healthy;
+            missingFiles = verifyRes.missingFiles;
+          } catch {
+            healthy = false;
+          }
+        } else {
+          healthy = fileMap.size > 0 && emptyFiles.length === 0;
+        }
+
+        const result = {
+          healthy,
+          playable: healthy,
+          totalBytes: pkgBytes,
+          validFiles: Array.from(fileMap.keys()),
+          missingFiles,
+          corruptedFiles: emptyFiles,
+          videoSegments: { expected: fileMap.size, found: fileMap.size - missingFiles.length },
+          audioSegments: { expected: 0, found: 0 },
+          message: healthy
+            ? `In-memory HLS package intact (${formatBytes(pkgBytes)}). Ready to play.`
+            : `Incomplete package: missing ${missingFiles.length} file(s).`,
+        };
+        video.offlineVerified = true;
+        video.offlineVerification = result;
+        verifiedCount++;
+        if (healthy) {
+          healthyCount++;
+          totalBytes += pkgBytes;
+        } else {
+          incompleteCount++;
+          issues.push(`“${video.title}”: ${result.message}`);
+        }
+        renderLibrary();
+        continue;
+      }
+
       if (!folderHandle && video.offlineUrl) {
         try {
-          const res = await fetch(`/api/offline/files?id=${encodeURIComponent(video.id)}`);
+          let query = `id=${encodeURIComponent(video.offlineCopyId || video.id || "")}`;
+          if (video.offlineUrl.startsWith("/local-media/")) {
+            const rem = video.offlineUrl.slice("/local-media/".length);
+            const sIdx = rem.indexOf("/");
+            const baseDir = decodeURIComponent(sIdx >= 0 ? rem.slice(0, sIdx) : rem);
+            query += `&path=${encodeURIComponent(baseDir)}`;
+          }
+          const res = await fetch(`/api/offline/files?${query}`);
           if (res.ok) {
             const data = await res.json();
-            const hasVideo = data.files?.some((f) => f.path.includes("video") || f.path.endsWith(".mp4") || f.path.endsWith(".m3u8"));
-            const hasAudio = data.files?.some((f) => f.path.includes("audio"));
-            const emptyFiles = data.files?.filter((f) => f.size <= 0) || [];
-            const healthy = (hasVideo || hasAudio) && emptyFiles.length === 0;
+            const healthy = data.healthy ?? (data.files?.length > 0 && (data.emptyFiles || []).length === 0);
             const result = {
               healthy,
-              playable: healthy,
+              playable: data.playable ?? healthy,
               totalBytes: data.size || 0,
               validFiles: (data.files || []).map((f) => f.path),
-              missingFiles: [],
-              corruptedFiles: emptyFiles.map((f) => f.path),
-              videoSegments: { expected: data.files?.length || 0, found: data.files?.length || 0 },
+              missingFiles: data.missingFiles || [],
+              corruptedFiles: data.emptyFiles || [],
+              videoSegments: { expected: data.expectedCount || data.files?.length || 0, found: data.foundCount || data.files?.length || 0 },
               audioSegments: { expected: 0, found: 0 },
-              message: healthy
+              message: data.message || (healthy
                 ? `Verified server copy: all ${data.files?.length || 0} files intact (${formatBytes(data.size || 0)}). Playable.`
-                : `Incomplete server copy: ${emptyFiles.length} corrupted file(s).`,
+                : `Incomplete server copy: ${data.missingFiles?.length || 0} missing segment(s).`),
             };
             video.offlineVerified = true;
             video.offlineVerification = result;
