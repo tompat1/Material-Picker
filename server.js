@@ -257,6 +257,21 @@ async function handleTranscript(response, requestUrl) {
   }
 }
 
+async function handleStream(response, requestUrl) {
+  const videoUrl = requestUrl.searchParams.get("url");
+  if (!videoUrl) return sendJson(response, 400, { error: "A video URL is required." });
+  try {
+    const source = await resolveOfflineSource(videoUrl);
+    return sendJson(response, 200, {
+      url: source.url,
+      type: source.type,
+      provider: source.provider,
+    });
+  } catch (error) {
+    return sendJson(response, 404, { error: error.message || "A stream could not be resolved." });
+  }
+}
+
 function readJsonBody(request, maxBytes = MAX_TRANSLATION_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -1220,6 +1235,9 @@ function startServer() {
     if (request.method === "GET" && requestUrl.pathname === "/api/transcript") {
       return handleTranscript(response, requestUrl);
     }
+    if (request.method === "GET" && requestUrl.pathname === "/api/stream") {
+      return handleStream(response, requestUrl);
+    }
     if (request.method === "POST" && requestUrl.pathname === "/api/translate") {
       return handleTranslate(request, response);
     }
@@ -1289,6 +1307,7 @@ module.exports = {
   getVimeoTranscript,
   handleProofread,
   handleScanFolder,
+  handleStream,
   handleTranscribe,
   handleTranslate,
   isHlsPackageDirectory,
@@ -1299,6 +1318,7 @@ module.exports = {
   pcmBufferToFloat32,
   proofreadText,
   resolveLocalPath,
+  resolveOfflineSource,
   sanitizeOfflineMaster,
   safeVideoId,
   scanDirectoryForVideos,

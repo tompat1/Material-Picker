@@ -16,6 +16,7 @@ const {
   pcmBufferToFloat32,
   proofreadText,
   resolveLocalPath,
+  resolveOfflineSource,
   sanitizeOfflineMaster,
   safeVideoId,
   scanDirectoryForVideos,
@@ -273,5 +274,15 @@ test("decodes PCM whose byte offset is not aligned for Int16Array", () => {
   assert.equal(samples.length, 2);
   assert.ok(Math.abs(samples[0] - 0.5) < 0.001);
   assert.ok(Math.abs(samples[1] + 0.5) < 0.001);
+});
+
+test("resolves direct media and HLS stream sources", async () => {
+  const direct = await resolveOfflineSource("https://example.com/video.mp4");
+  assert.equal(direct.type, "file");
+  assert.equal(direct.url, "https://example.com/video.mp4");
+
+  const hls = await resolveOfflineSource("https://example.com/stream.m3u8");
+  assert.equal(hls.type, "hls");
+  assert.equal(hls.url, "https://example.com/stream.m3u8");
 });
 

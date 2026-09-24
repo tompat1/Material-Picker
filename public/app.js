@@ -1149,6 +1149,50 @@ function renderForm() {
   if (video?.sourceUrl) setSourceFrame(video.sourceUrl, false);
 }
 
+async function resolveVideoStream(video) {
+  if (!video?.url) return null;
+  if (video.offlineUrl && !video.offlineStale) return video.offlineUrl;
+  if (video.streamUrl) return video.streamUrl;
+  if (/\.m3u8(?:[?#].*)?$/i.test(video.url) || /\.(?:mp4|webm|ogv|ogg|mov|m4v)(?:[?#].*)?$/i.test(video.url)) {
+    video.streamUrl = video.url;
+    return video.url;
+  }
+  try {
+    const res = await fetch(`/api/stream?url=${encodeURIComponent(video.url)}`, {
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.url) {
+      video.streamUrl = data.url;
+      video.streamType = data.type;
+      video.streamProvider = data.provider;
+      return data.url;
+    }
+  } catch (err) {
+    console.warn("Could not resolve video stream:", err);
+  }
+  return null;
+}
+
+async function ensurePlayerPlaying() {
+  if (els.playerShell.dataset.mode === "video") {
+    try {
+      if (els.videoPlayer.paused) {
+        await els.videoPlayer.play();
+      }
+    } catch (error) {
+      console.warn("Automatic video playback could not be started:", error);
+    }
+  } else if (els.playerShell.dataset.mode === "embed") {
+    try {
+      els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ method: "play" }), "*");
+      els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "playVideo" }), "*");
+    } catch (error) {
+      console.warn("Automatic embed playback could not be started:", error);
+    }
+  }
+}
+
 function renderPlayer() {
   const video = selectedVideo();
   destroyHlsPlayer();
@@ -1177,8 +1221,52 @@ function renderPlayer() {
   }
 
   const hasOfflineCopy = Boolean(video.offlineUrl && !video.offlineStale);
-  const playbackUrl = hasOfflineCopy ? video.offlineUrl : video.url;
-  const embedUrl = hasOfflineCopy ? "" : toEmbedUrl(playbackUrl);
+  if (hasOfflineCopy) {
+    els.playerShell.dataset.mode = "video";
+    if (/\.m3u8([?#].*)?$/i.test(video.offlineUrl)) {
+      loadHlsVideo(video.offlineUrl, true);
+    } else {
+      els.videoPlayer.onloadedmetadata = () => setPlayerStatus("Offline copy ready.");
+      els.videoPlayer.onerror = () => setPlayerStatus("The browser could not load this saved video copy.");
+      els.videoPlayer.src = video.offlineUrl;
+      setPlayerStatus("Loading the saved disk copy...");
+    }
+    return;
+  }
+
+  if (video.streamUrl) {
+    els.playerShell.dataset.mode = "video";
+    if (/\.m3u8([?#].*)?$/i.test(video.streamUrl)) {
+      loadHlsVideo(video.streamUrl, false);
+    } else {
+      els.videoPlayer.onloadedmetadata = () => setPlayerStatus("Video ready.");
+      els.videoPlayer.onerror = () => setPlayerStatus("This media server blocked browser playback.");
+      els.videoPlayer.src = video.streamUrl;
+      setPlayerStatus("Loading direct video...");
+    }
+    return;
+  }
+
+  if (/vimeo\.com/i.test(video.url)) {
+    const videoId = video.id;
+    const embedUrl = toEmbedUrl(video.url);
+    setPlayerStatus("Connecting to video stream...");
+    resolveVideoStream(video).then((streamUrl) => {
+      if (state.selectedId !== videoId) return;
+      if (streamUrl) {
+        els.playerShell.dataset.mode = "video";
+        loadHlsVideo(streamUrl, false);
+      } else if (embedUrl) {
+        els.embedPlayer.onload = () => markSelectedPlaybackReady(videoId, "The provider player loaded successfully.");
+        els.embedPlayer.src = embedUrl;
+        els.playerShell.dataset.mode = "embed";
+        setPlayerStatus("Loading the provider's embedded player.");
+      }
+    });
+    return;
+  }
+
+  const embedUrl = toEmbedUrl(video.url);
   if (embedUrl) {
     els.embedPlayer.onload = () => markSelectedPlaybackReady(video.id, "The provider player loaded successfully.");
     els.embedPlayer.src = embedUrl;
@@ -1188,17 +1276,16 @@ function renderPlayer() {
   }
 
   els.playerShell.dataset.mode = "video";
-  if (/\.m3u8([?#].*)?$/i.test(playbackUrl)) {
-    const isLocalHls = hasOfflineCopy || playbackUrl.startsWith("/offline-media/") || playbackUrl.startsWith("/local-media/");
-    loadHlsVideo(playbackUrl, isLocalHls);
+  if (/\.m3u8([?#].*)?$/i.test(video.url)) {
+    loadHlsVideo(video.url, false);
     return;
   }
 
-  els.videoPlayer.onloadedmetadata = () => setPlayerStatus(hasOfflineCopy ? "Offline copy ready." : "Video ready.");
+  els.videoPlayer.onloadedmetadata = () => setPlayerStatus("Video ready.");
   els.videoPlayer.onerror = () =>
     setPlayerStatus("This media server blocked browser playback. Try Open original or verify that the link is still public.");
-  els.videoPlayer.src = playbackUrl;
-  setPlayerStatus(hasOfflineCopy ? "Loading the saved disk copy..." : "Loading direct video...");
+  els.videoPlayer.src = video.url;
+  setPlayerStatus("Loading direct video...");
 }
 
 function markSelectedPlaybackReady(videoId, message) {
@@ -1213,9 +1300,9 @@ function markSelectedPlaybackReady(videoId, message) {
 }
 
 function loadHlsVideo(url, isOffline = false) {
-  const isLocalStream = url.startsWith("/offline-media/") || url.startsWith("/local-media/");
-  if ((isOffline || isLocalStream) && window.Hls?.isSupported()) {
+  if (window.Hls?.isSupported()) {
     let recoveredMediaError = false;
+    destroyHlsPlayer();
     hlsPlayer = new window.Hls({
       enableWorker: true,
       lowLatencyMode: false,
@@ -1224,9 +1311,11 @@ function loadHlsVideo(url, isOffline = false) {
     hlsPlayer.loadSource(url);
     hlsPlayer.attachMedia(els.videoPlayer);
     hlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, () => {
-      const msg = url.includes("/local-media/")
+      const msg = isOffline
+        ? "Offline copy ready to play from disk."
+        : url.includes("/local-media/")
         ? "Local HLS video ready to play with audio/video segments."
-        : "Offline copy ready to play from disk.";
+        : "Video stream ready to play.";
       setPlayerStatus(msg);
       if (state.selectedId) markSelectedPlaybackReady(state.selectedId, msg);
     });
@@ -1234,14 +1323,20 @@ function loadHlsVideo(url, isOffline = false) {
       if (!data.fatal) return;
       if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && !recoveredMediaError) {
         recoveredMediaError = true;
-        setPlayerStatus("Recovering the saved video playback...");
+        setPlayerStatus("Recovering the video stream playback...");
         hlsPlayer.recoverMediaError();
         return;
       }
-      const reason = data.details || data.type || "local stream error";
-      setPlayerStatus(`The stream could not be played (${reason}). Retry it or check folder.`);
+      const reason = data.details || data.type || "stream error";
+      setPlayerStatus(`The stream could not be played (${reason}). Retry it or check connection.`);
     });
-    setPlayerStatus(url.includes("/local-media/") ? "Loading local HLS stream with separate audio/video segments..." : "Loading the saved HLS copy from disk...");
+    setPlayerStatus(
+      isOffline
+        ? "Loading the saved HLS copy from disk..."
+        : url.includes("/local-media/")
+        ? "Loading local HLS stream with separate audio/video segments..."
+        : "Loading video stream..."
+    );
     return;
   }
 
@@ -1257,22 +1352,6 @@ function loadHlsVideo(url, isOffline = false) {
       );
     els.videoPlayer.src = url;
     setPlayerStatus(isOffline ? "Loading the saved HLS copy from disk..." : "Loading HLS with native playback...");
-    return;
-  }
-
-  if (window.Hls?.isSupported()) {
-    hlsPlayer = new window.Hls({ enableWorker: true, lowLatencyMode: false });
-    hlsPlayer.loadSource(url);
-    hlsPlayer.attachMedia(els.videoPlayer);
-    hlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, () =>
-      setPlayerStatus(isOffline ? "Offline HLS copy ready." : "HLS stream ready with the compatibility player.")
-    );
-    hlsPlayer.on(window.Hls.Events.ERROR, (_, data) => {
-      if (!data.fatal) return;
-      const reason = data.details || data.type || "stream error";
-      setPlayerStatus(`HLS playback failed (${reason}). The host may require CORS access or the stream may have expired.`);
-    });
-    setPlayerStatus(isOffline ? "Loading the saved HLS copy from disk..." : "Loading HLS with the compatibility player...");
     return;
   }
 
@@ -2219,13 +2298,7 @@ async function startTranscription() {
   els.transcriptText.value = "";
   updateTranscriptFields();
 
-  try {
-    if (els.videoPlayer.paused) {
-      await els.videoPlayer.play();
-    }
-  } catch (error) {
-    console.warn("Automatic video playback could not be started:", error);
-  }
+  await ensurePlayerPlaying();
 
   if (/vimeo\.com/i.test(video.url)) {
     setTranscriptButtons(false, true);
@@ -2246,12 +2319,27 @@ async function startTranscription() {
       setTranscriptButtons(false);
       setTranscriptStatus(`Loaded ${data.cueCount} timed caption cues (${data.label || data.language}).`);
       setStatus("The provider caption track was saved as this video's transcript.");
+      await ensurePlayerPlaying();
       return;
     } catch (error) {
       setTranscriptStatus(`${error.message} Transcribing using video audio tracks instead.`, "working");
     }
   }
 
+  let streamUrl = currentPlaybackUrl(video);
+  if (!/\.m3u8(?:[?#].*)?$/i.test(streamUrl) && /vimeo\.com/i.test(video.url)) {
+    setTranscriptStatus("Resolving audio stream...", "working");
+    const resolved = await resolveVideoStream(video);
+    if (resolved) {
+      streamUrl = resolved;
+      if (els.playerShell.dataset.mode !== "video" || !els.videoPlayer.src) {
+        els.playerShell.dataset.mode = "video";
+        loadHlsVideo(streamUrl, false);
+      }
+    }
+  }
+
+  await ensurePlayerPlaying();
   await startAudioTrackTranscription(video);
 }
 
@@ -2260,7 +2348,8 @@ function collectAudioSamples(inputData, sampleRate) {
   const downsampled = downsampleTo16k(inputData, sampleRate);
   accumulatedSamples.push(downsampled);
   accumulatedLength += downsampled.length;
-  if (accumulatedLength >= TRANSCRIBE_CHUNK_SAMPLES && !isTranscribingChunk) {
+  const threshold = els.transcriptText.value.trim() ? TRANSCRIBE_CHUNK_SAMPLES : TRANSCRIBE_SAMPLE_RATE * 5;
+  if (accumulatedLength >= threshold && !isTranscribingChunk) {
     processPendingAudioChunk();
   }
 }
@@ -2283,12 +2372,18 @@ function haltAudioCapture() {
 
 function currentPlaybackUrl(video = selectedVideo()) {
   if (video?.offlineUrl && !video.offlineStale) return video.offlineUrl;
+  if (video?.streamUrl) return video.streamUrl;
   return video?.url || "";
 }
 
-async function startAudioTrackTranscription() {
+async function startAudioTrackTranscription(video = selectedVideo()) {
   haltAudioCapture();
-  const playbackUrl = currentPlaybackUrl();
+  let playbackUrl = currentPlaybackUrl(video);
+  if (!/\.m3u8(?:[?#].*)?$/i.test(playbackUrl) && video?.url && /vimeo\.com/i.test(video.url)) {
+    setTranscriptStatus("Resolving audio stream...", "working");
+    const stream = await resolveVideoStream(video);
+    if (stream) playbackUrl = stream;
+  }
   if (/\.m3u8(?:[?#].*)?$/i.test(playbackUrl)) {
     await transcribeHlsAudio(playbackUrl);
     return;
@@ -2301,8 +2396,9 @@ async function transcribeHlsAudio(playbackUrl) {
   hlsAbort = new AbortController();
   audioTrackTranscribing = true;
   setTranscriptButtons(true);
-  setTranscriptStatus("Reading the saved audio track from the stream.", "working");
-  setStatus("Transcribing the stream's audio segments. Playback can stay paused.");
+  setTranscriptStatus("Reading audio track from the stream...", "working");
+  setStatus("Transcribing the stream's audio segments. Keep the video playing.");
+  await ensurePlayerPlaying();
 
   try {
     const plan = await loadHlsAudioPlan(playbackUrl, hlsAbort.signal);
@@ -2318,12 +2414,15 @@ async function transcribeHlsAudio(playbackUrl) {
     if (!audioContext) audioContext = new AudioContextClass();
     if (audioContext.state === "suspended") await audioContext.resume();
 
+    let isFirst = true;
     while (stillTranscribingHls(token) && index < plan.segments.length) {
-      const audioWindow = takeHlsWindow(plan.segments, index, 12);
+      const windowDuration = isFirst && !els.transcriptText.value.trim() ? 6 : 12;
+      const audioWindow = takeHlsWindow(plan.segments, index, windowDuration);
       index += audioWindow.length;
+      isFirst = false;
       const start = audioWindow[0].start;
       const end = audioWindow[audioWindow.length - 1].start + audioWindow[audioWindow.length - 1].duration;
-      setTranscriptStatus(`Reading audio ${formatTime(start)}–${formatTime(end)}.`, "working");
+      setTranscriptStatus(`Transcribing ${formatTime(start)}–${formatTime(end)}...`, "working");
       const samples = await decodeHlsAudioWindow(audioContext, plan.initUrl, audioWindow, hlsAbort.signal);
       if (!stillTranscribingHls(token)) return;
       await submitTranscriptSamples(samples, start, end, hlsAbort.signal);
@@ -2331,10 +2430,9 @@ async function transcribeHlsAudio(playbackUrl) {
     finishHlsTranscription(token);
   } catch (error) {
     if (!stillTranscribingHls(token) || error.name === "AbortError") return;
-    audioTrackTranscribing = false;
-    setTranscriptButtons(false);
-    setTranscriptStatus(`Transcription failed: ${error.message}`, "error");
-    setStatus(`Transcription failed: ${error.message}`);
+    console.warn("HLS transcription failed, trying element tap:", error);
+    setTranscriptStatus(`Stream audio decoding failed (${error.message}). Tapping video playback instead...`, "working");
+    await startElementTapTranscription();
   }
 }
 
@@ -2525,6 +2623,11 @@ async function startElementTapTranscription() {
     return;
   }
   if (els.videoPlayer.paused) {
+    try {
+      await els.videoPlayer.play();
+    } catch {}
+  }
+  if (els.videoPlayer.paused) {
     if (tap.kind === "stream") {
       try {
         tap.source.disconnect();
@@ -2636,7 +2739,8 @@ async function processPendingAudioChunk() {
     setStatus(`Transcription failed: ${error.message}`);
   } finally {
     isTranscribingChunk = false;
-    const shouldContinue = audioTrackTranscribing && accumulatedLength >= TRANSCRIBE_CHUNK_SAMPLES;
+    const chunkThreshold = els.transcriptText.value.trim() ? TRANSCRIBE_CHUNK_SAMPLES : TRANSCRIBE_SAMPLE_RATE * 5;
+    const shouldContinue = audioTrackTranscribing && accumulatedLength >= chunkThreshold;
     const shouldFlushTail = !audioTrackTranscribing && accumulatedLength > TRANSCRIBE_SAMPLE_RATE / 2;
     if (shouldContinue || shouldFlushTail) processPendingAudioChunk();
   }
