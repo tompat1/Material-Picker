@@ -268,6 +268,7 @@
               </button>
             </div>
             <div class="bulk-download-progress" id="bulkDownloadProgress" hidden>
+              <span class="amber-throbber amber-throbber--xs" aria-hidden="true"></span>
               <progress id="bulkOfflineProgress" max="100" value="0"></progress>
               <span id="bulkOfflineProgressLabel">Preparing downloads...</span>
             </div>
@@ -293,6 +294,13 @@
               <div id="emptyPlayer" class="empty-player">
                 <strong>Screen is dark</strong>
                 <span class="empty-caption">Pick a reel from the library.</span>
+              </div>
+              <div id="playerLoadingOverlay" class="player-loading-overlay" hidden aria-hidden="true">
+                <div class="amber-throbber amber-throbber--lg">
+                  <span class="amber-throbber-track"></span>
+                  <span class="amber-throbber-spokes"></span>
+                </div>
+                <p class="player-loading-text" id="playerLoadingText">Connecting to stream...</p>
               </div>
             </div>
 

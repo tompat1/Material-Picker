@@ -1155,13 +1155,14 @@ function resolveLocalPath(inputPath) {
 function isHlsPackageDirectory(entries) {
   const fileNames = new Set(entries.filter((e) => e.isFile()).map((e) => e.name.toLowerCase()));
   const dirNames = new Set(entries.filter((e) => e.isDirectory()).map((e) => e.name.toLowerCase()));
+  const actualFile = (lower) => entries.find((e) => e.isFile() && e.name.toLowerCase() === lower)?.name;
 
-  if (fileNames.has("master.m3u8")) return "master.m3u8";
-  if (fileNames.has("index.m3u8")) return "index.m3u8";
+  if (fileNames.has("master.m3u8")) return actualFile("master.m3u8");
+  if (fileNames.has("index.m3u8")) return actualFile("index.m3u8");
   if (fileNames.has("playlist.m3u8") && (dirNames.has("audio") || dirNames.has("video") || dirNames.has("segments"))) {
-    return "playlist.m3u8";
+    return actualFile("playlist.m3u8");
   }
-  if ((dirNames.has("audio") || dirNames.has("video")) && entries.some((e) => e.isFile() && e.name.toLowerCase().endsWith(".m3u8"))) {
+  if ((dirNames.has("audio") || dirNames.has("video") || dirNames.has("segments")) && entries.some((e) => e.isFile() && e.name.toLowerCase().endsWith(".m3u8"))) {
     const m3u8File = entries.find((e) => e.isFile() && e.name.toLowerCase().endsWith(".m3u8"));
     return m3u8File.name;
   }

@@ -47,6 +47,8 @@ const els = {
   openVideoButton: document.querySelector("#openVideoButton"),
   parsePasteButton: document.querySelector("#parsePasteButton"),
   playerShell: document.querySelector(".player-shell"),
+  playerLoadingOverlay: document.querySelector("#playerLoadingOverlay"),
+  playerLoadingText: document.querySelector("#playerLoadingText"),
   proofreadButton: document.querySelector("#proofreadButton"),
   proofreadStripTimestamps: document.querySelector("#proofreadStripTimestamps"),
   proofreadGroupSpeakers: document.querySelector("#proofreadGroupSpeakers"),
@@ -125,33 +127,42 @@ class PackageHlsLoader {
       let requestedPath = decodeURIComponent(match[2]).split("?")[0].replace(/^\/+/, "");
       const fileMap = offlinePackageFiles.get(packageId);
       if (fileMap) {
-        let file = fileMap.get(requestedPath) || fileMap.get(requestedPath.toLowerCase());
-        if (!file) {
+        let target = fileMap.get(requestedPath) || fileMap.get(requestedPath.toLowerCase());
+        if (!target) {
           for (const [key, val] of fileMap.entries()) {
             const lKey = key.toLowerCase();
             const lReq = requestedPath.toLowerCase();
             if (lKey === lReq || lKey.endsWith("/" + lReq) || lReq.endsWith("/" + lKey)) {
-              file = val;
+              target = val;
               break;
             }
           }
         }
-        if (file) {
+        if (target) {
+          const resolveFile = () => {
+            if (target instanceof File) return Promise.resolve(target);
+            if (target.file instanceof File) return Promise.resolve(target.file);
+            if (typeof target.handle?.getFile === "function") return target.handle.getFile();
+            return Promise.reject(new Error("File handle not readable"));
+          };
+
           const isText = context.responseType === "text" || requestedPath.endsWith(".m3u8");
-          const readPromise = isText ? file.text() : file.arrayBuffer();
           const trequest = performance.now();
-          readPromise
-            .then((data) => {
-              const tload = performance.now();
-              const stats = {
-                trequest,
-                tfirst: tload,
-                tload,
-                loaded: file.size,
-                total: file.size,
-                bwQuote: file.size,
-              };
-              callbacks.onSuccess({ url: context.url, data, code: 200 }, stats, context);
+          resolveFile()
+            .then((file) => {
+              const readPromise = isText ? file.text() : file.arrayBuffer();
+              return readPromise.then((data) => {
+                const tload = performance.now();
+                const stats = {
+                  trequest,
+                  tfirst: tload,
+                  tload,
+                  loaded: file.size,
+                  total: file.size,
+                  bwQuote: file.size,
+                };
+                callbacks.onSuccess({ url: context.url, data, code: 200 }, stats, context);
+              });
             })
             .catch((err) => {
               callbacks.onError({ code: 404, text: err.message }, context);
@@ -228,6 +239,9 @@ function bindEvents() {
   els.translateButton.addEventListener("click", translateTranscript);
   els.proofreadButton.addEventListener("click", proofreadTranscript);
   els.downloadTranscriptButton.addEventListener("click", downloadTranscript);
+  els.videoPlayer?.addEventListener("playing", hidePlayerLoading);
+  els.videoPlayer?.addEventListener("canplay", hidePlayerLoading);
+  els.videoPlayer?.addEventListener("loadeddata", hidePlayerLoading);
 }
 
 function isLocalServer() {
@@ -280,18 +294,19 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
           ? rel.slice(pkg.rootPrefix.length + 1)
           : rel
         : rel;
-      fileMap.set(innerPath, e.file);
-      fileMap.set(innerPath.toLowerCase(), e.file);
-      fileMap.set(e.name, e.file);
-      fileMap.set(e.name.toLowerCase(), e.file);
-      totalBytes += Number(e.file?.size || 0);
+      fileMap.set(innerPath, e);
+      fileMap.set(innerPath.toLowerCase(), e);
+      fileMap.set(e.name, e);
+      fileMap.set(e.name.toLowerCase(), e);
+      totalBytes += Number(e.file?.size || e.size || 0);
     });
     offlinePackageFiles.set(packageId, fileMap);
 
     let meta = null;
     if (pkg.metadataEntry) {
       try {
-        meta = JSON.parse(await pkg.metadataEntry.file.text());
+        const metaFile = pkg.metadataEntry.file || (await pkg.metadataEntry.handle?.getFile());
+        if (metaFile) meta = JSON.parse(await metaFile.text());
       } catch {}
     }
 
@@ -335,7 +350,14 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
   }
 
   // Process standalone video entries
-  standaloneEntries.forEach(({ file, name, relPath }) => {
+  for (const item of standaloneEntries) {
+    let file = item.file;
+    if (!file && item.handle?.getFile) {
+      try { file = await item.handle.getFile(); } catch {}
+    }
+    if (!file) continue;
+    const name = item.name;
+    const relPath = item.relPath;
     const title = name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
     const objectUrl = URL.createObjectURL(file);
     const pathParts = (relPath || "").split("/");
@@ -363,7 +385,7 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
     state.videos.unshift(nextVideo);
     if (!firstAddedId) firstAddedId = nextVideo.id;
     addedCount += 1;
-  });
+  }
 
   if (firstAddedId) {
     state.selectedId = firstAddedId;
@@ -386,42 +408,55 @@ function addLocalVideoFiles(videoFiles, rootFolderName, defaultCollectionId = ""
 async function importFromDirectoryHandle(dirHandle) {
   const rootFolderName = dirHandle.name || "Imported Folder";
   if (els.folderPath) els.folderPath.value = rootFolderName;
-  setStatus(`Scanning “${rootFolderName}” and all subfolders for videos...`);
+  setStatus(`Scanning “${rootFolderName}” and all subfolders for videos...`, true);
   if (els.scanFolderButton) els.scanFolderButton.disabled = true;
 
   try {
     const entries = [];
 
     async function walk(handle, pathParts = []) {
-      for await (const entry of handle.values()) {
-        if (entry.kind === "file") {
-          const lowerName = entry.name.toLowerCase();
-          if (
-            core.isLikelyVideoUrl(entry.name) ||
-            lowerName.endsWith(".m3u8") ||
-            lowerName.endsWith(".m4s") ||
-            lowerName === "metadata.json"
-          ) {
-            const file = await entry.getFile();
-            entries.push({
-              file,
-              name: entry.name,
-              subfolders: pathParts,
-              relPath: [...pathParts, entry.name].join("/"),
-            });
-          }
-        } else if (entry.kind === "directory") {
-          if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
-            await walk(entry, [...pathParts, entry.name]);
+      try {
+        for await (const entry of handle.values()) {
+          try {
+            if (entry.kind === "file") {
+              const lowerName = entry.name.toLowerCase();
+              if (
+                core.isLikelyVideoUrl(entry.name) ||
+                lowerName.endsWith(".m3u8") ||
+                lowerName.endsWith(".m4s") ||
+                lowerName.endsWith(".ts") ||
+                lowerName === "metadata.json"
+              ) {
+                let file = null;
+                if (lowerName === "metadata.json") {
+                  try { file = await entry.getFile(); } catch {}
+                }
+                entries.push({
+                  file,
+                  handle: entry,
+                  name: entry.name,
+                  subfolders: pathParts,
+                  relPath: [...pathParts, entry.name].join("/"),
+                });
+              }
+            } else if (entry.kind === "directory") {
+              if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
+                await walk(entry, [...pathParts, entry.name]);
+              }
+            }
+          } catch (entryErr) {
+            console.warn("Skipping file entry:", entry.name, entryErr);
           }
         }
+      } catch (dirErr) {
+        console.warn("Skipping directory:", pathParts.join("/"), dirErr);
       }
     }
 
     await walk(dirHandle, []);
     await processImportedFolderEntries(entries, rootFolderName);
   } catch (error) {
-    setStatus(`Folder import error: ${error.message}`);
+    setStatus(`Folder import error: ${error.message}`, false);
   } finally {
     if (els.scanFolderButton) els.scanFolderButton.disabled = false;
   }
@@ -456,7 +491,8 @@ async function handleBrowseFolder() {
       try { data = JSON.parse(text); } catch {}
       if (data?.supported && data.chosenPath) {
         els.folderPath.value = data.chosenPath;
-        setStatus(`Selected folder: ${data.chosenPath}. Click Scan to import.`);
+        setStatus(`Selected folder: “${data.chosenPath}”. Scanning for videos...`, true);
+        await scanFolderPath(data.chosenPath);
         return;
       }
       if (data?.supported && data.cancelled) {
@@ -483,24 +519,28 @@ async function handleBrowseFolder() {
 }
 
 async function handleFolderScan(event) {
-  event.preventDefault();
+  if (event?.preventDefault) event.preventDefault();
   const folderPath = els.folderPath.value.trim();
 
   if (!isLocalServer()) {
-    setStatus("Select the local folder from your computer to scan videos...");
+    setStatus("Select the local folder from your computer to scan videos...", false);
     handleBrowseFolder();
     return;
   }
 
   if (!folderPath) {
-    setStatus("Enter or browse for a local folder path first.");
+    setStatus("Enter or browse for a local folder path first.", false);
     return;
   }
 
+  await scanFolderPath(folderPath);
+}
+
+async function scanFolderPath(folderPath) {
   state.lastScannedFolder = folderPath;
   saveState();
   renderRecentSources();
-  setStatus(`Scanning folder “${folderPath}” and all nested subfolders...`);
+  setStatus(`Scanning folder “${folderPath}” and all nested subfolders...`, true);
   if (els.scanFolderButton) els.scanFolderButton.disabled = true;
 
   try {
@@ -522,7 +562,7 @@ async function handleFolderScan(event) {
 
     const { folderName, videos = [], totalCount = 0 } = result;
     if (totalCount === 0 || videos.length === 0) {
-      setStatus(`Scanned “${folderName}” (including subfolders), but found no supported video files.`);
+      setStatus(`Scanned “${folderName}” (including subfolders), but found no supported video files.`, false);
       return;
     }
 
@@ -545,10 +585,12 @@ async function handleFolderScan(event) {
 
     let addedCount = 0;
     let firstAddedId = null;
+    let firstMatchedId = null;
 
     videos.forEach((item) => {
       const existing = state.videos.find((v) => v.url === item.url || (item.id && v.id === item.id));
       if (existing) {
+        if (!firstMatchedId) firstMatchedId = existing.id;
         if (collectionId && !existing.collectionId) {
           existing.collectionId = collectionId;
         }
@@ -596,8 +638,9 @@ async function handleFolderScan(event) {
       addedCount += 1;
     });
 
-    if (firstAddedId) {
-      state.selectedId = firstAddedId;
+    const targetId = firstAddedId || firstMatchedId;
+    if (targetId) {
+      state.selectedId = targetId;
     }
 
     saveState();
@@ -606,12 +649,14 @@ async function handleFolderScan(event) {
     const distinctSubfolders = new Set(videos.map((v) => v.subfolder).filter(Boolean));
     const subfolderInfo = distinctSubfolders.size > 0 ? ` across ${distinctSubfolders.size} subfolders` : "";
 
-    setStatus(
-      `Scraped ${addedCount} video ${addedCount === 1 ? "file" : "files"}${subfolderInfo} into “${folderName}”. Ready to play!`
-    );
-    if (addedCount) showDesk(addedCount === 1 ? "screen" : "reels");
+    const countMsg = addedCount > 0
+      ? `Scraped ${addedCount} new video ${addedCount === 1 ? "file" : "files"}${subfolderInfo} into “${folderName}”. Ready to play!`
+      : `Refreshed ${videos.length} video ${videos.length === 1 ? "file" : "files"}${subfolderInfo} in “${folderName}”. Selected and ready to play!`;
+
+    setStatus(countMsg, false);
+    showDesk("screen");
   } catch (error) {
-    setStatus(`Folder scan error: ${error.message}`);
+    setStatus(`Folder scan error: ${error.message}`, false);
   } finally {
     if (els.scanFolderButton) els.scanFolderButton.disabled = false;
   }
@@ -629,6 +674,7 @@ async function handleLocalFolderInput(event) {
         core.isLikelyVideoUrl(file.name) ||
         lower.endsWith(".m3u8") ||
         lower.endsWith(".m4s") ||
+        lower.endsWith(".ts") ||
         lower === "metadata.json"
       );
     })
@@ -1642,10 +1688,29 @@ function destroyHlsPlayer() {
   if (!hlsPlayer) return;
   hlsPlayer.destroy();
   hlsPlayer = null;
+  hidePlayerLoading();
+}
+
+function showPlayerLoading(text = "Connecting to stream...") {
+  if (!els.playerLoadingOverlay) return;
+  if (els.playerLoadingText) els.playerLoadingText.textContent = text;
+  els.playerLoadingOverlay.hidden = false;
+}
+
+function hidePlayerLoading() {
+  if (!els.playerLoadingOverlay) return;
+  els.playerLoadingOverlay.hidden = true;
 }
 
 function setPlayerStatus(message) {
-  els.playerStatus.textContent = message;
+  if (els.playerStatus) els.playerStatus.textContent = message;
+  const isConnectingOrLoading = /(?:Loading|Connecting|Recovering|Preparing)/i.test(message);
+  const isDarkOrReadyOrBlocked = /(?:Screen is dark|ready|blocked|could not|cannot play|expired|error)/i.test(message);
+  if (isConnectingOrLoading && !isDarkOrReadyOrBlocked) {
+    showPlayerLoading(message);
+  } else {
+    hidePlayerLoading();
+  }
 }
 
 function openVideoSource() {
@@ -3375,13 +3440,22 @@ function stopTranscription() {
 }
 
 function setTranscriptButtons(isRecording, isProcessing = false) {
-  els.startTranscriptButton.disabled = isRecording || isProcessing || !selectedVideo();
+  const busy = isRecording || isProcessing;
+  els.startTranscriptButton.disabled = busy || !selectedVideo();
+  els.startTranscriptButton.classList.toggle("is-busy", busy);
   els.stopTranscriptButton.disabled = !isRecording || isProcessing;
 }
 
 function setTranscriptStatus(message, tone = "ready") {
-  els.transcriptStatus.textContent = message;
   els.transcriptStatus.dataset.tone = tone;
+  if (tone === "working") {
+    els.transcriptStatus.innerHTML = `
+      <span class="transcript-status-icon amber-throbber amber-throbber--xs" aria-hidden="true"></span>
+      <span class="transcript-status-text">${escapeHtml(message)}</span>
+    `;
+  } else {
+    els.transcriptStatus.textContent = message;
+  }
 }
 
 async function translateTranscript() {
@@ -3617,8 +3691,29 @@ function slugify(text) {
     .slice(0, 80);
 }
 
-function setStatus(message) {
-  els.statusLine.textContent = message;
+function setStatus(message, isRunning) {
+  if (!els.statusLine) return;
+  const running = isRunning !== undefined
+    ? Boolean(isRunning)
+    : /scanning|downloading|importing|transcribing|translating|verifying|loading|fetching|processing|checking|saving/i.test(message) &&
+      !/completed|finished|done|failed|ready|select|cleared|restored/i.test(message);
+
+  els.statusLine.classList.toggle("is-running", running);
+
+  let textNode = els.statusLine.querySelector(".status-text");
+  if (!textNode) {
+    els.statusLine.innerHTML = `
+      <span class="status-dot"></span>
+      <span class="status-throbber amber-throbber amber-throbber--xs" aria-hidden="true"></span>
+      <span class="status-text"></span>
+    `;
+    textNode = els.statusLine.querySelector(".status-text");
+  }
+  if (textNode) {
+    textNode.textContent = message;
+  } else {
+    els.statusLine.textContent = message;
+  }
 }
 
 function saveState() {

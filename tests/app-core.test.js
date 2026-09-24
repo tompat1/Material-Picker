@@ -316,4 +316,20 @@ test("groupFolderEntries correctly groups HLS packages with master.m3u8, audio/v
   assert.equal(standaloneEntries[0].name, "independent-video.mp4");
 });
 
+test("groupFolderEntries groups packages with custom named m3u8 and segments", () => {
+  const entries = [
+    { name: "stream.m3u8", relPath: "stream.m3u8" },
+    { name: "00001.m4s", relPath: "segments/00001.m4s" },
+    { name: "00002.m4s", relPath: "segments/00002.m4s" },
+    { name: "extra.m4s", relPath: "audio/extra.m4s" },
+  ];
+
+  const { hlsPackages, standaloneEntries } = core.groupFolderEntries(entries);
+  assert.equal(hlsPackages.length, 1);
+  assert.equal(hlsPackages[0].manifestName, "stream.m3u8");
+  assert.equal(hlsPackages[0].rootPrefix, "");
+  assert.equal(standaloneEntries.length, 0);
+});
+
+
 

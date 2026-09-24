@@ -253,6 +253,22 @@ test("scanDirectoryForVideos recognizes master.m3u8 with audio/video folders as 
   assert.ok(results.every((item) => !item.name.endsWith(".m4s")));
 });
 
+test("isHlsPackageDirectory recognizes various HLS layouts and case variations", () => {
+  const entries1 = [
+    { isFile: () => true, isDirectory: () => false, name: "MASTER.M3U8" },
+    { isFile: () => false, isDirectory: () => true, name: "audio" },
+    { isFile: () => false, isDirectory: () => true, name: "video" },
+  ];
+  assert.equal(isHlsPackageDirectory(entries1), "MASTER.M3U8");
+
+  const entries2 = [
+    { isFile: () => true, isDirectory: () => false, name: "stream.m3u8" },
+    { isFile: () => false, isDirectory: () => true, name: "segments" },
+  ];
+  assert.equal(isHlsPackageDirectory(entries2), "stream.m3u8");
+});
+
+
 test("proofreadText removes speech fillers, deduplicates stutters, and fixes sentence capitalization", () => {
   const dirty = "[00:02] um hello world , we are um testing\n[00:05] the the audio track works great";
   const cleaned = proofreadText(dirty, "en", { removeTimestamps: false });

@@ -588,7 +588,7 @@
 
     (entries || []).forEach((e) => {
       const name = (e.name || "").toLowerCase();
-      if (name === "playlist.m3u8") {
+      if (name.endsWith(".m3u8")) {
         const rel = e.relPath || e.name;
         const parts = rel.split("/").filter(Boolean);
         parts.pop();
@@ -611,7 +611,7 @@
           const target = rootPrefix ? `${rootPrefix.toLowerCase()}/` : "";
           return (
             itemRel.startsWith(target) &&
-            (itemRel.includes("/audio/") || itemRel.includes("/video/") || itemRel.includes("/segments/"))
+            (itemRel.includes("/audio/") || itemRel.includes("/video/") || itemRel.includes("/segments/") || itemRel.endsWith(".m4s"))
           );
         });
         if (hasSegmentsOrTracks && !hlsPackages.some((p) => p.rootPrefix === rootPrefix)) {
