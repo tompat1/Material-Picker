@@ -1127,24 +1127,58 @@ progress::-moz-progress-bar {
 }
 
 .player-shell {
+  --film-perf: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='26' viewBox='0 0 34 26'%3E%3Cdefs%3E%3ClinearGradient id='f' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ffb15a'/%3E%3Cstop offset='0.42' stop-color='%23e24a12'/%3E%3Cstop offset='1' stop-color='%23911808'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='34' height='26' fill='url(%23f)'/%3E%3Crect x='10' y='4' width='14' height='18' rx='2.6' fill='%23120806'/%3E%3Crect x='10.4' y='4.3' width='13.2' height='3.2' rx='1.4' fill='%23ffd7a1' opacity='0.45'/%3E%3Cpath d='M2 9h6M26 17h6' stroke='%23fff4e4' stroke-width='0.35' opacity='0.35'/%3E%3C/svg%3E");
   position: relative;
   display: grid;
   overflow: hidden;
-  padding: 0.45rem 1.25rem;
-  border: 1px solid rgba(232, 162, 58, 0.35);
+  padding: 0.55rem 1.85rem;
+  border: 1px solid rgba(255, 120, 40, 0.45);
   border-bottom: 0;
   border-radius: 2px 2px 0 0;
   background-color: #070605;
-  background-image:
-    radial-gradient(circle at 0.58rem 0.62rem, #2e2822 2.6px, transparent 2.9px),
-    radial-gradient(circle at calc(100% - 0.58rem) 0.62rem, #2e2822 2.6px, transparent 2.9px);
+  background-image: var(--film-perf), var(--film-perf);
   background-repeat: repeat-y;
-  background-size: 100% 1.2rem;
+  background-size: 1.85rem 1.42rem;
+  background-position: left top, right top;
+}
+
+.player-shell::before,
+.player-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.player-shell::before {
+  background:
+    linear-gradient(92deg, transparent 4%, rgba(255, 236, 210, 0.55) 4.08%, transparent 4.2%),
+    linear-gradient(88.5deg, transparent 8%, rgba(255, 210, 160, 0.28) 8.06%, transparent 8.18%),
+    linear-gradient(90.6deg, transparent 93%, rgba(255, 244, 228, 0.4) 93.05%, transparent 93.16%),
+    linear-gradient(87deg, transparent 96%, rgba(80, 16, 4, 0.45) 96.06%, transparent 96.22%),
+    linear-gradient(180deg, transparent 28%, rgba(255, 180, 90, 0.12) 28.2%, transparent 29.1%),
+    linear-gradient(180deg, transparent 64%, rgba(40, 8, 2, 0.28) 64.15%, transparent 64.7%);
+}
+
+.player-shell::after {
+  background-image:
+    radial-gradient(circle at 3% 16%, rgba(255, 236, 210, 0.85) 0.7px, transparent 1.2px),
+    radial-gradient(circle at 5% 48%, rgba(255, 196, 120, 0.55) 0.45px, transparent 0.9px),
+    radial-gradient(circle at 2% 74%, rgba(255, 244, 228, 0.7) 1px, transparent 1.6px),
+    radial-gradient(circle at 97% 24%, rgba(255, 236, 210, 0.75) 0.7px, transparent 1.2px),
+    radial-gradient(circle at 95% 58%, rgba(255, 180, 90, 0.45) 0.4px, transparent 0.8px),
+    radial-gradient(circle at 98% 82%, rgba(255, 244, 228, 0.65) 1.1px, transparent 1.7px),
+    radial-gradient(circle at 31% 37%, rgba(255, 220, 170, 0.28) 0.5px, transparent 0.9px),
+    radial-gradient(circle at 68% 22%, rgba(255, 236, 210, 0.2) 0.4px, transparent 0.8px),
+    radial-gradient(circle at 52% 71%, rgba(255, 160, 70, 0.25) 0.8px, transparent 1.3px);
 }
 
 .player-shell video,
 .player-shell iframe,
 .empty-player {
+  position: relative;
+  z-index: 1;
   display: none;
   grid-area: 1 / 1;
   width: 100%;
