@@ -6,6 +6,7 @@ const { archiveFolderName, estimateRemainingSeconds, formatBytes, formatDuration
 const els = {
   addBlankButton: document.querySelector("#addBlankButton"),
   bulkDownloadProgress: document.querySelector("#bulkDownloadProgress"),
+  bulkDownloadReport: document.querySelector("#bulkDownloadReport"),
   bulkOfflineStatus: document.querySelector("#bulkOfflineStatus"),
   bulkOfflineProgress: document.querySelector("#bulkOfflineProgress"),
   bulkOfflineProgressLabel: document.querySelector("#bulkOfflineProgressLabel"),
@@ -98,6 +99,7 @@ let bulkOfflineStartedAt = 0;
 let bulkOfflineEstimatedBytes = 0;
 let bulkOfflineCompletedBytes = 0;
 let bulkOfflineEstimateByFiles = false;
+let bulkOfflineReport = null;
 let libraryMeasureRunning = false;
 let verificationRunning = false;
 let state = loadState();
@@ -1330,8 +1332,11 @@ function renderLibraryOfflineManager() {
       ? "Copy marked to folder"
       : "Download marked";
   renderOfflineDestination();
+  renderBulkOfflineReport();
   els.bulkDownloadProgress.hidden = !bulkOfflineRunning && !paused.length;
   if (bulkOfflineRunning) {
+    bulkOfflineReport = null;
+    renderBulkOfflineReport();
     els.bulkOfflineStatus.textContent = bulkOfflineMessage || "Saving marked videos to disk...";
     const current = state.videos.find((video) => video.id === bulkOfflineCurrentId);
     const fraction = current ? offlineProgressFraction(current) : null;
@@ -1366,6 +1371,37 @@ function renderLibraryOfflineManager() {
   } else {
     els.bulkOfflineStatus.textContent = "Mark videos below to save them to disk.";
   }
+}
+
+function renderBulkOfflineReport() {
+  if (!els.bulkDownloadReport) return;
+  els.bulkDownloadReport.replaceChildren();
+  if (!bulkOfflineReport || bulkOfflineRunning) {
+    els.bulkDownloadReport.hidden = true;
+    return;
+  }
+
+  const heading = document.createElement("strong");
+  const failureCount = bulkOfflineReport.failures.length;
+  heading.textContent = `${bulkOfflineReport.saved} of ${bulkOfflineReport.total} saved. ${failureCount} ${
+    failureCount === 1 ? "video needs" : "videos need"
+  } retry.`;
+
+  const list = document.createElement("ul");
+  bulkOfflineReport.failures.forEach((failure) => {
+    const item = document.createElement("li");
+    const title = document.createElement("span");
+    const message = document.createElement("span");
+    title.className = "bulk-report-title";
+    message.className = "bulk-report-message";
+    title.textContent = failure.title;
+    message.textContent = failure.message;
+    item.append(title, message);
+    list.append(item);
+  });
+
+  els.bulkDownloadReport.append(heading, list);
+  els.bulkDownloadReport.hidden = false;
 }
 
 function bulkDownloadRemainingSeconds(current) {
@@ -1919,6 +1955,7 @@ async function saveSelectedOfflineVideos() {
   bulkOfflineCompletedBytes = 0;
   bulkOfflineEstimatedBytes = 0;
   bulkOfflineEstimateByFiles = false;
+  bulkOfflineReport = null;
   const failures = [];
   const jobs = [];
   for (let index = 0; index < videos.length; index += 1) {
@@ -1967,14 +2004,22 @@ async function saveSelectedOfflineVideos() {
   bulkOfflineCompletedBytes = 0;
   els.libraryOfflinePermission.checked = false;
   renderLibrary();
-  renderLibraryOfflineManager();
   if (failures.length) {
     const saved = videos.length - failures.length;
-    const errorDetails = failures.map((f) => `“${f.video.title || "Untitled"}”: ${f.error.message}`).join("; ");
-    setStatus(`Saved ${saved} of ${videos.length} marked videos. ${failures.length} could not be saved: ${errorDetails}`);
+    bulkOfflineReport = {
+      saved,
+      total: videos.length,
+      failures: failures.map((f) => ({
+        title: f.video.title || "Untitled",
+        message: f.error.message || "The video could not be saved.",
+      })),
+    };
+    setStatus(`Saved ${saved} of ${videos.length} marked videos. ${failures.length} could not be saved. See the offline copies report.`);
   } else {
+    bulkOfflineReport = null;
     setStatus(`Saved all ${videos.length} marked videos to disk for offline playback.`);
   }
+  renderLibraryOfflineManager();
 }
 
 function openFolderDatabase() {
@@ -4034,8 +4079,10 @@ function setStatus(message, isRunning) {
   }
   if (textNode) {
     textNode.textContent = message;
+    els.statusLine.title = message;
   } else {
     els.statusLine.textContent = message;
+    els.statusLine.title = message;
   }
 }
 

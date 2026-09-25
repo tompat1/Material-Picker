@@ -209,14 +209,24 @@ button:disabled {
 .status-line {
   margin: 0;
   max-width: 62ch;
+  min-width: 0;
   color: var(--muted);
   font-family: var(--mono);
   font-size: 0.74rem;
   line-height: 1.45;
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.52rem;
   transition: color 0.25s var(--ease);
+}
+
+.status-line .status-text {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .status-line.is-running {
@@ -227,6 +237,7 @@ button:disabled {
   display: inline-block;
   width: 0.44rem;
   height: 0.44rem;
+  margin-top: 0.32rem;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 0 3px rgba(232, 162, 58, 0.2), 0 0 8px rgba(232, 162, 58, 0.45);
@@ -244,6 +255,7 @@ button:disabled {
 
 .status-line.is-running .status-throbber {
   display: inline-flex;
+  margin-top: 0.18rem;
 }
 
 .status-line:not(:has(.status-dot)):not(:has(.status-throbber))::before {
@@ -1142,6 +1154,60 @@ select {
   font-family: var(--mono);
   font-size: 0.68rem;
   white-space: nowrap;
+}
+
+.bulk-download-report {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--danger-line);
+  background: rgba(58, 34, 28, 0.46);
+  color: var(--muted);
+}
+
+.bulk-download-report[hidden] {
+  display: none;
+}
+
+.bulk-download-report strong {
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.bulk-download-report ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bulk-download-report li {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+  padding-left: 0.55rem;
+  border-left: 2px solid rgba(231, 160, 146, 0.48);
+}
+
+.bulk-report-title,
+.bulk-report-message {
+  overflow-wrap: anywhere;
+}
+
+.bulk-report-title {
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.bulk-report-message {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  line-height: 1.45;
 }
 
 progress {
