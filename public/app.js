@@ -414,13 +414,12 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
 
   // Process standalone video entries
   for (const item of standaloneEntries) {
-    let file = item.file;
+    let { file } = item;
     if (!file && item.handle?.getFile) {
       try { file = await item.handle.getFile(); } catch {}
     }
     if (!file) continue;
-    const name = item.name;
-    const relPath = item.relPath;
+    const { name, relPath } = item;
     const title = name.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
     const objectUrl = URL.createObjectURL(file);
     const pathParts = (relPath || "").split("/");
@@ -477,7 +476,7 @@ async function importFromDirectoryHandle(dirHandle) {
   try {
     const entries = [];
 
-    async function walk(handle, pathParts = []) {
+    const walk = async (handle, pathParts = []) => {
       try {
         for await (const entry of handle.values()) {
           try {
@@ -502,10 +501,8 @@ async function importFromDirectoryHandle(dirHandle) {
                   relPath: [...pathParts, entry.name].join("/"),
                 });
               }
-            } else if (entry.kind === "directory") {
-              if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
-                await walk(entry, [...pathParts, entry.name]);
-              }
+            } else if (entry.kind === "directory" && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+              await walk(entry, [...pathParts, entry.name]);
             }
           } catch (entryErr) {
             console.warn("Skipping file entry:", entry.name, entryErr);
@@ -1105,7 +1102,7 @@ function videoSizeLabel(video) {
 
 function renderLibraryTotals() {
   if (!els.libraryTotals) return;
-  const videos = state.videos;
+  const { videos } = state;
   if (!videos.length) {
     els.libraryTotals.textContent = "";
     return;
@@ -1959,15 +1956,13 @@ async function restoreDownloadFolder() {
 async function ensureDownloadFolder() {
   if (offlineExportDirectoryHandle) return true;
   const stored = await storedDownloadFolder().catch(() => null);
-  if (stored?.requestPermission) {
-    if ((await stored.requestPermission({ mode: "readwrite" })) === "granted") {
-      offlineExportDirectoryHandle = stored;
-      state.lastOfflineFolderName = stored.name || state.lastOfflineFolderName || "";
-      saveState();
-      renderRecentSources();
-      renderOfflineDestination();
-      return true;
-    }
+  if (stored?.requestPermission && (await stored.requestPermission({ mode: "readwrite" })) === "granted") {
+    offlineExportDirectoryHandle = stored;
+    state.lastOfflineFolderName = stored.name || state.lastOfflineFolderName || "";
+    saveState();
+    renderRecentSources();
+    renderOfflineDestination();
+    return true;
   }
   return chooseOfflineFolder();
 }
@@ -3167,7 +3162,7 @@ async function transcribeHlsAudio(playbackUrl) {
       const audioWindow = takeHlsWindow(plan.segments, index, windowDuration);
       index += audioWindow.length;
       isFirst = false;
-      const start = audioWindow[0].start;
+      const { start } = audioWindow[0];
       const end = audioWindow[audioWindow.length - 1].start + audioWindow[audioWindow.length - 1].duration;
       setTranscriptStatus(`Transcribing ${formatTime(start)}–${formatTime(end)}...`, "working");
       const samples = await decodeHlsAudioWindow(audioContext, plan.initUrl, audioWindow, hlsAbort.signal);
@@ -3245,7 +3240,7 @@ async function decodeHlsAudioWindow(context, initUrl, segments, signal) {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const body = await fetchArrayBuffer(segment.url, signal);
     const combined = init ? concatArrayBuffers([init, body]) : body;
-    const decoded = await context.decodeAudioData(combined.slice(0));
+    const decoded = await context.decodeAudioData(combined.slice());
     pieces.push(audioBufferTo16kMono(decoded));
   }
   return concatFloat32(pieces);
@@ -3274,7 +3269,7 @@ function concatFloat32(parts) {
 }
 
 function audioBufferTo16kMono(audioBuffer) {
-  const length = audioBuffer.length;
+  const { length } = audioBuffer;
   const channels = audioBuffer.numberOfChannels;
   const mono = new Float32Array(length);
   for (let channel = 0; channel < channels; channel += 1) {
