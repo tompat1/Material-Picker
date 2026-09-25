@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { Readable } = require("node:stream");
 const test = require("node:test");
 
 const {
@@ -20,6 +21,7 @@ const {
   resolveOfflineSource,
   sanitizeOfflineMaster,
   safeVideoId,
+  handleUpdateFolderMetadata,
   scanDirectoryForVideos,
   selectHlsVariant,
   splitTranslationText,
@@ -395,6 +397,38 @@ test("handleOfflineFiles accurately checks HLS playlist segments integrity and d
   assert.equal(healthyData.playable, true);
   assert.equal(healthyData.missingFiles.length, 0);
   assert.ok(healthyData.message.includes("intact and playable"));
+});
+
+test("folder metadata writes notes and a transcript into the video folder", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "material-picker-meta-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "video"));
+  fs.writeFileSync(path.join(root, "master.m3u8"), "#EXTM3U\n");
+  fs.writeFileSync(path.join(root, "metadata.json"), JSON.stringify({ title: "Talk", size: 12 }));
+
+  const request = Readable.from([
+    Buffer.from(JSON.stringify({
+      directory: root,
+      metadata: { notes: "Remember the opening", transcript: "[00:01] Hello" },
+    })),
+  ]);
+  const response = {
+    statusCode: 0,
+    body: "",
+    writeHead(code) {
+      this.statusCode = code;
+    },
+    end(payload) {
+      this.body = payload;
+    },
+  };
+  await handleUpdateFolderMetadata(request, response);
+  assert.equal(response.statusCode, 200);
+  const saved = JSON.parse(fs.readFileSync(path.join(root, "metadata.json"), "utf8"));
+  assert.equal(saved.title, "Talk");
+  assert.equal(saved.size, 12);
+  assert.equal(saved.notes, "Remember the opening");
+  assert.equal(saved.transcript, "[00:01] Hello");
 });
 
 

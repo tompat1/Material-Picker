@@ -57,6 +57,7 @@ const els = {
   renameCollectionButton: document.querySelector("#renameCollectionButton"),
   searchLibrary: document.querySelector("#searchLibrary"),
   saveSelectedOfflineButton: document.querySelector("#saveSelectedOfflineButton"),
+  screenMeta: document.querySelector("#screenMeta"),
   sourceFrame: document.querySelector("#sourceFrame"),
   sourceLang: document.querySelector("#sourceLang"),
   sourceUrl: document.querySelector("#sourceUrl"),
@@ -251,7 +252,7 @@ function init() {
     selectedVideoIds.add(video.id);
   });
   saveState();
-  void restoreDownloadFolder();
+  void restoreDownloadFolder().then(() => loadFolderScript(selectedVideo()));
   void reconcileOfflineLibrary();
   void repairLegacyPageRecords({ automatic: true });
 }
@@ -375,21 +376,26 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       : rootFolderName !== "videos" && rootFolderName !== "data"
       ? rootFolderName.replace(/[-_]+/g, " ").trim()
       : "";
-    const title = meta?.title || folderTitle || "Offline HLS Video";
+    const split = core.splitTitleAndSpeaker(meta?.title || folderTitle || "Offline HLS Video");
     const packageUrl = `/hls-package/${packageId}/${pkg.manifestName}`;
-    const tagsList = pkg.rootPrefix ? pkg.rootPrefix.split("/").filter(Boolean) : ["local", "hls"];
+    const tagsList = meta?.tags
+      ? (Array.isArray(meta.tags) ? meta.tags : String(meta.tags).split(",")).map((tag) => String(tag).trim()).filter(Boolean)
+      : pkg.rootPrefix ? pkg.rootPrefix.split("/").filter(Boolean) : ["local", "hls"];
 
     const nextVideo = {
       id: meta?.id || crypto.randomUUID(),
-      title,
-      speaker: "",
+      title: split.title,
+      speaker: meta?.speaker || split.speaker || "",
       url: packageUrl,
       sourceUrl: meta?.sourceUrl || (pkg.rootPrefix ? `${pkg.rootPrefix}/${pkg.manifestName}` : pkg.manifestName),
-      language: "English",
+      language: meta?.language || "",
       tags: tagsList.join(", "),
-      notes: `HLS Package: ${pkg.rootPrefix || rootFolderName} (${formatBytes(meta?.size || totalBytes)})`,
-      transcript: "",
-      translation: "",
+      notes: meta?.notes || `HLS Package: ${pkg.rootPrefix || rootFolderName} (${formatBytes(meta?.size || totalBytes)})`,
+      durationSeconds: Number(meta?.durationSeconds) || 0,
+      transcript: meta?.transcript || "",
+      translation: meta?.translation || "",
+      transcriptLanguage: meta?.transcriptLanguage || "",
+      transcriptSource: meta?.transcriptSource || "",
       collectionId: collectionId || (activeCollectionId !== "all" && activeCollectionId !== "unfiled" ? activeCollectionId : ""),
       playbackStatus: "ready",
       playbackMessage: "Offline HLS package ready with audio/video segments",
@@ -662,6 +668,7 @@ async function scanFolderPath(folderPath) {
         if (item.offlineFormat) existing.offlineFormat = item.offlineFormat;
         if (item.offlineSize) existing.offlineSize = item.offlineSize;
         if (item.sourceUrl && !existing.sourceUrl) existing.sourceUrl = item.sourceUrl;
+        fillBlankMetadata(existing, item);
         return;
       }
 
@@ -672,17 +679,21 @@ async function scanFolderPath(folderPath) {
         tagsList.push("local");
       }
 
+      const split = core.splitTitleAndSpeaker(item.title);
       const nextVideo = {
         id: item.id || crypto.randomUUID(),
-        title: item.title,
-        speaker: "",
+        title: split.title,
+        speaker: item.speaker || split.speaker || "",
         url: item.url,
         sourceUrl: item.sourceUrl || item.relativePath || folderPath,
-        language: "English",
-        tags: tagsList.join(", "),
-        notes: `File: ${item.relativePath || item.name} (${formatBytes(item.size)})`,
-        transcript: "",
-        translation: "",
+        language: item.language || "",
+        tags: item.tags || tagsList.join(", "),
+        notes: item.notes || `File: ${item.relativePath || item.name} (${formatBytes(item.size)})`,
+        durationSeconds: Number(item.durationSeconds) || 0,
+        transcript: item.transcript || "",
+        translation: item.translation || "",
+        transcriptLanguage: item.transcriptLanguage || "",
+        transcriptSource: item.transcriptSource || "",
         collectionId: collectionId || (activeCollectionId !== "all" && activeCollectionId !== "unfiled" ? activeCollectionId : ""),
         playbackStatus: "ready",
         playbackMessage: item.format === "hls" ? "Local HLS package ready for playback" : "Local media file ready for playback",
@@ -856,6 +867,20 @@ function extractVideos(text, baseUrl = "") {
   return core.extractVideos(text, baseUrl);
 }
 
+function fillBlankMetadata(video, item) {
+  const split = core.splitTitleAndSpeaker(item?.title || "");
+  if (!video.speaker) video.speaker = item?.speaker || split.speaker || "";
+  if (!video.language && item?.language) video.language = item.language;
+  if (!video.tags && item?.tags) video.tags = Array.isArray(item.tags) ? item.tags.join(", ") : item.tags;
+  if (!video.notes && item?.notes) video.notes = item.notes;
+  if (!video.transcript && item?.transcript) video.transcript = item.transcript;
+  if (!video.translation && item?.translation) video.translation = item.translation;
+  if (!video.transcriptLanguage && item?.transcriptLanguage) video.transcriptLanguage = item.transcriptLanguage;
+  if (!video.transcriptSource && item?.transcriptSource) video.transcriptSource = item.transcriptSource;
+  if (!Number(video.durationSeconds) && Number(item?.durationSeconds) > 0) video.durationSeconds = Number(item.durationSeconds);
+  if (split.speaker && video.title === item?.title) video.title = split.title;
+}
+
 function addExtractedVideos(items, sourceUrl = "") {
   const ids = [];
   items.forEach((item) => {
@@ -863,11 +888,14 @@ function addExtractedVideos(items, sourceUrl = "") {
     ids.push(
       addVideo(
         {
-          title: item.title,
+          title: core.splitTitleAndSpeaker(item.title).title,
+          speaker: item.speaker || core.splitTitleAndSpeaker(item.title).speaker,
           url: item.url,
           sourceUrl: item.sourceUrl || sourceUrl,
-          language: "English",
-          tags: inferTags(item.url),
+          language: item.language || "",
+          tags: item.tags || inferTags(item.url),
+          notes: item.notes || "",
+          durationSeconds: Number(item.durationSeconds) || 0,
         },
         { reveal: false }
       )
@@ -947,6 +975,7 @@ function updateSelectedFromForm() {
   if (urlChanged) renderPlayer();
   if (previousSource !== video.sourceUrl) setSourceFrame(video.sourceUrl, false);
   setStatus("Saved.");
+  scheduleFolderMetadataSave(video, { announce: true });
 }
 
 function updateTranscriptFields() {
@@ -956,13 +985,17 @@ function updateTranscriptFields() {
   video.translation = els.translatedText.value;
   saveState();
   renderLibrary();
+  scheduleFolderMetadataSave(video);
 }
 
 function selectVideo(id) {
+  const current = selectedVideo();
+  if (current && current.id !== id) void flushFolderMetadata(current);
   state.selectedId = id;
   saveState();
   render();
   showDesk("screen");
+  void loadFolderScript(selectedVideo());
 }
 
 function showDesk(name) {
@@ -1506,6 +1539,24 @@ function moveSelectedVideos() {
   setStatus(`Moved ${moved} video${moved === 1 ? "" : "s"} to ${collection?.name || "Unfiled"}.`);
 }
 
+function renderScreenMeta(video) {
+  if (!els.screenMeta) return;
+  const rows = [];
+  if (Number(video?.durationSeconds) > 0) rows.push(["Duration", formatDuration(video.durationSeconds)]);
+  const size = Number(video?.offlineSize || video?.estimatedBytes || 0);
+  if (size > 0) rows.push(["Size", formatBytes(size)]);
+  if (video?.offlineProvider) rows.push(["Provider", video.offlineProvider]);
+  if (video?.offlineFormat || video?.format) rows.push(["Format", video.offlineFormat || video.format]);
+  if (video?.offlineSavedAt) {
+    const when = new Date(video.offlineSavedAt);
+    if (!Number.isNaN(when.getTime())) rows.push(["Saved", when.toLocaleString()]);
+  }
+  els.screenMeta.hidden = !rows.length;
+  els.screenMeta.innerHTML = rows
+    .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`)
+    .join("");
+}
+
 function renderForm() {
   const video = selectedVideo();
   const fields = [
@@ -1528,6 +1579,7 @@ function renderForm() {
   els.videoLanguage.value = video?.language || "";
   els.videoTags.value = video?.tags || "";
   els.videoNotes.value = video?.notes || "";
+  renderScreenMeta(video);
   els.openSourceButton.disabled = !video?.sourceUrl;
   if (video?.sourceUrl) setSourceFrame(video.sourceUrl, false);
 }
@@ -2023,9 +2075,168 @@ function renderOfflineDestination() {
   els.chooseLibraryFolderButton.disabled = !supported || bulkOfflineRunning || operationRunning;
 }
 
+function offlineMetadataRecord(video, extra = {}) {
+  return {
+    id: video.id,
+    title: video.title || "",
+    speaker: video.speaker || "",
+    language: video.language || "",
+    tags: video.tags || "",
+    notes: video.notes || "",
+    transcript: video.transcript || "",
+    translation: video.translation || "",
+    transcriptLanguage: video.transcriptLanguage || "",
+    transcriptSource: video.transcriptSource || "",
+    sourceUrl: video.sourceUrl || (String(video.url || "").startsWith("/") ? "" : video.url || ""),
+    durationSeconds: Number(video.durationSeconds) || 0,
+    format: extra.format || video.offlineFormat || "",
+    provider: extra.provider || video.offlineProvider || "",
+    size: Number(extra.size ?? video.offlineSize ?? video.estimatedBytes) || 0,
+    savedAt: extra.savedAt || video.offlineSavedAt || new Date().toISOString(),
+  };
+}
+
+function offlineMetadataText(video, extra = {}) {
+  return JSON.stringify(offlineMetadataRecord(video, extra), null, 2);
+}
+
+const folderMetadataTimers = new Map();
+
+function scheduleFolderMetadataSave(video, options = {}) {
+  if (!video?.id || ["downloading", "exporting"].includes(video.offlineDownloadStatus)) return;
+  const pending = folderMetadataTimers.get(video.id);
+  if (pending) clearTimeout(pending);
+  folderMetadataTimers.set(
+    video.id,
+    setTimeout(() => {
+      folderMetadataTimers.delete(video.id);
+      void persistFolderMetadata(video, options);
+    }, 700)
+  );
+}
+
+function localMediaDirectory(video) {
+  const url = String(video?.offlineUrl || video?.url || "");
+  const match = url.match(/^\/local-media\/([^/]+)\//);
+  if (!match) return "";
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return "";
+  }
+}
+
+async function postFolderMetadata(directory, metadata) {
+  try {
+    const response = await fetch("/api/folder-metadata", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ directory, metadata }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function flushFolderMetadata(video) {
+  if (!video?.id) return Promise.resolve(false);
+  const pending = folderMetadataTimers.get(video.id);
+  if (pending) clearTimeout(pending);
+  folderMetadataTimers.delete(video.id);
+  return persistFolderMetadata(video);
+}
+
+async function readFolderMetadata(video) {
+  const directory = localMediaDirectory(video);
+  if (directory) {
+    try {
+      const response = await fetch(`/local-media/${encodeURIComponent(directory)}/metadata.json`, { cache: "no-store" });
+      if (response.ok) return await response.json();
+    } catch {
+      // The folder may only be reachable through the browser folder handle.
+    }
+  }
+  const handle = await openSavedVideoFolder(video);
+  if (!handle?.getFileHandle) return null;
+  try {
+    const fileHandle = await handle.getFileHandle("metadata.json");
+    return JSON.parse(await (await fileHandle.getFile()).text());
+  } catch {
+    return null;
+  }
+}
+
+async function loadFolderScript(video) {
+  if (!video) return;
+  const meta = await readFolderMetadata(video);
+  if (!meta || selectedVideo()?.id !== video.id) return;
+  let changed = false;
+  if (meta.transcript && !video.transcript) {
+    video.transcript = meta.transcript;
+    changed = true;
+  }
+  if (meta.translation && !video.translation) {
+    video.translation = meta.translation;
+    changed = true;
+  }
+  if (meta.transcriptLanguage && !video.transcriptLanguage) video.transcriptLanguage = meta.transcriptLanguage;
+  if (meta.transcriptSource && !video.transcriptSource) video.transcriptSource = meta.transcriptSource;
+  if (!changed) return;
+  saveState();
+  renderTranscript();
+  setTranscriptStatus(`Loaded the saved script from “${video.title || "this video"}”.`);
+}
+
+async function openSavedVideoFolder(video) {
+  const parent = offlineExportDirectoryHandle;
+  if (!parent?.getDirectoryHandle) return null;
+  const names = [
+    video.offlineArchiveFolder,
+    archiveFolderName(video.title, video.id),
+    video.offlineCopyId ? archiveFolderName(video.title, video.offlineCopyId) : "",
+  ].filter(Boolean);
+  for (const name of names) {
+    try {
+      const handle = await parent.getDirectoryHandle(name);
+      video.offlineArchiveFolder = name;
+      return handle;
+    } catch {
+      // Try the next name this video may have been saved under.
+    }
+  }
+  return null;
+}
+
+async function persistFolderMetadata(video, options = {}) {
+  if (!video || ["downloading", "exporting"].includes(video.offlineDownloadStatus)) return false;
+  const metadata = offlineMetadataRecord(video);
+  const directory = localMediaDirectory(video);
+  if (directory && (await postFolderMetadata(directory, metadata))) {
+    if (options.announce) setStatus("Saved with the video.");
+    return true;
+  }
+  const handle = await openSavedVideoFolder(video);
+  if (!handle) return false;
+  await writeOfflineMetadata(handle, video);
+  if (options.announce) setStatus("Saved with the video.");
+  return true;
+}
+
+async function writeOfflineMetadata(destination, video, extra) {
+  await writePlannedFile(destination, { path: "metadata.json", text: offlineMetadataText(video, extra) }, () => {});
+}
+
 async function writeDownloadPlan(video, plan) {
-  const destination = await offlineExportDirectoryHandle.getDirectoryHandle(archiveFolderName(video.title, video.id), {
+  const folderName = video.offlineArchiveFolder || archiveFolderName(video.title, video.id);
+  video.offlineArchiveFolder = folderName;
+  const destination = await offlineExportDirectoryHandle.getDirectoryHandle(folderName, {
     create: true,
+  });
+  await writeOfflineMetadata(destination, video, {
+    format: plan.format,
+    provider: plan.provider,
+    size: Number(plan.estimatedBytes) || 0,
   });
   const resumed = new Set(video.offlineResumePaths || []);
   video.offlineDownloadStatus = "exporting";
@@ -2080,6 +2291,13 @@ async function writeDownloadPlan(video, plan) {
     renderLibrary();
     renderLibraryOfflineManager();
   }
+
+  await writeOfflineMetadata(destination, video, {
+    format: plan.format,
+    provider: plan.provider,
+    size: video.offlineBytesDownloaded,
+    savedAt: new Date().toISOString(),
+  });
 
   video.offlineDownloadStatus = "completed";
   video.offlineExportedTo = offlineExportDirectoryHandle.name;
@@ -2219,10 +2437,9 @@ async function exportOfflineCopy(video) {
   });
   const archive = await response.json();
   if (!response.ok) throw new Error(archive.error || `Offline file list returned ${response.status}.`);
-  const destination = await offlineExportDirectoryHandle.getDirectoryHandle(
-    archiveFolderName(video.title, copyId),
-    { create: true }
-  );
+  const folderName = video.offlineArchiveFolder || archiveFolderName(video.title, copyId);
+  video.offlineArchiveFolder = folderName;
+  const destination = await offlineExportDirectoryHandle.getDirectoryHandle(folderName, { create: true });
   video.offlineDownloadStatus = "exporting";
   video.offlineBytesDownloaded = 0;
   video.offlineTotalBytes = archive.size || 0;
@@ -2271,6 +2488,10 @@ async function exportOfflineCopy(video) {
     }
     video.offlineFilesDone += 1;
   }
+  await writeOfflineMetadata(destination, video, {
+    size: copied,
+    savedAt: new Date().toISOString(),
+  });
   video.offlineDownloadStatus = "completed";
   video.offlineExportedTo = offlineExportDirectoryHandle.name;
   video.offlineExportedAt = new Date().toISOString();
@@ -3058,8 +3279,13 @@ async function startTranscription() {
       saveState();
       renderLibrary();
       setTranscriptButtons(false);
-      setTranscriptStatus(`Loaded ${data.cueCount} timed caption cues (${data.label || data.language}).`);
-      setStatus("The provider caption track was saved as this video's transcript.");
+      const onDisk = await flushFolderMetadata(video);
+      setTranscriptStatus(
+        onDisk
+          ? `Saved ${data.cueCount} caption cues in this video's folder.`
+          : `Loaded ${data.cueCount} timed caption cues (${data.label || data.language}).`
+      );
+      setStatus(onDisk ? "The caption track was saved in this video's folder." : "The provider caption track was saved as this video's transcript.");
       await ensurePlayerPlaying();
       return;
     } catch (error) {
@@ -3336,7 +3562,9 @@ async function submitTranscriptSamples(samples, chunkStartTime, chunkEndTime, si
     const video = selectedVideo();
     if (video) {
       video.transcript = els.transcriptText.value;
+      video.transcriptSource = video.transcriptSource || "audio";
       saveState();
+      void flushFolderMetadata(video);
     }
     setTranscriptStatus(
       audioTrackTranscribing
@@ -3480,7 +3708,9 @@ async function processPendingAudioChunk() {
       const video = selectedVideo();
       if (video) {
         video.transcript = els.transcriptText.value;
+        video.transcriptSource = video.transcriptSource || "audio";
         saveState();
+        void flushFolderMetadata(video);
       }
       setTranscriptStatus(
         audioTrackTranscribing
@@ -3502,7 +3732,7 @@ async function processPendingAudioChunk() {
   }
 }
 
-function stopTranscription() {
+async function stopTranscription() {
   const shouldFlush = !isTranscribingChunk && accumulatedLength > TRANSCRIBE_SAMPLE_RATE / 2;
   audioTrackTranscribing = false;
   hlsTranscriptionToken += 1;
@@ -3524,7 +3754,9 @@ function stopTranscription() {
   if (isTranscribingChunk) {
     setTranscriptStatus("Finishing the current stretch of audio...", "working");
   } else if (els.transcriptText.value.trim()) {
-    setTranscriptStatus("Audio track transcript saved for this video.", "ready");
+    const video = selectedVideo();
+    const onDisk = video ? await flushFolderMetadata(video) : false;
+    setTranscriptStatus(onDisk ? "Transcript saved in this video's folder." : "Audio track transcript saved for this video.", "ready");
   } else if (els.transcriptStatus.dataset.tone !== "error") {
     setTranscriptStatus("Transcription stopped.", "ready");
   }
@@ -3562,8 +3794,9 @@ async function translateTranscript() {
   if (sourceLanguage !== "auto" && sourceLanguage === targetLanguage) {
     els.translatedText.value = text;
     updateTranscriptFields();
-    setStatus("Source and target languages match, so the original transcript was copied.");
-    setTranscriptStatus("Source and target languages match; the transcript was copied.");
+    const onDisk = await flushFolderMetadata(selectedVideo());
+    setStatus(onDisk ? "Transcript saved in this video's folder." : "Source and target languages match, so the original transcript was copied.");
+    setTranscriptStatus(onDisk ? "Transcript saved in this video's folder." : "Source and target languages match; the transcript was copied.");
     return;
   }
 
@@ -3574,8 +3807,9 @@ async function translateTranscript() {
     if (translator) {
       els.translatedText.value = await translator.translate(text);
       updateTranscriptFields();
-      setTranscriptStatus("Translation complete using the browser's on-device translator.");
-      setStatus("Translated with the browser Translator API.");
+      const onDisk = await flushFolderMetadata(selectedVideo());
+      setTranscriptStatus(onDisk ? "Translation saved in this video's folder." : "Translation complete using the browser's on-device translator.");
+      setStatus(onDisk ? "Translation saved in this video's folder." : "Translated with the browser Translator API.");
       return;
     }
 
@@ -3590,12 +3824,13 @@ async function translateTranscript() {
     els.translatedText.value = data.translation;
     updateTranscriptFields();
     const video = selectedVideo();
-    if (video) {
-      video.translation = data.translation;
-      saveState();
-    }
-    setTranscriptStatus(`Translation complete using ${data.service || "the server translator"}.`);
-    setStatus(`Translated to ${targetLanguage.toUpperCase()}.`);
+    const onDisk = video ? await flushFolderMetadata(video) : false;
+    setTranscriptStatus(
+      onDisk
+        ? "Translation saved in this video's folder."
+        : `Translation complete using ${data.service || "the server translator"}.`
+    );
+    setStatus(onDisk ? "Translation saved in this video's folder." : `Translated to ${targetLanguage.toUpperCase()}.`);
   } catch (error) {
     setTranscriptStatus(`Translation failed: ${error.message}`, "error");
     setStatus(`Translation failed: ${error.message}`);
@@ -3646,21 +3881,18 @@ async function proofreadTranscript() {
     els.translatedText.value = data.proofread;
     updateTranscriptFields();
     const video = selectedVideo();
-    if (video) {
-      video.translation = data.proofread;
-      saveState();
-    }
-    setTranscriptStatus("Proofreading complete: cleaned disfluencies, fixed punctuation & casing.", "ready");
-    setStatus("Proofread text with punctuation, casing, filler removal, and clean paragraphs.");
+    const onDisk = video ? await flushFolderMetadata(video) : false;
+    setTranscriptStatus(
+      onDisk ? "Proofread text saved in this video's folder." : "Proofreading complete: cleaned disfluencies, fixed punctuation & casing.",
+      "ready"
+    );
+    setStatus(onDisk ? "Proofread text saved in this video's folder." : "Proofread text with punctuation, casing, filler removal, and clean paragraphs.");
   } catch (error) {
     const fallback = localProofread(original, { removeTimestamps, deduplicateSpeakers });
     els.translatedText.value = fallback;
     updateTranscriptFields();
     const video = selectedVideo();
-    if (video) {
-      video.translation = fallback;
-      saveState();
-    }
+    if (video) await flushFolderMetadata(video);
     setTranscriptStatus("Proofread locally with punctuation, casing, and spacing cleanup.", "ready");
     setStatus(`Proofread locally: ${error.message}`);
   } finally {

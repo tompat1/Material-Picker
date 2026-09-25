@@ -36,6 +36,15 @@
     return VIDEO_EXTENSION.test(url) || VIDEO_PROVIDER.test(url);
   }
 
+  function splitTitleAndSpeaker(title) {
+    const cleaned = String(title || "").replace(/\u200b/g, "").trim();
+    const match = cleaned.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+    if (!match) return { title: cleaned, speaker: "" };
+    const speaker = match[2].trim();
+    if (!speaker || speaker.length > 80) return { title: cleaned, speaker: "" };
+    return { title: match[1].trim(), speaker };
+  }
+
   function inferTitleFromUrl(url) {
     if (!url) return "Untitled video";
     try {
@@ -679,6 +688,7 @@
     groupFolderEntries,
     libraryMediaSummary,
     inferTitleFromUrl,
+    splitTitleAndSpeaker,
     isLikelyValidMediaChunk,
     isLikelyVideoUrl,
     loadState,

@@ -1238,6 +1238,15 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
         format: "hls",
         url: `/local-media/${encodeURIComponent(resolved)}/${hlsManifestName}`,
         sourceUrl: meta?.sourceUrl || undefined,
+        speaker: meta?.speaker || undefined,
+        language: meta?.language || undefined,
+        tags: meta?.tags || undefined,
+        notes: meta?.notes || undefined,
+        transcript: meta?.transcript || undefined,
+        translation: meta?.translation || undefined,
+        transcriptLanguage: meta?.transcriptLanguage || undefined,
+        transcriptSource: meta?.transcriptSource || undefined,
+        durationSeconds: Number(meta?.durationSeconds) || undefined,
         offlineUrl: `/local-media/${encodeURIComponent(resolved)}/${hlsManifestName}`,
         offlineFormat: meta?.format || "hls",
         offlineSize: totalSize,
@@ -1388,6 +1397,69 @@ function serveLocalMedia(request, response, requestUrl) {
   });
 }
 
+const FOLDER_METADATA_TEXT_FIELDS = [
+  "id",
+  "title",
+  "speaker",
+  "language",
+  "tags",
+  "notes",
+  "transcript",
+  "translation",
+  "transcriptLanguage",
+  "transcriptSource",
+  "sourceUrl",
+  "format",
+  "provider",
+  "savedAt",
+];
+
+function clipMetadataText(value, max = 500000) {
+  return String(value ?? "").slice(0, max);
+}
+
+async function directoryHasSavedVideo(directory) {
+  const entries = await fsp.readdir(directory, { withFileTypes: true });
+  if (isHlsPackageDirectory(entries)) return true;
+  return entries.some((entry) => {
+    if (!entry.isFile()) return false;
+    const name = entry.name.toLowerCase();
+    return name === "metadata.json" || STANDALONE_VIDEO_EXTENSIONS.has(path.extname(name));
+  });
+}
+
+async function handleUpdateFolderMetadata(request, response) {
+  try {
+    const body = await readJsonBody(request, MAX_PAGE_BYTES);
+    const directory = resolveLocalPath(String(body.directory || ""));
+    if (!directory) return sendJson(response, 400, { error: "A video folder is required." });
+    const stats = await fsp.stat(directory);
+    if (!stats.isDirectory()) return sendJson(response, 400, { error: "That path is not a folder." });
+    if (!(await directoryHasSavedVideo(directory))) {
+      return sendJson(response, 400, { error: "That folder does not contain a saved video." });
+    }
+    const metaPath = path.join(directory, "metadata.json");
+    let existing = {};
+    try {
+      existing = JSON.parse(await fsp.readFile(metaPath, "utf8"));
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const incoming = body.metadata && typeof body.metadata === "object" ? body.metadata : {};
+    const next = { ...existing };
+    FOLDER_METADATA_TEXT_FIELDS.forEach((field) => {
+      if (field in incoming) next[field] = clipMetadataText(incoming[field], field === "transcript" || field === "translation" || field === "notes" ? 500000 : 4000);
+    });
+    if ("durationSeconds" in incoming) next.durationSeconds = Number(incoming.durationSeconds) || 0;
+    if ("size" in incoming && Number(incoming.size) > 0) next.size = Number(incoming.size);
+    next.updatedAt = new Date().toISOString();
+    await fsp.writeFile(metaPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+    return sendJson(response, 200, { ok: true, updatedAt: next.updatedAt });
+  } catch (error) {
+    return sendJson(response, 400, { error: error.message || "The metadata could not be saved." });
+  }
+}
+
 function handleChooseFolder(response) {
   if (process.platform !== "darwin") {
     return sendJson(response, 200, { supported: false, message: "Native dialog only supported on macOS." });
@@ -1465,6 +1537,9 @@ function startServer() {
     if (request.method === "GET" && requestUrl.pathname === "/api/scan-folder") {
       return handleScanFolder(response, requestUrl);
     }
+    if (request.method === "POST" && requestUrl.pathname === "/api/folder-metadata") {
+      return handleUpdateFolderMetadata(request, response);
+    }
     if (request.method === "GET" && requestUrl.pathname === "/api/choose-folder") {
       return handleChooseFolder(response);
     }
@@ -1493,6 +1568,7 @@ module.exports = {
   handleOfflineFiles,
   handleProofread,
   handleScanFolder,
+  handleUpdateFolderMetadata,
   handleStream,
   handleTranscribe,
   handleTranslate,

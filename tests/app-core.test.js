@@ -13,6 +13,9 @@ test("extracts all 10 videos and their titles from the summit playlist", () => {
 
   assert.equal(videos.length, 10);
   assert.equal(videos[0].title, "Awareness and Love in Uncertain Times\u200b - Jack Kornfield");
+  assert.equal(core.splitTitleAndSpeaker(videos[0].title).speaker, "Jack Kornfield");
+  assert.equal(core.splitTitleAndSpeaker(videos[0].title).title, "Awareness and Love in Uncertain Times");
+  assert.equal(core.splitTitleAndSpeaker(videos[3].title).speaker, "");
   assert.equal(videos[3].title, "Panel: Meditation, Mindfulness, & Leadership");
   assert.equal(videos[9].url, "https://vimeo.com/471425414?share=copy");
   assert.ok(videos.every((video) => video.sourceUrl === summitUrl));

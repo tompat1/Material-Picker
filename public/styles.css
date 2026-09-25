@@ -1528,6 +1528,29 @@ button.is-busy .amber-throbber {
   font-size: 0.75rem;
 }
 
+.screen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0 0 0.85rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.screen-meta div {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.screen-meta dt {
+  color: var(--faint);
+}
+
+.screen-meta dd {
+  margin: 0;
+}
+
 .metadata-grid,
 .transcript-grid {
   grid-template-columns: 1fr;
