@@ -571,53 +571,60 @@
 
   function groupFolderEntries(entries) {
     const hlsPackages = [];
+    const packageByPrefix = new Map();
     const manifestPattern = /^(master|index)\.m3u8$/i;
+    const list = entries || [];
 
-    (entries || []).forEach((e) => {
-      const name = e.name || "";
-      if (manifestPattern.test(name)) {
-        const rel = e.relPath || name;
-        const parts = rel.split("/").filter(Boolean);
-        parts.pop();
-        const rootPrefix = parts.join("/");
-        if (!hlsPackages.some((p) => p.rootPrefix === rootPrefix)) {
-          hlsPackages.push({ rootPrefix, manifestName: name, entries: [], metadataEntry: null });
-        }
+    const ensurePackage = (rootPrefix, manifestName) => {
+      let pkg = packageByPrefix.get(rootPrefix);
+      if (!pkg) {
+        pkg = { rootPrefix, manifestName, entries: [], metadataEntry: null };
+        packageByPrefix.set(rootPrefix, pkg);
+        hlsPackages.push(pkg);
+      } else if (manifestPattern.test(manifestName)) {
+        pkg.manifestName = manifestName;
       }
+      return pkg;
+    };
+
+    list.forEach((e) => {
+      const name = e.name || "";
+      if (!manifestPattern.test(name)) return;
+      const rel = e.relPath || name;
+      const parts = rel.split("/").filter(Boolean);
+      parts.pop();
+      ensurePackage(parts.join("/"), name);
     });
 
-    (entries || []).forEach((e) => {
+    list.forEach((e) => {
       const name = (e.name || "").toLowerCase();
-      if (name.endsWith(".m3u8")) {
-        const rel = e.relPath || e.name;
-        const parts = rel.split("/").filter(Boolean);
-        parts.pop();
-        const rootPrefix = parts.join("/");
-
-        if (
-          rootPrefix.endsWith("/audio") ||
-          rootPrefix.endsWith("/video") ||
-          rootPrefix.endsWith("/segments") ||
-          rootPrefix === "audio" ||
-          rootPrefix === "video" ||
-          rootPrefix === "segments" ||
-          hlsPackages.some((p) => p.rootPrefix === "" || rootPrefix === p.rootPrefix || rootPrefix.startsWith(p.rootPrefix + "/"))
-        ) {
-          return;
-        }
-
-        const hasSegmentsOrTracks = (entries || []).some((item) => {
-          const itemRel = (item.relPath || item.name || "").toLowerCase();
-          const target = rootPrefix ? `${rootPrefix.toLowerCase()}/` : "";
-          return (
-            itemRel.startsWith(target) &&
-            (itemRel.includes("/audio/") || itemRel.includes("/video/") || itemRel.includes("/segments/") || itemRel.endsWith(".m4s"))
-          );
-        });
-        if (hasSegmentsOrTracks && !hlsPackages.some((p) => p.rootPrefix === rootPrefix)) {
-          hlsPackages.push({ rootPrefix, manifestName: e.name, entries: [], metadataEntry: null });
-        }
+      if (!name.endsWith(".m3u8") || manifestPattern.test(e.name || "")) return;
+      const rel = e.relPath || e.name;
+      const parts = rel.split("/").filter(Boolean);
+      parts.pop();
+      const rootPrefix = parts.join("/");
+      if (
+        rootPrefix.endsWith("/audio") ||
+        rootPrefix.endsWith("/video") ||
+        rootPrefix.endsWith("/segments") ||
+        rootPrefix === "audio" ||
+        rootPrefix === "video" ||
+        rootPrefix === "segments" ||
+        packageByPrefix.has(rootPrefix) ||
+        packageByPrefix.has("") ||
+        [...packageByPrefix.keys()].some((prefix) => prefix && rootPrefix.startsWith(`${prefix}/`))
+      ) {
+        return;
       }
+      const target = rootPrefix ? `${rootPrefix.toLowerCase()}/` : "";
+      const hasSegmentsOrTracks = list.some((item) => {
+        const itemRel = (item.relPath || item.name || "").toLowerCase();
+        return (
+          itemRel.startsWith(target) &&
+          (itemRel.includes("/audio/") || itemRel.includes("/video/") || itemRel.includes("/segments/") || itemRel.endsWith(".m4s"))
+        );
+      });
+      if (hasSegmentsOrTracks) ensurePackage(rootPrefix, e.name);
     });
 
     hlsPackages.sort((a, b) => b.rootPrefix.length - a.rootPrefix.length);

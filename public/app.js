@@ -153,9 +153,8 @@ class PackageHlsLoader {
     const fileMap = offlinePackageFiles.get(packageId);
 
     if (!fileMap) {
-      console.warn("Offline package files not in memory:", packageId);
       if (callbacks?.onError) {
-        callbacks.onError({ code: 404, text: `Offline package ${packageId} files not in memory. Re-select folder to play.` }, context);
+        callbacks.onError({ code: 404, text: "Re-select the folder to play this offline video." }, context);
       }
       return;
     }
@@ -480,6 +479,10 @@ async function importFromDirectoryHandle(dirHandle) {
       try {
         for await (const entry of handle.values()) {
           try {
+            if (entries.length && entries.length % 400 === 0) {
+              setStatus(`Scanning “${rootFolderName}”… ${entries.length} files`, true);
+              await new Promise((resolve) => setTimeout(resolve, 0));
+            }
             if (entry.kind === "file") {
               const lowerName = entry.name.toLowerCase();
               if (
@@ -1694,6 +1697,17 @@ function markSelectedPlaybackReady(videoId, message) {
 }
 
 function loadHlsVideo(url, isOffline = false) {
+  const packageMatch = String(url || "").match(/\/hls-package\/([^/]+)\//);
+  if (packageMatch && !offlinePackageFiles.has(packageMatch[1])) {
+    els.playerShell.dataset.mode = "empty";
+    const emptyTitle = els.emptyPlayer.querySelector("strong");
+    const emptyCopy = els.emptyPlayer.querySelector("span");
+    if (emptyTitle) emptyTitle.textContent = "Folder re-connect required";
+    if (emptyCopy) emptyCopy.textContent = "Scan the saved folder again to put these videos back in the library.";
+    setPlayerStatus("This offline video is not loaded. Scan its folder again.");
+    hidePlayerLoading();
+    return;
+  }
   if (window.Hls?.isSupported()) {
     let recoveredMediaError = false;
     destroyHlsPlayer();

@@ -1222,7 +1222,7 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
       (folderBaseName !== "videos" && folderBaseName !== "data"
         ? folderBaseName.replace(/[-_]+/g, " ").trim()
         : "HLS Video");
-    const totalSize = meta?.size || (await getDirectorySize(resolved));
+    const totalSize = Number(meta?.size) || 0;
     const rel = relativePrefix ? `${relativePrefix}/${hlsManifestName}` : hlsManifestName;
     const full = path.join(resolved, hlsManifestName);
 
