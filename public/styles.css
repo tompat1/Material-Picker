@@ -1233,6 +1233,7 @@ progress::-moz-progress-bar {
 }
 
 .video-list {
+  position: relative;
   counter-reset: reel;
   flex: 1;
   min-height: 0;

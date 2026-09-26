@@ -176,16 +176,27 @@
     return `${safeTitle} - ${safeId}`;
   }
 
+  function offlineArchivePath(video) {
+    if (video.offlineArchivePath) return video.offlineArchivePath;
+    const notePath = String(video.notes || "").match(/^HLS Package: (.+) \([^\n]*\)(?:\n|$)/);
+    if (notePath) return notePath[1];
+    const source = String(video.sourceUrl || "");
+    if (!/^[a-z]+:/i.test(source) && /\/[^/]+\.m3u8$/i.test(source)) return source.replace(/\/[^/]+$/, "");
+    return video.offlineArchiveFolder || "";
+  }
+
   function offlineReconnectMatches(videos, metadata = {}, rootPrefix = "") {
     const metadataId = String(metadata.id || "");
-    const folderName = String(rootPrefix || "").split("/").filter(Boolean).pop() || "";
+    const basename = (value) => String(value || "").normalize("NFC").split("/").filter(Boolean).pop() || "";
+    const folderName = basename(rootPrefix);
     const matches = (videos || []).filter((video) => {
       if (metadataId && String(video?.id || "") === metadataId) return true;
       if (!folderName || !video) return false;
       return (
-        video.offlineArchiveFolder === folderName ||
-        archiveFolderName(video.title, video.id) === folderName ||
-        (video.offlineCopyId && archiveFolderName(video.title, video.offlineCopyId) === folderName)
+        basename(offlineArchivePath(video)) === folderName ||
+        basename(video.offlineArchiveFolder) === folderName ||
+        basename(archiveFolderName(video.title, video.id)) === folderName ||
+        (video.offlineCopyId && basename(archiveFolderName(video.title, video.offlineCopyId)) === folderName)
       );
     });
 
@@ -199,7 +210,7 @@
       return total;
     };
 
-    return matches.sort((a, b) => score(b) - score(a));
+    return matches.sort((a, b) => score(b) - score(a) || String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
   }
 
   function saveState(storage, key, state) {
@@ -732,6 +743,7 @@
     groupFolderEntries,
     libraryMediaSummary,
     offlineReconnectMatches,
+    offlineArchivePath,
     inferTitleFromUrl,
     splitTitleAndSpeaker,
     isLikelyValidMediaChunk,

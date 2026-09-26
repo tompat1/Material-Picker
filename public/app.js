@@ -253,6 +253,7 @@ class PackageHlsLoader {
 init();
 
 function init() {
+  repairDuplicateArchives();
   bindEvents();
   render();
   state.videos.forEach((video) => {
@@ -265,6 +266,28 @@ function init() {
   void restoreDownloadFolder().then(() => loadFolderScript(selectedVideo()));
   void reconcileOfflineLibrary();
   void repairLegacyPageRecords({ automatic: true });
+}
+
+function repairDuplicateArchives() {
+  const before = JSON.stringify(state);
+  let removed = 0;
+  for (const video of [...state.videos]) {
+    if (!state.videos.includes(video)) continue;
+    const matches = core.offlineReconnectMatches(state.videos, { id: video.id }, core.offlineArchivePath(video));
+    if (matches.length < 2) continue;
+    const existing = matches[0];
+    for (const duplicate of matches.slice(1)) {
+      fillBlankMetadata(existing, duplicate);
+      if (state.selectedId === duplicate.id) state.selectedId = existing.id;
+    }
+    state.videos = state.videos.filter((item) => item === existing || !matches.includes(item));
+    removed += matches.length - 1;
+  }
+  if (removed) {
+    // Preserve the complete library before repairing records created by older scans.
+    localStorage.setItem(`${STORAGE_KEY}:before-archive-repair`, before);
+    saveState();
+  }
 }
 
 function bindEvents() {
@@ -371,10 +394,7 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
           ? rel.slice(pkg.rootPrefix.length + 1)
           : rel
         : rel;
-      fileMap.set(innerPath, e);
-      fileMap.set(innerPath.toLowerCase(), e);
-      fileMap.set(e.name, e);
-      fileMap.set(e.name.toLowerCase(), e);
+      rememberPackageEntry(fileMap, innerPath, e);
       totalBytes += Number(e.file?.size || e.size || 0);
     });
     offlinePackageFiles.set(packageId, fileMap);
@@ -420,6 +440,7 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       format: "hls",
       packageId,
       offlineUrl: packageUrl,
+      offlineArchivePath: pkg.rootPrefix || rootFolderName,
       offlineFormat: "hls",
       offlineSize: meta?.size || totalBytes,
       offlineSavedAt: meta?.savedAt || meta?.downloadedAt || new Date().toISOString(),
@@ -428,7 +449,7 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       estimatedBytes: meta?.size || totalBytes,
     };
 
-    const reconnectMatches = core.offlineReconnectMatches(state.videos, meta || {}, pkg.rootPrefix);
+    const reconnectMatches = core.offlineReconnectMatches(state.videos, meta || {}, pkg.rootPrefix || rootFolderName);
     if (reconnectMatches.length) {
       const existing = reconnectMatches[0];
       for (const duplicate of reconnectMatches.slice(1)) {
@@ -450,16 +471,12 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       state.videos = state.videos.filter((video) => video === existing || !reconnectMatches.includes(video));
 
       fillBlankMetadata(existing, meta || {});
-      if (
-        (!existing.url || String(existing.url).startsWith("/hls-package/") || String(existing.url).startsWith("blob:")) &&
-        /^https?:/i.test(meta?.sourceUrl || "")
-      ) {
-        existing.url = meta.sourceUrl;
-      }
+      if (!existing.url || String(existing.url).startsWith("/hls-package/")) existing.url = packageUrl;
       existing.packageId = packageId;
       existing.offlineUrl = packageUrl;
+      existing.offlineArchivePath = pkg.rootPrefix || rootFolderName;
       existing.offlineFormat = "hls";
-      existing.offlineSize = meta?.size || totalBytes;
+      existing.offlineSize = meta?.size || totalBytes || existing.offlineSize;
       existing.offlineSavedAt = meta?.savedAt || meta?.downloadedAt || existing.offlineSavedAt || new Date().toISOString();
       existing.offlineProvider = meta?.provider || existing.offlineProvider || "vimeo";
       existing.offlineStale = false;
