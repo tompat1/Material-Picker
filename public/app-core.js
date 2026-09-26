@@ -382,6 +382,24 @@
     };
   }
 
+  function sanitizeOfflineHlsManifest(manifest) {
+    const removeAttribute = (line, name) => {
+      const value = `${name}=(?:"[^"]*"|[^,]*)`;
+      return String(line || "")
+        .replace(new RegExp(`,${value}`, "gi"), "")
+        .replace(new RegExp(`${value},?`, "gi"), "");
+    };
+
+    return String(manifest || "")
+      .split(/\r?\n/)
+      .filter((line) => !/^#EXT-X-MEDIA:.*TYPE=(?:SUBTITLES|CLOSED-CAPTIONS)(?:,|$)/i.test(line))
+      .map((line) => {
+        if (!line.startsWith("#EXT-X-STREAM-INF:")) return line;
+        return removeAttribute(removeAttribute(line, "SUBTITLES"), "CLOSED-CAPTIONS");
+      })
+      .join("\n");
+  }
+
   function isLikelyValidMediaChunk(bytes) {
     if (!bytes || bytes.length < 8) return false;
     const sample = String.fromCharCode(...bytes.subarray(0, Math.min(bytes.length, 64))).toLowerCase();
@@ -699,6 +717,7 @@
     proofreadText,
     removeCollection,
     saveState,
+    sanitizeOfflineHlsManifest,
     toAbsoluteUrl,
     toEmbedUrl,
     verifyArchive,

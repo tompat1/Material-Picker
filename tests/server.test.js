@@ -93,6 +93,7 @@ test("refuses encrypted HLS instead of attempting to bypass it", () => {
 test("removes uncached subtitle groups from offline HLS masters", () => {
   const manifest = `#EXTM3U
 #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio-a",URI="audio/playlist.m3u8"
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",URI="https://expired.example/subtitles.m3u8"
 #EXT-X-STREAM-INF:BANDWIDTH=4000000,CODECS="avc1.640028,mp4a.40.2",AUDIO="audio-a",SUBTITLES="subs",CLOSED-CAPTIONS="cc"
 video/playlist.m3u8`;
   const sanitized = sanitizeOfflineMaster(manifest);
@@ -100,6 +101,7 @@ video/playlist.m3u8`;
   assert.match(sanitized, /AUDIO="audio-a"/);
   assert.match(sanitized, /CODECS="avc1\.640028,mp4a\.40\.2"/);
   assert.doesNotMatch(sanitized, /SUBTITLES|CLOSED-CAPTIONS/);
+  assert.doesNotMatch(sanitized, /expired\.example/);
   assert.match(sanitized, /video\/playlist\.m3u8/);
 });
 
@@ -430,5 +432,4 @@ test("folder metadata writes notes and a transcript into the video folder", asyn
   assert.equal(saved.notes, "Remember the opening");
   assert.equal(saved.transcript, "[00:01] Hello");
 });
-
 

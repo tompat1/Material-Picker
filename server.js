@@ -655,6 +655,7 @@ function removeHlsAttribute(line, name) {
 function sanitizeOfflineMaster(manifest) {
   return String(manifest || "")
     .split(/\r?\n/)
+    .filter((line) => !/^#EXT-X-MEDIA:.*TYPE=(?:SUBTITLES|CLOSED-CAPTIONS)(?:,|$)/i.test(line))
     .map((line) => {
       if (!line.startsWith("#EXT-X-STREAM-INF:")) return line;
       return removeHlsAttribute(removeHlsAttribute(line, "SUBTITLES"), "CLOSED-CAPTIONS");

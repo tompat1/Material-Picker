@@ -60,6 +60,7 @@ const els = {
   saveSelectedOfflineButton: document.querySelector("#saveSelectedOfflineButton"),
   screenMeta: document.querySelector("#screenMeta"),
   sourceFrame: document.querySelector("#sourceFrame"),
+  sourceDisclosure: document.querySelector("#sourceDisclosure"),
   sourceLang: document.querySelector("#sourceLang"),
   sourceUrl: document.querySelector("#sourceUrl"),
   selectVisibleButton: document.querySelector("#selectVisibleButton"),
@@ -106,6 +107,9 @@ let state = loadState();
 let activeCollectionId = "all";
 const selectedVideoIds = new Set();
 const offlinePackageFiles = new Map();
+const sourcePreviewCache = new Map();
+let sourcePreviewUrl = "";
+let sourcePreviewRequestId = 0;
 
 class PackageHlsLoader {
   constructor(config) {
@@ -217,7 +221,9 @@ class PackageHlsLoader {
         if (!file) throw new Error(`File is unavailable: ${requestedPath}`);
         const tfirst = performance.now();
         this.stats.loading.first = tfirst;
-        const readPromise = isPlaylist ? file.text() : file.arrayBuffer();
+        const readPromise = isPlaylist
+          ? file.text().then((text) => requestedPath.endsWith(".m3u8") ? core.sanitizeOfflineHlsManifest(text) : text)
+          : file.arrayBuffer();
         return readPromise.then((data) => {
           const tload = performance.now();
           this.stats.loading.end = tload;
@@ -281,7 +287,7 @@ function bindEvents() {
   els.openSourceButton.addEventListener("click", openSource);
   els.openVideoButton.addEventListener("click", openVideoSource);
   els.libraryOfflinePermission.addEventListener("change", renderLibraryOfflineManager);
-  els.retryPlaybackButton.addEventListener("click", renderPlayer);
+  els.retryPlaybackButton.addEventListener("click", retryPlayback);
   els.renameCollectionButton.addEventListener("click", renameActiveCollection);
   els.searchLibrary.addEventListener("input", () => {
     renderLibrary();
@@ -302,6 +308,9 @@ function bindEvents() {
   els.translateButton.addEventListener("click", translateTranscript);
   els.proofreadButton.addEventListener("click", proofreadTranscript);
   els.downloadTranscriptButton.addEventListener("click", downloadTranscript);
+  els.sourceDisclosure?.addEventListener("toggle", () => {
+    if (els.sourceDisclosure.open) void loadSourcePreview();
+  });
   els.videoPlayer?.addEventListener("playing", hidePlayerLoading);
   els.videoPlayer?.addEventListener("canplay", hidePlayerLoading);
   els.videoPlayer?.addEventListener("loadeddata", hidePlayerLoading);
@@ -781,6 +790,7 @@ async function handleImport(event) {
 
   try {
     const page = await fetchPageForImport(url);
+    cacheSourcePreview(url, page.html, page.finalUrl || url);
     const items = extractVideos(page.html, page.finalUrl || url);
     const imported = addExtractedVideos(items, url);
     recordScrape(url, {
@@ -1617,7 +1627,7 @@ function renderForm() {
   els.videoNotes.value = video?.notes || "";
   renderScreenMeta(video);
   els.openSourceButton.disabled = !video?.sourceUrl;
-  if (video?.sourceUrl) setSourceFrame(video.sourceUrl, false);
+  setSourceFrame(video?.sourceUrl || "", false);
 }
 
 async function resolveVideoStream(video) {
@@ -1784,6 +1794,24 @@ function markSelectedPlaybackReady(videoId, message) {
   setPlayerStatus(message);
 }
 
+async function retryPlayback() {
+  const video = selectedVideo();
+  if (!video) return;
+  if (video.offlineExportedTo && offlineExportDirectoryHandle) {
+    const directory = await openSavedVideoFolder(video);
+    if (directory && (await connectSavedArchive(video, directory))) {
+      saveState();
+      renderPlayer();
+      return;
+    }
+  }
+  delete video.streamUrl;
+  delete video.streamType;
+  delete video.streamProvider;
+  saveState();
+  renderPlayer();
+}
+
 function loadHlsVideo(url, isOffline = false) {
   const packageMatch = String(url || "").match(/\/hls-package\/([^/]+)\//);
   if (packageMatch && !offlinePackageFiles.has(packageMatch[1])) {
@@ -1915,7 +1943,7 @@ async function reconcileOfflineLibrary() {
         video.offlineProvider = copy.provider;
         video.offlineStale = copy.sourceUrl !== video.url;
         video.offlineDownloadStatus = "completed";
-      } else if (video.offlineUrl) {
+      } else if (String(video.offlineUrl || "").startsWith("/offline-media/")) {
         delete video.offlineUrl;
         delete video.offlineCopyId;
         delete video.offlineSize;
@@ -2059,9 +2087,82 @@ async function restoreDownloadFolder() {
   if ((await stored.queryPermission({ mode: "readwrite" })) !== "granted") return;
   offlineExportDirectoryHandle = stored;
   if (!state.lastOfflineFolderName) state.lastOfflineFolderName = stored.name || "";
+  await reconnectSavedArchives();
   renderOfflineDestination();
   renderLibraryOfflineManager();
   renderRecentSources();
+}
+
+function savedPackageId(video) {
+  const safeId = String(video?.id || crypto.randomUUID()).replace(/[^a-z0-9_-]/gi, "-");
+  return `saved-${safeId}`;
+}
+
+function rememberPackageEntry(fileMap, relativePath, entry) {
+  const normalized = relativePath.replace(/^\/+/, "");
+  fileMap.set(normalized, entry);
+  fileMap.set(normalized.toLowerCase(), entry);
+  const filename = normalized.split("/").pop();
+  if (filename && !fileMap.has(filename)) fileMap.set(filename, entry);
+  if (filename && !fileMap.has(filename.toLowerCase())) fileMap.set(filename.toLowerCase(), entry);
+}
+
+async function collectSavedArchiveFiles(directory, prefix = "", fileMap = new Map()) {
+  for await (const entry of directory.values()) {
+    if (entry.name.startsWith(".")) continue;
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.kind === "directory") {
+      await collectSavedArchiveFiles(entry, relativePath, fileMap);
+    } else if (entry.kind === "file") {
+      rememberPackageEntry(fileMap, relativePath, entry);
+    }
+  }
+  return fileMap;
+}
+
+async function connectSavedArchive(video, directory) {
+  if (!video || !directory?.values) return false;
+  const fileMap = await collectSavedArchiveFiles(directory);
+  const manifestName = ["master.m3u8", "playlist.m3u8", "index.m3u8"].find((name) => fileMap.has(name));
+
+  if (manifestName) {
+    const packageId = savedPackageId(video);
+    offlinePackageFiles.set(packageId, fileMap);
+    video.packageId = packageId;
+    video.offlineUrl = `/hls-package/${packageId}/${manifestName}`;
+    video.offlineFormat = "hls";
+  } else {
+    const directEntry = [...fileMap.entries()].find(([name]) =>
+      /^video\.(?:mp4|webm|ogv|ogg|mov|m4v|mkv|avi|flv|wmv|ts|3gp)$/i.test(name)
+    );
+    if (!directEntry) return false;
+    const file = await directEntry[1].getFile();
+    if (String(video.offlineUrl || "").startsWith("blob:")) URL.revokeObjectURL(video.offlineUrl);
+    video.offlineUrl = URL.createObjectURL(file);
+    video.offlineFormat = directEntry[0].split(".").pop().toLowerCase();
+  }
+
+  video.offlineStale = false;
+  video.offlineDownloadStatus = "completed";
+  video.playbackStatus = "ready";
+  video.playbackMessage = "Offline copy ready to play from disk";
+  return true;
+}
+
+async function reconnectSavedArchives() {
+  if (!offlineExportDirectoryHandle) return 0;
+  let connected = 0;
+  for (const video of state.videos) {
+    if (!video.offlineExportedTo && !video.offlineArchiveFolder) continue;
+    const directory = await openSavedVideoFolder(video);
+    if (directory && (await connectSavedArchive(video, directory))) connected += 1;
+  }
+  if (connected) {
+    saveState();
+    renderLibrary();
+    renderPlayer();
+  }
+  return connected;
 }
 
 async function ensureDownloadFolder() {
@@ -2348,6 +2449,7 @@ async function writeDownloadPlan(video, plan) {
   video.offlineExportedTo = offlineExportDirectoryHandle.name;
   video.offlineExportedAt = new Date().toISOString();
   video.offlineSize = video.offlineBytesDownloaded;
+  await connectSavedArchive(video, destination);
   delete video.offlineResumePaths;
   delete video.offlineStalled;
   saveState();
@@ -2540,6 +2642,7 @@ async function exportOfflineCopy(video) {
   video.offlineDownloadStatus = "completed";
   video.offlineExportedTo = offlineExportDirectoryHandle.name;
   video.offlineExportedAt = new Date().toISOString();
+  await connectSavedArchive(video, destination);
   saveState();
   renderLibrary();
   renderLibraryOfflineManager();
@@ -3135,12 +3238,96 @@ function selectedVideo() {
   return state.videos.find((video) => video.id === state.selectedId) || null;
 }
 
+function sourcePreviewDocument({ title = "Source page", paragraphs = [], url = "", message = "" } = {}) {
+  const body = message
+    ? `<p class="notice">${escapeHtml(message)}</p>`
+    : paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light">
+  <style>
+    :root { font-family: ui-serif, Georgia, serif; color: #28241f; background: #f4f0e7; }
+    * { box-sizing: border-box; }
+    body { max-width: 72ch; margin: 0 auto; padding: 24px; line-height: 1.6; }
+    header { margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid #c9c0af; }
+    h1 { margin: 0 0 6px; font-size: 1.35rem; line-height: 1.25; }
+    small { display: block; overflow-wrap: anywhere; color: #756b5d; font: 0.72rem/1.45 ui-monospace, monospace; }
+    p { margin: 0 0 1em; }
+    .notice { color: #756b5d; font-style: italic; }
+  </style>
+</head>
+<body>
+  <header><h1>${escapeHtml(title)}</h1><small>${escapeHtml(url)}</small></header>
+  <main>${body || '<p class="notice">No readable page text was found.</p>'}</main>
+</body>
+</html>`;
+}
+
+function buildSourcePreview(html, url) {
+  const documentNode = new DOMParser().parseFromString(String(html || ""), "text/html");
+  documentNode.querySelectorAll("script, style, link, iframe, object, embed, form, video, audio, source, img, svg, canvas, noscript").forEach((node) => node.remove());
+  const title = documentNode.querySelector("h1")?.textContent?.trim() || documentNode.title?.trim() || "Source page";
+  const paragraphs = [...documentNode.querySelectorAll("main p, article p, main li, article li, body p")]
+    .map((node) => node.textContent.replace(/\s+/g, " ").trim())
+    .filter((text, index, items) => text.length >= 24 && items.indexOf(text) === index)
+    .slice(0, 36);
+  return sourcePreviewDocument({ title, paragraphs, url });
+}
+
+function cacheSourcePreview(url, html, finalUrl = url) {
+  if (!url || typeof html !== "string") return;
+  sourcePreviewCache.set(url, buildSourcePreview(html, finalUrl));
+  if (sourcePreviewUrl === url && els.sourceDisclosure?.open) {
+    els.sourceFrame.srcdoc = sourcePreviewCache.get(url);
+  }
+}
+
+async function loadSourcePreview() {
+  const url = sourcePreviewUrl;
+  if (!url || !els.sourceFrame) return;
+  if (sourcePreviewCache.has(url)) {
+    els.sourceFrame.srcdoc = sourcePreviewCache.get(url);
+    return;
+  }
+
+  const requestId = ++sourcePreviewRequestId;
+  els.sourceFrame.srcdoc = sourcePreviewDocument({
+    title: "Source page",
+    url,
+    message: "Preparing a quiet preview...",
+  });
+  try {
+    const response = await fetch(`/api/scrape?url=${encodeURIComponent(url)}`, {
+      signal: AbortSignal.timeout(45000),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || typeof data.html !== "string") {
+      throw new Error(data.error || `Preview returned ${response.status}.`);
+    }
+    if (requestId !== sourcePreviewRequestId || url !== sourcePreviewUrl) return;
+    cacheSourcePreview(url, data.html, data.finalUrl || url);
+  } catch {
+    if (requestId !== sourcePreviewRequestId || url !== sourcePreviewUrl) return;
+    els.sourceFrame.srcdoc = sourcePreviewDocument({
+      title: "Preview unavailable",
+      url,
+      message: "This page could not be reduced to a local preview. Use Open to view the original.",
+    });
+  }
+}
+
 function setSourceFrame(url, updateInput = true) {
-  if (!url) return;
-  els.sourceFrame.src = url;
-  if (updateInput) els.sourceUrl.value = url;
-  const disclosure = document.querySelector("#sourceDisclosure");
-  if (disclosure) disclosure.open = true;
+  sourcePreviewRequestId += 1;
+  sourcePreviewUrl = String(url || "").trim();
+  els.sourceFrame?.removeAttribute("src");
+  if (updateInput) els.sourceUrl.value = sourcePreviewUrl;
+  if (!els.sourceFrame) return;
+  els.sourceFrame.srcdoc = sourcePreviewUrl
+    ? sourcePreviewDocument({ title: "Source page", url: sourcePreviewUrl, message: "Open the preview to load a quiet page snapshot." })
+    : sourcePreviewDocument({ title: "No source page", message: "Add a source URL to preview its readable content." });
+  if (sourcePreviewUrl && els.sourceDisclosure?.open) void loadSourcePreview();
 }
 
 function openSource() {

@@ -196,6 +196,21 @@ test("follows a split HLS master to its audio segments", () => {
   assert.equal(parsedMedia.segments[1].start, 6.08);
 });
 
+test("removes remote subtitle tracks from saved HLS manifests", () => {
+  const master = [
+    "#EXTM3U",
+    '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",URI="https://expired.example/subtitles.m3u8"',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio",URI="audio/playlist.m3u8"',
+    '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="audio",SUBTITLES="subs",CLOSED-CAPTIONS="cc"',
+    "video/playlist.m3u8",
+  ].join("\n");
+
+  const sanitized = core.sanitizeOfflineHlsManifest(master);
+  assert.doesNotMatch(sanitized, /SUBTITLES|CLOSED-CAPTIONS|expired\.example/);
+  assert.match(sanitized, /TYPE=AUDIO/);
+  assert.match(sanitized, /video\/playlist\.m3u8/);
+});
+
 test("recognizes common video container extensions including mkv, avi, and ts", () => {
   assert.equal(core.isLikelyVideoUrl("file:///videos/clip.mkv"), true);
   assert.equal(core.isLikelyVideoUrl("file:///videos/clip.avi"), true);
@@ -333,6 +348,5 @@ test("groupFolderEntries groups packages with custom named m3u8 and segments", (
   assert.equal(hlsPackages[0].rootPrefix, "");
   assert.equal(standaloneEntries.length, 0);
 });
-
 
 
