@@ -176,6 +176,32 @@
     return `${safeTitle} - ${safeId}`;
   }
 
+  function offlineReconnectMatches(videos, metadata = {}, rootPrefix = "") {
+    const metadataId = String(metadata.id || "");
+    const folderName = String(rootPrefix || "").split("/").filter(Boolean).pop() || "";
+    const matches = (videos || []).filter((video) => {
+      if (metadataId && String(video?.id || "") === metadataId) return true;
+      if (!folderName || !video) return false;
+      return (
+        video.offlineArchiveFolder === folderName ||
+        archiveFolderName(video.title, video.id) === folderName ||
+        (video.offlineCopyId && archiveFolderName(video.title, video.offlineCopyId) === folderName)
+      );
+    });
+
+    const score = (video) => {
+      let total = 0;
+      if (video.collectionId) total += 16;
+      if (video.url && !String(video.url).startsWith("/hls-package/") && !String(video.url).startsWith("blob:")) total += 8;
+      if (video.offlineArchiveFolder || video.offlineExportedTo) total += 4;
+      if (video.transcript || video.translation) total += 2;
+      if (video.notes) total += 1;
+      return total;
+    };
+
+    return matches.sort((a, b) => score(b) - score(a));
+  }
+
   function saveState(storage, key, state) {
     storage.setItem(key, JSON.stringify(state));
   }
@@ -705,6 +731,7 @@
     formatDuration,
     groupFolderEntries,
     libraryMediaSummary,
+    offlineReconnectMatches,
     inferTitleFromUrl,
     splitTitleAndSpeaker,
     isLikelyValidMediaChunk,

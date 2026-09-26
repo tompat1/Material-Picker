@@ -353,7 +353,10 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
   }
 
   let addedCount = 0;
+  let reconnectedCount = 0;
+  let removedDuplicateCount = 0;
   let firstAddedId = null;
+  let firstReconnectedId = null;
 
   // Process HLS packages
   for (const pkg of hlsPackages) {
@@ -425,6 +428,52 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       estimatedBytes: meta?.size || totalBytes,
     };
 
+    const reconnectMatches = core.offlineReconnectMatches(state.videos, meta || {}, pkg.rootPrefix);
+    if (reconnectMatches.length) {
+      const existing = reconnectMatches[0];
+      for (const duplicate of reconnectMatches.slice(1)) {
+        fillBlankMetadata(existing, duplicate);
+        if (!existing.collectionId && duplicate.collectionId) existing.collectionId = duplicate.collectionId;
+        if (!existing.sourceUrl && duplicate.sourceUrl) existing.sourceUrl = duplicate.sourceUrl;
+        if (
+          (!existing.url || String(existing.url).startsWith("/hls-package/") || String(existing.url).startsWith("blob:")) &&
+          duplicate.url &&
+          !String(duplicate.url).startsWith("/hls-package/") &&
+          !String(duplicate.url).startsWith("blob:")
+        ) {
+          existing.url = duplicate.url;
+        }
+        if (duplicate.packageId && duplicate.packageId !== packageId) {
+          offlinePackageFiles.delete(duplicate.packageId);
+        }
+      }
+      state.videos = state.videos.filter((video) => video === existing || !reconnectMatches.includes(video));
+
+      fillBlankMetadata(existing, meta || {});
+      if (
+        (!existing.url || String(existing.url).startsWith("/hls-package/") || String(existing.url).startsWith("blob:")) &&
+        /^https?:/i.test(meta?.sourceUrl || "")
+      ) {
+        existing.url = meta.sourceUrl;
+      }
+      existing.packageId = packageId;
+      existing.offlineUrl = packageUrl;
+      existing.offlineFormat = "hls";
+      existing.offlineSize = meta?.size || totalBytes;
+      existing.offlineSavedAt = meta?.savedAt || meta?.downloadedAt || existing.offlineSavedAt || new Date().toISOString();
+      existing.offlineProvider = meta?.provider || existing.offlineProvider || "vimeo";
+      existing.offlineStale = false;
+      existing.offlineDownloadStatus = "completed";
+      existing.playbackStatus = "ready";
+      existing.playbackMessage = "Offline HLS package reconnected and ready to play";
+      existing.checkedAt = new Date().toISOString();
+
+      if (!firstReconnectedId) firstReconnectedId = existing.id;
+      reconnectedCount += 1;
+      removedDuplicateCount += reconnectMatches.length - 1;
+      continue;
+    }
+
     state.videos.unshift(nextVideo);
     if (!firstAddedId) firstAddedId = nextVideo.id;
     addedCount += 1;
@@ -467,17 +516,22 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
     addedCount += 1;
   }
 
-  if (firstAddedId) {
-    state.selectedId = firstAddedId;
+  const targetId = firstReconnectedId || firstAddedId;
+  if (targetId) {
+    state.selectedId = targetId;
   }
 
   saveState();
   render();
 
+  const resultParts = [];
+  if (reconnectedCount) resultParts.push(`reconnected ${reconnectedCount}`);
+  if (addedCount) resultParts.push(`imported ${addedCount}`);
+  if (removedDuplicateCount) resultParts.push(`removed ${removedDuplicateCount} duplicate ${removedDuplicateCount === 1 ? "record" : "records"}`);
   setStatus(
-    `Imported ${addedCount} video ${addedCount === 1 ? "item" : "items"} from “${rootFolderName}”. Ready to play!`
+    `${resultParts.length ? resultParts.join(", ") : "No videos found"} from “${rootFolderName}”.${reconnectedCount || addedCount ? " Ready to play!" : ""}`
   );
-  if (addedCount) showDesk(addedCount === 1 ? "screen" : "reels");
+  if (reconnectedCount || addedCount) showDesk(reconnectedCount + addedCount === 1 ? "screen" : "reels");
   return addedCount;
 }
 

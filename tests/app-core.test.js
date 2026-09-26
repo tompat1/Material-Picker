@@ -349,4 +349,41 @@ test("groupFolderEntries groups packages with custom named m3u8 and segments", (
   assert.equal(standaloneEntries.length, 0);
 });
 
+test("offlineReconnectMatches prefers the existing filed record and returns duplicate imports", () => {
+  const videos = [
+    {
+      id: "video-12345678",
+      title: "A saved talk",
+      url: "/hls-package/old-scan/master.m3u8",
+    },
+    {
+      id: "video-12345678",
+      title: "A saved talk",
+      url: "https://vimeo.com/123",
+      collectionId: "day-5",
+      offlineArchiveFolder: "A saved talk - video-12",
+    },
+  ];
+
+  const matches = core.offlineReconnectMatches(
+    videos,
+    { id: "video-12345678" },
+    "day5/A saved talk - video-12"
+  );
+
+  assert.equal(matches.length, 2);
+  assert.equal(matches[0].collectionId, "day-5");
+  assert.equal(matches[1].url, "/hls-package/old-scan/master.m3u8");
+});
+
+test("offlineReconnectMatches can reconnect an older archive by its folder name", () => {
+  const video = {
+    id: "471426345",
+    title: "A saved talk",
+    url: "https://vimeo.com/471426345",
+  };
+  const folderName = core.archiveFolderName(video.title, video.id);
+
+  assert.deepEqual(core.offlineReconnectMatches([video], {}, `day2/${folderName}`), [video]);
+});
 
