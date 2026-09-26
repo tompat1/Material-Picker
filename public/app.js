@@ -105,6 +105,7 @@ let libraryMeasureRunning = false;
 let verificationRunning = false;
 let state = loadState();
 let activeCollectionId = "all";
+let folderBrowseRunning = false;
 const selectedVideoIds = new Set();
 const offlinePackageFiles = new Map();
 const sourcePreviewCache = new Map();
@@ -190,6 +191,7 @@ class PackageHlsLoader {
     const resolveFile = () => {
       if (target instanceof File) return Promise.resolve(target);
       if (target.file instanceof File) return Promise.resolve(target.file);
+      if (typeof target.getFile === "function") return target.getFile();
       if (typeof target.handle?.getFile === "function") return target.handle.getFile();
       return Promise.reject(new Error(`File handle not readable for ${requestedPath}`));
     };
@@ -543,8 +545,56 @@ async function importFromDirectoryHandle(dirHandle) {
 }
 
 async function handleBrowseFolder() {
-  // On web deployments (Cloudflare Workers / non-localhost), use browser directory picker directly:
-  if (!isLocalServer()) {
+  if (folderBrowseRunning) {
+    setStatus("The folder picker is already open. Finish that prompt to continue.", true);
+    return;
+  }
+
+  folderBrowseRunning = true;
+  if (els.browseFolderButton) els.browseFolderButton.disabled = true;
+
+  try {
+    // On web deployments (Cloudflare Workers / non-localhost), use browser directory picker directly:
+    if (!isLocalServer()) {
+      if (typeof window.showDirectoryPicker === "function") {
+        try {
+          const dirHandle = await window.showDirectoryPicker();
+          await importFromDirectoryHandle(dirHandle);
+          return;
+        } catch (err) {
+          if (err.name === "AbortError") return; // user cancelled dialog
+          if (err.name === "NotAllowedError" && /picker already active/i.test(err.message || "")) return;
+          console.warn("showDirectoryPicker error, falling back to input:", err);
+        }
+      }
+      // Safari / Firefox / fallback file input on web:
+      if (els.localFolderInput) {
+        els.localFolderInput.click();
+      }
+      return;
+    }
+
+    // Running on local server (localhost):
+    try {
+      const response = await fetch("/api/choose-folder", { signal: AbortSignal.timeout(120000) });
+      if (response.ok) {
+        const text = await response.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch {}
+        if (data?.supported && data.chosenPath) {
+          els.folderPath.value = data.chosenPath;
+          setStatus(`Selected folder: “${data.chosenPath}”. Scanning for videos...`, true);
+          await scanFolderPath(data.chosenPath);
+          return;
+        }
+        if (data?.supported && data.cancelled) {
+          return;
+        }
+      }
+    } catch {
+      // If server helper is not available, fallback
+    }
+
     if (typeof window.showDirectoryPicker === "function") {
       try {
         const dirHandle = await window.showDirectoryPicker();
@@ -552,49 +602,16 @@ async function handleBrowseFolder() {
         return;
       } catch (err) {
         if (err.name === "AbortError") return; // user cancelled dialog
-        console.warn("showDirectoryPicker error, falling back to input:", err);
+        if (err.name === "NotAllowedError" && /picker already active/i.test(err.message || "")) return;
       }
     }
-    // Safari / Firefox / fallback file input on web:
+
     if (els.localFolderInput) {
       els.localFolderInput.click();
     }
-    return;
-  }
-
-  // Running on local server (localhost):
-  try {
-    const response = await fetch("/api/choose-folder", { signal: AbortSignal.timeout(120000) });
-    if (response.ok) {
-      const text = await response.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch {}
-      if (data?.supported && data.chosenPath) {
-        els.folderPath.value = data.chosenPath;
-        setStatus(`Selected folder: “${data.chosenPath}”. Scanning for videos...`, true);
-        await scanFolderPath(data.chosenPath);
-        return;
-      }
-      if (data?.supported && data.cancelled) {
-        return;
-      }
-    }
-  } catch {
-    // If server helper is not available, fallback
-  }
-
-  if (typeof window.showDirectoryPicker === "function") {
-    try {
-      const dirHandle = await window.showDirectoryPicker();
-      await importFromDirectoryHandle(dirHandle);
-      return;
-    } catch (err) {
-      if (err.name === "AbortError") return;
-    }
-  }
-
-  if (els.localFolderInput) {
-    els.localFolderInput.click();
+  } finally {
+    folderBrowseRunning = false;
+    if (els.browseFolderButton) els.browseFolderButton.disabled = false;
   }
 }
 
