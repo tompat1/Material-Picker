@@ -310,26 +310,45 @@ function bindEvents() {
   els.clearAllButton.addEventListener("click", clearAll);
   els.checkLibraryButton.addEventListener("click", checkLibraryPlayback);
   els.chooseLibraryFolderButton.addEventListener("click", chooseOfflineFolder);
-  els.collectionForm.addEventListener("submit", createCollection);
-  els.clearSelectionButton.addEventListener("click", clearVideoSelection);
+  els.collectionForm?.addEventListener("submit", createCollection);
+  els.clearSelectionButton?.addEventListener("click", clearVideoSelection);
   els.clearHistoryButton.addEventListener("click", clearScrapeHistory);
   els.useOfflineSourceButton.addEventListener("click", useLatestOfflineSource);
   els.useScannedFolderButton.addEventListener("click", useLatestScannedFolder);
-  els.deleteCollectionButton.addEventListener("click", deleteActiveCollection);
+  els.deleteCollectionButton?.addEventListener("click", deleteActiveCollection);
   els.openSourceButton.addEventListener("click", openSource);
   els.openVideoButton.addEventListener("click", openVideoSource);
   els.libraryOfflinePermission.addEventListener("change", renderLibraryOfflineManager);
   els.retryPlaybackButton.addEventListener("click", retryPlayback);
-  els.renameCollectionButton.addEventListener("click", renameActiveCollection);
+  els.renameCollectionButton?.addEventListener("click", renameActiveCollection);
   els.searchLibrary.addEventListener("input", () => {
     renderLibrary();
     renderCollectionManager();
   });
-  els.selectVisibleButton.addEventListener("click", selectVisibleVideos);
+  els.selectVisibleButton?.addEventListener("click", selectVisibleVideos);
   els.markAllOfflineButton.addEventListener("click", toggleMarkAllOffline);
   els.verifyOfflineButton?.addEventListener("click", handleVerifyOfflineButtonClick);
   els.saveSelectedOfflineButton.addEventListener("click", saveSelectedOfflineVideos);
-  els.moveSelectedButton.addEventListener("click", moveSelectedVideos);
+  els.moveSelectedButton?.addEventListener("click", moveSelectedVideos);
+  document.querySelector("#addVideoButton")?.addEventListener("click", () => {
+    const store = document.querySelector(".import-store");
+    const mount = document.querySelector("#addVideoMount");
+    if (store && mount && store.childElementCount) mount.append(...store.childNodes);
+    document.querySelector("#addVideoDialog")?.showModal();
+  });
+  document.querySelector("#playVideoButton")?.addEventListener("click", () => {
+    if (els.playerShell?.dataset.mode !== "video") return;
+    els.videoPlayer?.play()?.catch(() => {});
+  });
+  document.querySelector("#downloadCurrentButton")?.addEventListener("click", () => {
+    const video = selectedVideo();
+    if (!video) return;
+    selectedVideoIds.add(video.id);
+    saveState();
+    render();
+    showDesk("downloads");
+    setStatus(`“${video.title || "This video"}” is marked. Confirm permission, then download it.`);
+  });
   els.videoForm.addEventListener("submit", (event) => event.preventDefault());
   els.videoForm.addEventListener("input", updateSelectedFromForm);
   els.videoForm.addEventListener("change", updateSelectedFromForm);
@@ -1097,6 +1116,7 @@ function updateTranscriptFields() {
   video.translation = els.translatedText.value;
   saveState();
   renderLibrary();
+  renderChapters(video);
   scheduleFolderMetadataSave(video);
 }
 
@@ -1111,10 +1131,9 @@ function selectVideo(id) {
 }
 
 function showDesk(name) {
-  const tabName = name === "reels" ? "library" : name;
+  const tabName = name === "reels" || name === "screen" || name === "folders" ? "library" : name;
   const tab = document.querySelector(`#desk-${tabName}`);
-  if (!tab || !window.matchMedia("(max-width: 1180px)").matches) return;
-  tab.checked = true;
+  if (tab) tab.checked = true;
 }
 
 function clearAll() {
@@ -1236,7 +1255,7 @@ function clearScrapeHistory() {
 
 function renderVideoCount() {
   els.videoCount.textContent = state.videos.length;
-  if (els.videoCountLabel) els.videoCountLabel.textContent = state.videos.length === 1 ? "reel" : "reels";
+  if (els.videoCountLabel) els.videoCountLabel.textContent = state.videos.length === 1 ? "video" : "videos";
 }
 
 function videoRuntimeLabel(video) {
@@ -1560,6 +1579,7 @@ function toggleMarkAllOffline() {
 }
 
 function renderCollectionManager() {
+  if (!els.collectionList) return;
   const collections = state.collections || [];
   els.collectionCount.textContent = collections.length;
   els.selectedCount.textContent = selectedVideoIds.size;
@@ -1704,6 +1724,37 @@ function renderScreenMeta(video) {
     .join("");
 }
 
+function renderChapters(video) {
+  const list = document.querySelector("#chapterList");
+  if (!list) return;
+  const lines = String(video?.transcript || "")
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const chapters = lines.flatMap((line) => {
+    const match = line.match(/^\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s+(.+)$/);
+    return match ? [{ time: match[1], text: match[2] }] : [];
+  });
+  list.innerHTML = "";
+  chapters.forEach((chapter) => {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.innerHTML = `<span class="chapter-time">${escapeHtml(chapter.time)}</span><span>${escapeHtml(chapter.text)}</span>`;
+    button.addEventListener("click", () => seekToChapter(chapter.time));
+    item.append(button);
+    list.append(item);
+  });
+}
+
+function seekToChapter(time) {
+  const parts = String(time).split(":").map((part) => Number(part) || 0);
+  const seconds = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
+  if (!els.videoPlayer || els.playerShell?.dataset.mode !== "video") return;
+  els.videoPlayer.currentTime = seconds;
+  els.videoPlayer.play()?.catch(() => {});
+}
+
 function renderForm() {
   const video = selectedVideo();
   const fields = [
@@ -1726,7 +1777,18 @@ function renderForm() {
   els.videoLanguage.value = video?.language || "";
   els.videoTags.value = video?.tags || "";
   els.videoNotes.value = video?.notes || "";
+  const playerTitle = document.querySelector("#playerTitle");
+  const nowPlayingMeta = document.querySelector("#nowPlayingMeta");
+  if (playerTitle) playerTitle.textContent = video?.title || "Select a video";
+  if (nowPlayingMeta) {
+    nowPlayingMeta.textContent = [video?.speaker, videoRuntimeLabel(video)].filter(Boolean).join(" / ");
+  }
+  const playVideoButton = document.querySelector("#playVideoButton");
+  const downloadCurrentButton = document.querySelector("#downloadCurrentButton");
+  if (playVideoButton) playVideoButton.disabled = !video;
+  if (downloadCurrentButton) downloadCurrentButton.disabled = !video;
   renderScreenMeta(video);
+  renderChapters(video);
   els.openSourceButton.disabled = !video?.sourceUrl;
   setSourceFrame(video?.sourceUrl || "", false);
 }

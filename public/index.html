@@ -1,22 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-picker-theme="dark">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#110f0c" />
+    <meta name="theme-color" content="#281E19" />
     <meta
       name="description"
-      content="Material Picker is a local desk for collecting source video, saving offline copies, and working through transcripts."
+      content="A workspace to watch, save and transcribe educational videos."
     />
-    <title>Material Picker</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23110f0c'/%3E%3Cpath d='M5 7h22l-2.2 5.2H7.2L5 7z' fill='%23e8a23a'/%3E%3Cpath d='M9 7l2 5.2M16 7l1.2 5.2M22 7l1.2 5.2' stroke='%23110f0c' stroke-width='1.3'/%3E%3Crect x='7' y='14' width='18' height='12' rx='1.2' fill='%23f3eadf'/%3E%3C/svg%3E" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,560;1,9..144,560&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="./styles.css?v=archive-repair-2" />
+    <title>Picker</title>
+    <link rel="icon" href="/brand/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/brand/icons/favicon.ico" />
+    <link rel="apple-touch-icon" href="/brand/icons/picker-180.png" />
+    <link rel="manifest" href="/brand/icons/site.webmanifest" />
+    <meta property="og:title" content="Picker - Keep your curiosity." />
+    <meta property="og:description" content="A workspace to watch, save and transcribe educational videos." />
+    <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-1" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to library</a>
@@ -24,77 +26,51 @@
 
     <div class="app-shell">
       <header class="mast">
-        <div class="brand">
-          <span class="slate" aria-hidden="true">
-            <span class="slate-sticks"></span>
-            <span class="slate-board">MP</span>
-          </span>
-          <div class="brand-copy">
-            <p class="brand-kicker">Local film desk</p>
-            <h1 class="brand-name">Material <em>Picker</em></h1>
-          </div>
+        <div class="brand-lockup">
+          <a class="brand" href="/">
+            <img class="brand-logo" src="/brand/logos/picker-dark.svg" alt="Picker" width="140" height="40" />
+          </a>
+          <p class="brand-tagline">Your learning library</p>
         </div>
         <p class="status-line" id="statusLine" role="status" aria-live="polite">
           <span class="status-dot"></span>
           <span class="status-throbber amber-throbber amber-throbber--xs" aria-hidden="true"></span>
-          <span class="status-text">Ready to scan a folder or a page.</span>
+          <span class="status-text">Ready to add a video.</span>
         </p>
-        <div class="storage-pill" aria-live="polite">
-          <span id="videoCount">0</span>
-          <span id="videoCountLabel">reels</span>
-        </div>
+        <button class="primary-button" id="addVideoButton" type="button">Add video</button>
       </header>
 
-      <aside class="rail">
-        <section class="collection-panel" aria-labelledby="collectionTitle">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">01</p>
-              <h2 id="collectionTitle">Folders</h2>
-            </div>
-            <span class="collection-total"><span id="collectionCount">0</span> folders</span>
-          </div>
+      <nav class="rail workspace-nav" aria-label="Workspace">
+        <a class="nav-brand" href="/">
+          <img class="brand-logo" src="/brand/logos/picker-dark.svg" alt="Picker" width="140" height="40" />
+        </a>
+        <div class="nav-group">
+          <input class="sr-only" type="radio" name="desk" id="desk-library" checked />
+          <label for="desk-library"><span class="nav-icon nav-icon--library" aria-hidden="true"></span>Library</label>
+          <input class="sr-only" type="radio" name="desk" id="desk-downloads" />
+          <label for="desk-downloads"><span class="nav-icon nav-icon--downloads" aria-hidden="true"></span>Downloads</label>
+          <input class="sr-only" type="radio" name="desk" id="desk-transcripts" />
+          <label for="desk-transcripts"><span class="nav-icon nav-icon--transcripts" aria-hidden="true"></span>Transcripts</label>
+        </div>
+        <div class="nav-rule" aria-hidden="true"></div>
+        <div class="nav-group nav-sub">
+          <input class="sr-only" type="radio" name="desk" id="desk-history" />
+          <label for="desk-history"><span class="nav-icon nav-icon--history" aria-hidden="true"></span>History</label>
+          <input class="sr-only" type="radio" name="desk" id="desk-playlists" />
+          <label for="desk-playlists"><span class="nav-icon nav-icon--playlists" aria-hidden="true"></span>Playlists</label>
+          <input class="sr-only" type="radio" name="desk" id="desk-favourites" />
+          <label for="desk-favourites"><span class="nav-icon nav-icon--favourites" aria-hidden="true"></span>Favourites</label>
+        </div>
+        <label class="nav-search">
+          <span class="nav-search-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16.5 16.5 21 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </span>
+          <span class="sr-only">Search videos</span>
+          <input id="searchLibrary" type="search" placeholder="Search videos..." />
+        </label>
+      </nav>
 
-          <nav id="collectionList" class="collection-list" aria-label="Video folders"></nav>
-
-          <form id="collectionForm" class="collection-create">
-            <label for="collectionName">New folder</label>
-            <div class="input-row">
-              <input id="collectionName" type="text" maxlength="60" placeholder="Interviews, Day 2" />
-              <button class="primary-button" type="submit">
-                <span class="glyph" aria-hidden="true">
-                  <svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" /></svg>
-                </span>
-                <span>Create</span>
-              </button>
-            </div>
-          </form>
-
-          <div class="collection-actions">
-            <div class="button-row">
-              <button class="ghost-button" id="renameCollectionButton" type="button">Rename</button>
-              <button class="danger-button" id="deleteCollectionButton" type="button">Delete folder</button>
-            </div>
-          </div>
-
-          <div class="bulk-manager" aria-labelledby="bulkTitle">
-            <div class="bulk-heading">
-              <strong id="bulkTitle"><span id="selectedCount">0</span> selected</strong>
-              <div class="button-row tight">
-                <button class="ghost-button compact-button" id="selectVisibleButton" type="button">Select visible</button>
-                <button class="ghost-button compact-button" id="clearSelectionButton" type="button">Clear</button>
-              </div>
-            </div>
-            <label for="moveCollectionSelect">Move selected videos to</label>
-            <div class="input-row">
-              <select id="moveCollectionSelect"></select>
-              <button class="secondary-button" id="moveSelectedButton" type="button">
-                <span>Move</span>
-              </button>
-            </div>
-          </div>
-        </section>
-
+      <div class="import-store" hidden>
         <section class="import-panel" aria-labelledby="importTitle">
           <div class="section-heading">
             <div>
@@ -132,12 +108,6 @@
                 </button>
               </div>
               <input type="file" id="localFolderInput" webkitdirectory directory multiple hidden />
-              <div class="folder-options-row">
-                <label class="permission-check">
-                  <input id="folderCreateCollection" type="checkbox" checked />
-                  <span>Create a folder from the directory name</span>
-                </label>
-              </div>
               <p class="hint">Imports video files from the folder and every subfolder into the library.</p>
             </form>
           </div>
@@ -209,21 +179,18 @@
             <button class="ghost-button history-use" id="useScannedFolderButton" type="button" disabled>Use</button>
           </article>
         </div>
-      </aside>
+      </div>
 
       <main id="workspace" class="bench">
         <section class="library-panel" aria-labelledby="libraryTitle">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">03</p>
               <h2 id="libraryTitle">Library</h2>
-              <p class="library-totals" id="libraryTotals"></p>
+              <p class="library-totals" id="libraryTotals"><span id="videoCount">0</span> <span id="videoCountLabel">videos</span></p>
             </div>
             <div class="filter-row">
-              <label class="sr-only" for="searchLibrary">Search videos</label>
-              <input id="searchLibrary" type="search" placeholder="Search title, speaker, tag" />
-              <button class="ghost-button" id="checkLibraryButton" type="button" title="Check saved video playback">
-                <span>Check all</span>
+              <button class="ghost-button" id="checkLibraryButton" type="button" title="Check whether each saved video can still play">
+                <span>Check all playback</span>
               </button>
               <button class="danger-button" id="clearAllButton" type="button" title="Clear all saved videos">
                 <span>Clear</span>
@@ -231,11 +198,28 @@
             </div>
           </div>
 
-          <div class="library-offline-bar" aria-labelledby="libraryOfflineTitle">
-            <div class="library-offline-copy">
-              <strong id="libraryOfflineTitle">Offline copies</strong>
-              <span id="bulkOfflineStatus">Mark videos below to save them to disk.</span>
-            </div>
+          <div id="videoList" class="video-list" aria-live="polite"></div>
+        </section>
+
+        <section class="nav-panel" id="historyPanel" aria-labelledby="historyTitle">
+          <h2 id="historyTitle">History</h2>
+          <p>Videos you watch will be listed here.</p>
+        </section>
+        <section class="nav-panel" id="playlistsPanel" aria-labelledby="playlistsTitle">
+          <h2 id="playlistsTitle">Playlists</h2>
+          <p>Playlists will be listed here.</p>
+        </section>
+        <section class="nav-panel" id="favouritesPanel" aria-labelledby="favouritesTitle">
+          <h2 id="favouritesTitle">Favourites</h2>
+          <p>Videos you mark as favourites will be listed here.</p>
+        </section>
+
+        <section class="downloads-panel" aria-labelledby="libraryOfflineTitle">
+          <div class="section-heading">
+            <h2 id="libraryOfflineTitle">Downloads</h2>
+          </div>
+          <div class="library-offline-bar">
+            <p id="bulkOfflineStatus">Mark videos in the library, then download them here.</p>
             <label class="permission-check library-permission">
               <input id="libraryOfflinePermission" type="checkbox" />
               <span>I have permission to download the marked videos.</span>
@@ -274,27 +258,18 @@
             </div>
             <div class="bulk-download-report" id="bulkDownloadReport" hidden></div>
           </div>
-
-          <div id="videoList" class="video-list" aria-live="polite"></div>
         </section>
       </main>
 
       <div class="watch-column">
         <section class="player-panel" aria-labelledby="playerTitle">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">04</p>
-              <h2 id="playerTitle">Screen</h2>
-            </div>
-          </div>
-
           <div class="player-stage">
             <div class="player-shell" data-mode="empty">
               <video id="videoPlayer" controls playsinline preload="metadata" crossorigin="anonymous"></video>
               <iframe id="embedPlayer" title="Embedded video player" allow="autoplay; fullscreen; picture-in-picture"></iframe>
               <div id="emptyPlayer" class="empty-player">
-                <strong>Screen is dark</strong>
-                <span class="empty-caption">Pick a reel from the library.</span>
+                <strong>Select a video</strong>
+                <span class="empty-caption">Choose one from the library to watch it here.</span>
               </div>
               <div id="playerLoadingOverlay" class="player-loading-overlay" hidden aria-hidden="true">
                 <div class="amber-throbber amber-throbber--lg">
@@ -302,6 +277,15 @@
                   <span class="amber-throbber-spokes"></span>
                 </div>
                 <p class="player-loading-text" id="playerLoadingText">Connecting to stream...</p>
+              </div>
+            </div>
+
+            <div class="now-playing">
+              <h2 id="playerTitle">Select a video</h2>
+              <p id="nowPlayingMeta"></p>
+              <div class="button-row">
+                <button class="primary-button" id="playVideoButton" type="button">Play video</button>
+                <button class="secondary-button" id="downloadCurrentButton" type="button">Download</button>
               </div>
             </div>
 
@@ -318,6 +302,25 @@
             </div>
           </div>
 
+          <div class="watch-tabs" role="tablist" aria-label="Video details">
+            <input class="sr-only" type="radio" name="watch-tab" id="watch-summary" />
+            <label for="watch-summary">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7.2L19 8.2V20a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 20V5A1.5 1.5 0 0 1 7.5 3.5H7z" /><path d="M14 3.5V8h4.5" /><path d="M9 12.5h6M9 16h4" /></svg>
+              Summary
+            </label>
+            <input class="sr-only" type="radio" name="watch-tab" id="watch-transcript" checked />
+            <label for="watch-transcript">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h10A1.5 1.5 0 0 1 18.5 5v14A1.5 1.5 0 0 1 17 20.5H7A1.5 1.5 0 0 1 5.5 19V5A1.5 1.5 0 0 1 7 3.5z" /><path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4.5" /></svg>
+              Transcript
+            </label>
+            <input class="sr-only" type="radio" name="watch-tab" id="watch-chapters" />
+            <label for="watch-chapters">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7h11M9 12h11M9 17h11" /><path d="M4.5 7h.01M4.5 12h.01M4.5 17h.01" /></svg>
+              Chapters
+            </label>
+          </div>
+
+          <div class="summary-panel" id="summaryPanel">
           <dl class="screen-meta" id="screenMeta" hidden></dl>
           <form id="videoForm" class="metadata-grid">
             <label>
@@ -349,14 +352,12 @@
               <textarea id="videoNotes" rows="4" placeholder="Key ideas, access notes, timestamps, follow-up questions"></textarea>
             </label>
           </form>
+          </div>
         </section>
 
         <section class="transcript-panel" aria-labelledby="transcriptTitle">
           <div class="section-heading">
-            <div>
-              <p class="eyebrow">05</p>
-              <h2 id="transcriptTitle">Script desk</h2>
-            </div>
+            <h2 class="sr-only" id="transcriptTitle">Transcript</h2>
             <div class="button-row tight">
               <button class="secondary-button" id="startTranscriptButton" type="button">
                 <span class="rec-dot" aria-hidden="true"></span>
@@ -469,6 +470,12 @@
           </p>
         </section>
 
+        <section class="chapters-panel" id="chaptersPanel" aria-labelledby="chaptersTitle">
+          <h2 class="sr-only" id="chaptersTitle">Chapters</h2>
+          <ol class="chapter-list" id="chapterList"></ol>
+          <p class="chapter-empty" id="chapterEmpty">Timestamped lines in the transcript show up here as chapters.</p>
+        </section>
+
         <section class="source-panel" aria-labelledby="sourceTitle">
           <div class="section-heading compact">
             <div>
@@ -487,14 +494,13 @@
       </div>
     </div>
 
-    <nav class="desk-nav" aria-label="Desk">
-      <input class="sr-only" type="radio" name="desk" id="desk-folders" />
-      <label for="desk-folders"><span>01</span>Folders</label>
-      <input class="sr-only" type="radio" name="desk" id="desk-library" checked />
-      <label for="desk-library"><span>02</span>Library</label>
-      <input class="sr-only" type="radio" name="desk" id="desk-screen" />
-      <label for="desk-screen"><span>03</span>Screen</label>
-    </nav>
+    <dialog id="addVideoDialog">
+      <form method="dialog" class="dialog-bar">
+        <h2>Add video</h2>
+        <button class="ghost-button" value="close">Close</button>
+      </form>
+      <div id="addVideoMount"></div>
+    </dialog>
 
     <template id="videoCardTemplate">
       <article class="video-card">
