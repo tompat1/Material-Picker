@@ -262,6 +262,7 @@ init();
 function init() {
   repairDuplicateArchives();
   bindEvents();
+  syncNavSearch();
   render();
   state.videos.forEach((video) => {
     if (!["downloading", "exporting"].includes(video.offlineDownloadStatus)) return;
@@ -322,6 +323,7 @@ function bindEvents() {
   els.retryPlaybackButton.addEventListener("click", retryPlayback);
   els.renameCollectionButton?.addEventListener("click", renameActiveCollection);
   els.searchLibrary.addEventListener("input", () => {
+    syncNavSearch();
     renderLibrary();
     renderCollectionManager();
   });
@@ -1266,6 +1268,10 @@ function videoRuntimeLabel(video) {
 function videoSizeLabel(video) {
   const bytes = Number(video?.offlineSize || video?.estimatedBytes) || 0;
   return bytes > 0 ? formatBytes(bytes) : "";
+}
+
+function syncNavSearch() {
+  document.body.classList.toggle("is-nav-searching", Boolean(els.searchLibrary?.value.trim()));
 }
 
 function renderLibraryTotals() {
@@ -4515,7 +4521,7 @@ function renderScriptDeskPills() {
     .map((pill) => {
       const isActive = Boolean(query && (query === pill.text.toLowerCase() || pill.text.toLowerCase().includes(query)));
       return `<button class="pill-tag type-${pill.type}${isActive ? " active" : ""}" type="button" data-query="${escapeHtml(pill.text)}">
-        <span>${escapeHtml(pill.label)}</span>
+        <span>${escapeHtml(pill.text)}</span>
         <span class="pill-count">${pill.count}</span>
       </button>`;
     })

@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-1" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-12" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to library</a>
@@ -30,7 +30,10 @@
           <a class="brand" href="/">
             <img class="brand-logo" src="/brand/logos/picker-dark.svg" alt="Picker" width="140" height="40" />
           </a>
-          <p class="brand-tagline">Your learning library</p>
+          <p class="brand-tagline">
+            <span class="brand-verbs"><span>Watch.</span><span>Save.</span><span>Transcribe.</span></span>
+            <span class="brand-promise">Keep your curiosity.</span>
+          </p>
         </div>
         <p class="status-line" id="statusLine" role="status" aria-live="polite">
           <span class="status-dot"></span>
@@ -185,7 +188,7 @@
         <section class="library-panel" aria-labelledby="libraryTitle">
           <div class="section-heading">
             <div>
-              <h2 id="libraryTitle">Library</h2>
+              <h2 id="libraryTitle">Up next</h2>
               <p class="library-totals" id="libraryTotals"><span id="videoCount">0</span> <span id="videoCountLabel">videos</span></p>
             </div>
             <div class="filter-row">
@@ -441,7 +444,7 @@
                 <span class="pills-label">Indexed Topics & Authors</span>
                 <span class="pills-count-badge" id="pillsCountBadge">0 terms</span>
               </div>
-              <div class="transcript-pills-list" id="scriptDeskPills" role="listbox" aria-label="Indexed search terms">
+              <div class="transcript-pills-list" id="scriptDeskPills" role="group" aria-label="Indexed search terms">
                 <!-- Clickable search pills dynamically generated here -->
               </div>
             </div>
@@ -519,6 +522,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=archive-repair-2" defer></script>
-    <script src="./app.js?v=archive-repair-2" defer></script>
+    <script src="./app.js?v=picker-nav-11" defer></script>
   </body>
 </html>

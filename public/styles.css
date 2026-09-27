@@ -150,13 +150,30 @@ button:disabled {
 }
 
 .brand-tagline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   margin: 0;
+  min-width: 0;
   color: var(--ink);
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 15px;
+  font-weight: 560;
+  line-height: 1.25;
+}
+
+.brand-verbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.brand-promise {
+  color: var(--muted);
+  font-weight: 450;
 }
 
 .status-line {
+  justify-self: end;
   margin: 0;
   max-width: 62ch;
   min-width: 0;
@@ -432,7 +449,7 @@ button:disabled {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-  padding: 20px 16px 16px;
+  padding: 16px 16px 16px;
   border-right: 1px solid var(--line);
   background: var(--bg);
 }
@@ -490,21 +507,21 @@ button:disabled {
   cursor: pointer;
 }
 
-.workspace-nav label:hover .nav-icon {
+.workspace-nav .nav-group label:hover,
+.workspace-nav .nav-group input:checked + label {
+  color: var(--accent);
+}
+
+.workspace-nav .nav-group label:hover .nav-icon,
+.workspace-nav .nav-group input:checked + label .nav-icon {
   background-color: var(--accent);
 }
 
-body:has(#desk-library:checked) .workspace-nav label[for="desk-library"],
-body:has(#desk-downloads:checked) .workspace-nav label[for="desk-downloads"],
-body:has(#desk-transcripts:checked) .workspace-nav label[for="desk-transcripts"],
-body:has(#desk-history:checked) .workspace-nav label[for="desk-history"],
-body:has(#desk-playlists:checked) .workspace-nav label[for="desk-playlists"],
-body:has(#desk-favourites:checked) .workspace-nav label[for="desk-favourites"] {
+.workspace-nav .nav-group input:checked + label {
   background: var(--library);
-  color: var(--ink);
 }
 
-.nav-search {
+.workspace-nav .nav-search {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -573,6 +590,67 @@ body:has(#desk-transcripts:checked) .bench {
 
 body:has(#desk-downloads:checked) .downloads-panel {
   display: block;
+}
+
+body:has(#desk-downloads:checked) .watch-column,
+body:has(#desk-history:checked) .watch-column,
+body:has(#desk-playlists:checked) .watch-column,
+body:has(#desk-favourites:checked) .watch-column {
+  display: none;
+}
+
+body:has(#desk-downloads:checked) .app-shell,
+body:has(#desk-history:checked) .app-shell,
+body:has(#desk-playlists:checked) .app-shell,
+body:has(#desk-favourites:checked) .app-shell {
+  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-areas:
+    "mast mast"
+    "nav bench";
+}
+
+body:has(#desk-downloads:checked) .bench,
+body:has(#desk-history:checked) .bench,
+body:has(#desk-playlists:checked) .bench,
+body:has(#desk-favourites:checked) .bench {
+  border-right: 0;
+}
+
+body:has(#desk-library:checked) .app-shell {
+  grid-template-columns: 252px minmax(380px, 1.15fr) minmax(280px, 0.92fr);
+  grid-template-areas:
+    "mast mast mast"
+    "nav watch bench";
+}
+
+body:has(#desk-library:checked) .bench {
+  border-right: 0;
+  border-left: 1px solid var(--line);
+}
+
+body.is-nav-searching:not(:has(#desk-library:checked)) .app-shell {
+  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-areas:
+    "mast mast"
+    "nav bench";
+}
+
+body.is-nav-searching:not(:has(#desk-library:checked)) .bench {
+  display: block;
+  border-right: 0;
+  border-left: 0;
+}
+
+body.is-nav-searching:not(:has(#desk-library:checked)) .library-panel {
+  display: flex;
+}
+
+body.is-nav-searching:not(:has(#desk-library:checked)) #historyPanel,
+body.is-nav-searching:not(:has(#desk-library:checked)) #playlistsPanel,
+body.is-nav-searching:not(:has(#desk-library:checked)) #favouritesPanel,
+body.is-nav-searching:not(:has(#desk-library:checked)) .downloads-panel,
+body.is-nav-searching:not(:has(#desk-library:checked)) .watch-column {
+  display: none;
 }
 
 body:has(#desk-transcripts:checked) .app-shell {
@@ -650,6 +728,17 @@ body:has(#watch-chapters:checked) .watch-tabs label[for="watch-chapters"] {
 body:has(#watch-summary:checked) .summary-panel,
 body:has(#watch-transcript:checked) .transcript-panel,
 body:has(#watch-chapters:checked) .chapters-panel {
+  display: block;
+}
+
+body:has(#desk-transcripts:checked) .player-panel,
+body:has(#desk-transcripts:checked) .chapters-panel,
+body:has(#desk-transcripts:checked) .source-panel,
+body:has(#desk-library:checked) .source-panel {
+  display: none;
+}
+
+body:has(#desk-transcripts:checked) .transcript-panel {
   display: block;
 }
 
@@ -1473,7 +1562,7 @@ select {
 .transcript-pills-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.35rem 1rem;
   max-height: 7.5rem;
   overflow-y: auto;
   padding-right: 0.2rem;
@@ -1489,71 +1578,57 @@ select {
 
 .pill-tag {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.35rem;
-  padding: 0.3rem 0.65rem;
-  border-radius: 16px;
-  font-size: 0.76rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font-size: 0.95rem;
   font-weight: 500;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
   cursor: pointer;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--fg, #e2e8f0);
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  user-select: none;
+  transition: color 160ms var(--ease);
 }
 
-.pill-tag:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.09);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+.pill-tag:hover,
+.pill-tag:focus-visible {
+  color: var(--accent);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
 }
 
-.pill-tag:active {
-  transform: translateY(0);
+.pill-tag.active,
+.pill-tag.type-author,
+.pill-tag.type-subject,
+.pill-tag.type-term,
+.pill-tag.type-author:hover,
+.pill-tag.type-subject:hover,
+.pill-tag.type-term:hover {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .pill-tag.active {
-  background: linear-gradient(135deg, #0284c7, #2563eb);
-  color: #ffffff;
-  border-color: transparent;
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+  color: var(--accent);
 }
 
 .pill-tag .pill-count {
-  font-size: 0.66rem;
-  opacity: 0.8;
-  padding: 0.05rem 0.35rem;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.25);
-}
-
-.pill-tag.type-author {
-  border-color: rgba(168, 85, 247, 0.3);
-  background: rgba(168, 85, 247, 0.1);
-}
-.pill-tag.type-author:hover {
-  background: rgba(168, 85, 247, 0.2);
-  border-color: rgba(168, 85, 247, 0.5);
-}
-
-.pill-tag.type-subject {
-  border-color: rgba(16, 185, 129, 0.3);
-  background: rgba(16, 185, 129, 0.1);
-}
-.pill-tag.type-subject:hover {
-  background: rgba(16, 185, 129, 0.2);
-  border-color: rgba(16, 185, 129, 0.5);
-}
-
-.pill-tag.type-term {
-  border-color: rgba(56, 189, 248, 0.3);
-  background: rgba(56, 189, 248, 0.1);
-}
-.pill-tag.type-term:hover {
-  background: rgba(56, 189, 248, 0.2);
-  border-color: rgba(56, 189, 248, 0.5);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  opacity: 1;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 /* Script Desk Search Results Panel */
@@ -2183,10 +2258,10 @@ button.is-busy .amber-throbber {
 
 @media (min-width: 1181px) {
   .mast {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
-  .mast .brand-lockup {
+  .nav-brand {
     display: none;
   }
 
@@ -2197,8 +2272,8 @@ button.is-busy .amber-throbber {
 }
 
 @media (max-width: 1180px) {
-  .brand-tagline {
-    display: none;
+  .brand-lockup {
+    align-items: flex-start;
   }
 
   body {
@@ -2253,7 +2328,7 @@ button.is-busy .amber-throbber {
     display: contents;
   }
 
-  .nav-search {
+  .workspace-nav .nav-search {
     position: fixed;
     z-index: 25;
     top: 4.6rem;
@@ -2277,8 +2352,11 @@ button.is-busy .amber-throbber {
     display: none;
   }
 
-  .bench {
+  .bench,
+  body:has(#desk-library:checked) .bench,
+  body:has(#desk-downloads:checked) .bench {
     border-right: 0;
+    border-left: 0;
   }
 
   body:has(#desk-downloads:checked) .watch-column,
@@ -2300,7 +2378,24 @@ button.is-busy .amber-throbber {
 
 @media (max-width: 680px) {
   .mast {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "brand brand brand"
+      ". status action";
     padding: 0.75rem 0.85rem 0.85rem;
+  }
+
+  .brand-lockup {
+    grid-area: brand;
+  }
+
+  .status-line {
+    grid-area: status;
+  }
+
+  #addVideoButton {
+    grid-area: action;
+    justify-self: end;
   }
 
   .brand-name {
