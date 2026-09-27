@@ -420,6 +420,7 @@ function proofreadText(text, language = "en", options = {}) {
   if (!text) return "";
   const removeTimestamps = options.removeTimestamps !== false;
   const deduplicateSpeakers = options.deduplicateSpeakers !== false;
+  const addLineBreaks = options.addLineBreaks !== false;
 
   const lines = String(text).split(/\r?\n/);
   let currentSpeaker = "";
@@ -478,22 +479,113 @@ function proofreadText(text, language = "en", options = {}) {
 
     if (!cleaned && !speakerPrefix) continue;
 
+    let sentences = [];
     if (cleaned) {
-      cleaned = cleaned
+      sentences = cleaned
         .split(/(?<=[.!?]\s+)/)
         .map((s) => s.trim())
         .filter(Boolean)
-        .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-        .join(" ");
+        .map((s) => s.charAt(0).toUpperCase() + s.slice(1));
     }
 
-    const finalLine = `${timestampPrefix}${speakerPrefix}${cleaned}`.trim();
-    if (finalLine) {
-      processedLines.push(finalLine);
+    if (addLineBreaks && sentences.length > 2) {
+      let currentGroup = [];
+      let currentLength = 0;
+
+      for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i];
+        currentGroup.push(sentence);
+        currentLength += sentence.length;
+
+        if (
+          currentGroup.length >= 3 ||
+          (currentLength >= 250 && currentGroup.length >= 2) ||
+          i === sentences.length - 1
+        ) {
+          const groupText = currentGroup.join(" ");
+          const prefix = i - currentGroup.length + 1 === 0 ? `${timestampPrefix}${speakerPrefix}` : "";
+          const lineStr = `${prefix}${groupText}`.trim();
+          if (lineStr) processedLines.push(lineStr);
+          currentGroup = [];
+          currentLength = 0;
+        }
+      }
+    } else {
+      const lineText = sentences.join(" ");
+      const finalLine = `${timestampPrefix}${speakerPrefix}${lineText}`.trim();
+      if (finalLine) {
+        processedLines.push(finalLine);
+      }
     }
   }
 
   return processedLines.join("\n");
+}
+
+async function formatLineBreaksWithLlm(text, language = "en") {
+  if (!text || text.length < 50) return null;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY;
+  if (!apiKey && !process.env.LLM_ENDPOINT) {
+    return null;
+  }
+
+  try {
+    if (process.env.GEMINI_API_KEY || (apiKey && !process.env.OPENAI_API_KEY)) {
+      const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+      const key = process.env.GEMINI_API_KEY || apiKey;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+      const prompt = `You are an expert transcript editor. Format the following transcript text by inserting paragraph breaks (separated by blank lines / double newlines) to turn long continuous text into clear, readable paragraphs with line breaks. Do not alter, omit, or invent words, speaker tags, or timestamps. Return ONLY the formatted transcript text with double-newline paragraph breaks.\n\nTranscript:\n${text}`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const llmResult = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (llmResult && llmResult.trim()) {
+          return llmResult.trim();
+        }
+      }
+    } else if (process.env.OPENAI_API_KEY || process.env.LLM_ENDPOINT) {
+      const url = process.env.LLM_ENDPOINT || "https://api.openai.com/v1/chat/completions";
+      const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+      const headers = { "Content-Type": "application/json" };
+      if (process.env.OPENAI_API_KEY) {
+        headers["Authorization"] = `Bearer ${process.env.OPENAI_API_KEY}`;
+      }
+
+      const prompt = `You are an expert transcript editor. Format the following transcript text by inserting paragraph breaks (separated by blank lines / double newlines) to turn long continuous text into clear, readable paragraphs with line breaks. Do not alter, omit, or invent words, speaker tags, or timestamps. Return ONLY the formatted transcript text with double-newline paragraph breaks.\n\nTranscript:\n${text}`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.2,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const llmResult = data.choices?.[0]?.message?.content;
+        if (llmResult && llmResult.trim()) {
+          return llmResult.trim();
+        }
+      }
+    }
+  } catch (error) {
+    // Failover silently to smart heuristic line breaking
+  }
+
+  return null;
 }
 
 async function handleProofread(request, response) {
@@ -507,8 +599,17 @@ async function handleProofread(request, response) {
     const options = {
       removeTimestamps: body.removeTimestamps !== false,
       deduplicateSpeakers: body.deduplicateSpeakers !== false,
+      addLineBreaks: body.addLineBreaks !== false,
     };
-    const proofread = proofreadText(text, language, options);
+    let proofread = proofreadText(text, language, options);
+
+    if (options.addLineBreaks) {
+      const llmResult = await formatLineBreaksWithLlm(proofread, language);
+      if (llmResult) {
+        proofread = llmResult;
+      }
+    }
+
     return sendJson(response, 200, { proofread, original: text });
   } catch (error) {
     return sendJson(response, 500, { error: error.message || "Proofreading failed." });

@@ -313,6 +313,17 @@ test("proofreadText respects removeTimestamps and deduplicateSpeakers flags", ()
   assert.equal(groupSpeakersOnly, "[00:01] Alice: Hello.\n[00:04] World.");
 });
 
+test("proofreadText formats continuous mega-text into paragraphs with line breaks", () => {
+  const megaText = "Welcome to the desk today we are demonstrating proofreading capabilities. It cleans up stutters and disfluencies automatically. It can also split long mega text into separate paragraphs with line breaks. This makes long transcriptions much easier to read and edit. You can toggle this feature on and off with the new checkbox.";
+
+  const formatted = proofreadText(megaText, "en", { addLineBreaks: true });
+  const lines = formatted.split("\n");
+  assert.ok(lines.length > 1, "Should split continuous mega-text into multiple lines");
+
+  const singleLine = proofreadText(megaText, "en", { addLineBreaks: false });
+  assert.equal(singleLine.split("\n").length, 1, "Should preserve single line when addLineBreaks is false");
+});
+
 test("decodes PCM whose byte offset is not aligned for Int16Array", () => {
   const backing = Buffer.alloc(8);
   backing.writeInt16LE(16384, 1);

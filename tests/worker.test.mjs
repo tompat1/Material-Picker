@@ -254,6 +254,23 @@ test("proofread API supports custom options for timestamps and speaker deduplica
   assert.equal(data.proofread, "[00:01] Speaker A: Hello.\n[00:05] How are you?");
 });
 
+test("proofread API splits continuous mega text when addLineBreaks option is true", async () => {
+  const response = await handleApiRequest(
+    new Request("https://picker.example/api/proofread", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: "First sentence of transcription. Second sentence follows immediately. Third sentence keeps going. Fourth sentence forms another paragraph.",
+        addLineBreaks: true,
+      }),
+    })
+  );
+
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.ok(data.proofread.includes("\n"), "Output should contain line breaks for continuous text");
+});
+
 test("choose-folder and scan-folder endpoints provide helpful responses on worker", async () => {
   const chooseRes = await handleApiRequest(
     new Request("https://picker.example/api/choose-folder")

@@ -557,6 +557,7 @@
     if (!text) return "";
     const removeTimestamps = options.removeTimestamps !== false;
     const deduplicateSpeakers = options.deduplicateSpeakers !== false;
+    const addLineBreaks = options.addLineBreaks !== false;
 
     const lines = String(text).split(/\r?\n/);
     let currentSpeaker = "";
@@ -615,18 +616,43 @@
 
       if (!cleaned && !speakerPrefix) continue;
 
+      let sentences = [];
       if (cleaned) {
-        cleaned = cleaned
+        sentences = cleaned
           .split(/(?<=[.!?]\s+)/)
           .map((s) => s.trim())
           .filter(Boolean)
-          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-          .join(" ");
+          .map((s) => s.charAt(0).toUpperCase() + s.slice(1));
       }
 
-      const finalLine = `${timestampPrefix}${speakerPrefix}${cleaned}`.trim();
-      if (finalLine) {
-        processedLines.push(finalLine);
+      if (addLineBreaks && sentences.length > 2) {
+        let currentGroup = [];
+        let currentLength = 0;
+
+        for (let i = 0; i < sentences.length; i++) {
+          const sentence = sentences[i];
+          currentGroup.push(sentence);
+          currentLength += sentence.length;
+
+          if (
+            currentGroup.length >= 3 ||
+            (currentLength >= 250 && currentGroup.length >= 2) ||
+            i === sentences.length - 1
+          ) {
+            const groupText = currentGroup.join(" ");
+            const prefix = i - currentGroup.length + 1 === 0 ? `${timestampPrefix}${speakerPrefix}` : "";
+            const lineStr = `${prefix}${groupText}`.trim();
+            if (lineStr) processedLines.push(lineStr);
+            currentGroup = [];
+            currentLength = 0;
+          }
+        }
+      } else {
+        const lineText = sentences.join(" ");
+        const finalLine = `${timestampPrefix}${speakerPrefix}${lineText}`.trim();
+        if (finalLine) {
+          processedLines.push(finalLine);
+        }
       }
     }
 

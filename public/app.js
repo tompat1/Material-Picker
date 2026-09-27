@@ -53,6 +53,7 @@ const els = {
   proofreadButton: document.querySelector("#proofreadButton"),
   proofreadStripTimestamps: document.querySelector("#proofreadStripTimestamps"),
   proofreadGroupSpeakers: document.querySelector("#proofreadGroupSpeakers"),
+  proofreadAddLineBreaks: document.querySelector("#proofreadAddLineBreaks"),
   playerStatus: document.querySelector("#playerStatus"),
   retryPlaybackButton: document.querySelector("#retryPlaybackButton"),
   renameCollectionButton: document.querySelector("#renameCollectionButton"),
@@ -4179,9 +4180,10 @@ async function proofreadTranscript() {
 
   const removeTimestamps = Boolean(els.proofreadStripTimestamps ? els.proofreadStripTimestamps.checked : true);
   const deduplicateSpeakers = Boolean(els.proofreadGroupSpeakers ? els.proofreadGroupSpeakers.checked : true);
+  const addLineBreaks = Boolean(els.proofreadAddLineBreaks ? els.proofreadAddLineBreaks.checked : true);
 
   els.proofreadButton.disabled = true;
-  setTranscriptStatus("Proofreading text: formatting sentences, fixing punctuation & cleaning fillers...", "working");
+  setTranscriptStatus("Proofreading text: formatting paragraphs & line breaks, fixing punctuation & cleaning fillers...", "working");
   try {
     const response = await fetch("/api/proofread", {
       method: "POST",
@@ -4191,6 +4193,7 @@ async function proofreadTranscript() {
         language: els.targetLang.value || els.sourceLang.value || "en",
         removeTimestamps,
         deduplicateSpeakers,
+        addLineBreaks,
       }),
       signal: AbortSignal.timeout(30000),
     });
@@ -4203,17 +4206,17 @@ async function proofreadTranscript() {
     const video = selectedVideo();
     const onDisk = video ? await flushFolderMetadata(video) : false;
     setTranscriptStatus(
-      onDisk ? "Proofread text saved in this video's folder." : "Proofreading complete: cleaned disfluencies, fixed punctuation & casing.",
+      onDisk ? "Proofread text saved in this video's folder." : "Proofreading complete: cleaned disfluencies, added line breaks & formatted paragraphs.",
       "ready"
     );
-    setStatus(onDisk ? "Proofread text saved in this video's folder." : "Proofread text with punctuation, casing, filler removal, and clean paragraphs.");
+    setStatus(onDisk ? "Proofread text saved in this video's folder." : "Proofread text with punctuation, casing, filler removal, and clean paragraph line breaks.");
   } catch (error) {
-    const fallback = localProofread(original, { removeTimestamps, deduplicateSpeakers });
+    const fallback = localProofread(original, { removeTimestamps, deduplicateSpeakers, addLineBreaks });
     els.translatedText.value = fallback;
     updateTranscriptFields();
     const video = selectedVideo();
     if (video) await flushFolderMetadata(video);
-    setTranscriptStatus("Proofread locally with punctuation, casing, and spacing cleanup.", "ready");
+    setTranscriptStatus("Proofread locally with punctuation, casing, line breaks, and spacing cleanup.", "ready");
     setStatus(`Proofread locally: ${error.message}`);
   } finally {
     els.proofreadButton.disabled = !selectedVideo();
@@ -4263,16 +4266,34 @@ function localProofread(text, options = {}) {
   if (typeof core?.proofreadText === "function") {
     return core.proofreadText(text, els.targetLang?.value || els.sourceLang?.value || "en", options);
   }
-  return text
+  const addLineBreaks = options.addLineBreaks !== false;
+  const cleanedText = text
     .replace(/[ \t]+/g, " ")
     .replace(/\s+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/\s+([,.!?;:])/g, "$1")
-    .replace(/([.!?])([A-Za-z])/g, "$1 $2")
+    .replace(/([.!?])([A-Za-z])/g, "$1 $2");
+
+  const sentences = cleanedText
     .split(/(?<=[.!?]\s+)/)
-    .map((sentence) => sentence.charAt(0).toUpperCase() + sentence.slice(1))
-    .join("")
-    .trim();
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .map((sentence) => sentence.charAt(0).toUpperCase() + sentence.slice(1));
+
+  if (!addLineBreaks || sentences.length <= 2) {
+    return sentences.join(" ").trim();
+  }
+
+  const paragraphs = [];
+  let group = [];
+  for (let i = 0; i < sentences.length; i++) {
+    group.push(sentences[i]);
+    if (group.length >= 3 || i === sentences.length - 1) {
+      paragraphs.push(group.join(" "));
+      group = [];
+    }
+  }
+  return paragraphs.join("\n\n");
 }
 
 function isLikelyVideoUrl(url) {
