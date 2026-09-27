@@ -54,6 +54,12 @@ const els = {
   proofreadStripTimestamps: document.querySelector("#proofreadStripTimestamps"),
   proofreadGroupSpeakers: document.querySelector("#proofreadGroupSpeakers"),
   proofreadAddLineBreaks: document.querySelector("#proofreadAddLineBreaks"),
+  scriptDeskSearch: document.querySelector("#scriptDeskSearch"),
+  clearScriptDeskSearch: document.querySelector("#clearScriptDeskSearch"),
+  scriptDeskSearchCount: document.querySelector("#scriptDeskSearchCount"),
+  scriptDeskPills: document.querySelector("#scriptDeskPills"),
+  pillsCountBadge: document.querySelector("#pillsCountBadge"),
+  scriptDeskSearchResults: document.querySelector("#scriptDeskSearchResults"),
   playerStatus: document.querySelector("#playerStatus"),
   retryPlaybackButton: document.querySelector("#retryPlaybackButton"),
   renameCollectionButton: document.querySelector("#renameCollectionButton"),
@@ -334,6 +340,11 @@ function bindEvents() {
   els.translateButton.addEventListener("click", translateTranscript);
   els.proofreadButton.addEventListener("click", proofreadTranscript);
   els.downloadTranscriptButton.addEventListener("click", downloadTranscript);
+  els.scriptDeskSearch?.addEventListener("input", performScriptDeskSearch);
+  els.clearScriptDeskSearch?.addEventListener("click", () => {
+    if (els.scriptDeskSearch) els.scriptDeskSearch.value = "";
+    performScriptDeskSearch();
+  });
   els.sourceDisclosure?.addEventListener("toggle", () => {
     if (els.sourceDisclosure.open) void loadSourcePreview();
   });
@@ -1134,6 +1145,7 @@ function render() {
   renderPlayer();
   renderLibraryOfflineManager();
   renderTranscript();
+  renderScriptDeskPills();
 }
 
 function recordScrape(url, details) {
@@ -4294,6 +4306,279 @@ function localProofread(text, options = {}) {
     }
   }
   return paragraphs.join("\n\n");
+}
+
+function indexLibraryTranscripts(videos) {
+  if (!Array.isArray(videos) || !videos.length) return [];
+
+  const authorMap = new Map();
+  const subjectMap = new Map();
+  const termMap = new Map();
+
+  const stopWords = new Set([
+    "the", "be", "to", "of", "and", "a", "in", "that", "have", "i",
+    "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
+    "this", "but", "his", "by", "from", "they", "we", "say", "her",
+    "she", "or", "an", "will", "my", "one", "all", "would", "there",
+    "their", "what", "so", "up", "out", "if", "about", "who", "get",
+    "which", "go", "me", "when", "make", "can", "like", "time", "no",
+    "just", "him", "know", "take", "people", "into", "year", "your",
+    "good", "some", "could", "them", "see", "other", "than", "then",
+    "now", "look", "only", "come", "its", "over", "think", "also",
+    "back", "after", "use", "two", "how", "our", "work", "first",
+    "well", "way", "even", "new", "want", "because", "any", "these",
+    "give", "day", "most", "us", "is", "are", "was", "were", "been",
+    "has", "had", "does", "did", "more", "very", "here"
+  ]);
+
+  for (const video of videos) {
+    if (!video) continue;
+    const vid = video.id;
+
+    if (video.speaker) {
+      const spk = video.speaker.trim();
+      if (spk) {
+        if (!authorMap.has(spk)) authorMap.set(spk, new Set());
+        authorMap.get(spk).add(vid);
+      }
+    }
+
+    const fullText = `${video.transcript || ""} ${video.translation || ""}`;
+
+    const speakerMatches = fullText.matchAll(/^(?:\[\d{1,2}:\d{2}.*?\]\s*)?\[?([A-Z\p{Lu}][\p{L}\p{N}\s.,'()\-#]{1,40}?)\]?:\s/gmu);
+    for (const match of speakerMatches) {
+      const name = match[1].trim();
+      if (
+        name &&
+        name.length > 2 &&
+        typeof NON_SPEAKER_LABELS !== "undefined" &&
+        !NON_SPEAKER_LABELS.has(name.toLowerCase()) &&
+        !/^(http|https|www|video|source|date|title|notes|transcript|translation)$/i.test(name)
+      ) {
+        if (!authorMap.has(name)) authorMap.set(name, new Set());
+        authorMap.get(name).add(vid);
+      }
+    }
+
+    if (video.tags) {
+      const tagList = String(video.tags).split(/[,;\n]/).map((t) => t.trim()).filter(Boolean);
+      for (const tag of tagList) {
+        if (!subjectMap.has(tag)) subjectMap.set(tag, new Set());
+        subjectMap.get(tag).add(vid);
+      }
+    }
+
+    if (video.title) {
+      const titleWords = video.title.split(/[\s\-:|/]+/);
+      for (const word of titleWords) {
+        const cleaned = word.replace(/^[^\w]+|[^\w]+$/g, "");
+        if (cleaned.length >= 4 && !stopWords.has(cleaned.toLowerCase())) {
+          const formatted = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+          if (!subjectMap.has(formatted)) subjectMap.set(formatted, new Set());
+          subjectMap.get(formatted).add(vid);
+        }
+      }
+    }
+
+    const termMatches = fullText.matchAll(/\b([A-Z\p{Lu}][a-z\p{Ll}]{2,}(?:\s+[A-Z\p{Lu}][a-z\p{Ll}]{2,}){0,2})\b/gu);
+    for (const match of termMatches) {
+      const term = match[1].trim();
+      if (
+        term.length >= 4 &&
+        !stopWords.has(term.toLowerCase()) &&
+        !authorMap.has(term) &&
+        (typeof NON_SPEAKER_LABELS === "undefined" || !NON_SPEAKER_LABELS.has(term.toLowerCase()))
+      ) {
+        if (!termMap.has(term)) termMap.set(term, new Set());
+        termMap.get(term).add(vid);
+      }
+    }
+  }
+
+  const pills = [];
+
+  for (const [author, vids] of authorMap.entries()) {
+    pills.push({
+      text: author,
+      type: "author",
+      label: `👤 ${author}`,
+      count: vids.size,
+      videoIds: Array.from(vids),
+    });
+  }
+
+  for (const [subject, vids] of subjectMap.entries()) {
+    if (!authorMap.has(subject)) {
+      pills.push({
+        text: subject,
+        type: "subject",
+        label: `📚 ${subject}`,
+        count: vids.size,
+        videoIds: Array.from(vids),
+      });
+    }
+  }
+
+  for (const [term, vids] of termMap.entries()) {
+    if (!authorMap.has(term) && !subjectMap.has(term)) {
+      pills.push({
+        text: term,
+        type: "term",
+        label: `🏷️ ${term}`,
+        count: vids.size,
+        videoIds: Array.from(vids),
+      });
+    }
+  }
+
+  pills.sort((a, b) => b.count - a.count || a.text.localeCompare(b.text));
+  return pills;
+}
+
+function renderScriptDeskPills() {
+  if (!els.scriptDeskPills) return;
+  const pills = indexLibraryTranscripts(state.videos);
+  if (els.pillsCountBadge) {
+    els.pillsCountBadge.textContent = `${pills.length} term${pills.length === 1 ? "" : "s"}`;
+  }
+
+  if (pills.length === 0) {
+    els.scriptDeskPills.innerHTML = `<span class="empty-pills-notice">Transcribe videos to automatically index subjects, authors & terminology.</span>`;
+    return;
+  }
+
+  const query = (els.scriptDeskSearch?.value || "").trim().toLowerCase();
+
+  els.scriptDeskPills.innerHTML = pills
+    .map((pill) => {
+      const isActive = Boolean(query && (query === pill.text.toLowerCase() || pill.text.toLowerCase().includes(query)));
+      return `<button class="pill-tag type-${pill.type}${isActive ? " active" : ""}" type="button" data-query="${escapeHtml(pill.text)}">
+        <span>${escapeHtml(pill.label)}</span>
+        <span class="pill-count">${pill.count}</span>
+      </button>`;
+    })
+    .join("");
+
+  els.scriptDeskPills.querySelectorAll(".pill-tag").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pillQuery = btn.getAttribute("data-query");
+      if (!els.scriptDeskSearch) return;
+      if (els.scriptDeskSearch.value.trim().toLowerCase() === pillQuery.toLowerCase()) {
+        els.scriptDeskSearch.value = "";
+      } else {
+        els.scriptDeskSearch.value = pillQuery;
+      }
+      performScriptDeskSearch();
+    });
+  });
+}
+
+function highlightSnippet(text, query) {
+  if (!text || !query) return escapeHtml(text || "");
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const index = lowerText.indexOf(lowerQuery);
+
+  let start = 0;
+  let end = text.length;
+
+  if (index !== -1) {
+    start = Math.max(0, index - 45);
+    end = Math.min(text.length, index + query.length + 85);
+  } else {
+    end = Math.min(text.length, 130);
+  }
+
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < text.length ? "…" : "";
+  const snippet = text.slice(start, end);
+
+  if (index === -1) return escapeHtml(prefix + snippet + suffix);
+
+  const escapedQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(${escapedQuery})`, "gi");
+  const highlighted = escapeHtml(snippet).replace(regex, "<mark>$1</mark>");
+
+  return prefix + highlighted + suffix;
+}
+
+function performScriptDeskSearch() {
+  const query = (els.scriptDeskSearch?.value || "").trim();
+  const lowerQuery = query.toLowerCase();
+
+  if (els.clearScriptDeskSearch) {
+    els.clearScriptDeskSearch.hidden = !query;
+  }
+
+  renderScriptDeskPills();
+
+  if (!query) {
+    if (els.scriptDeskSearchResults) {
+      els.scriptDeskSearchResults.hidden = true;
+      els.scriptDeskSearchResults.innerHTML = "";
+    }
+    if (els.scriptDeskSearchCount) {
+      els.scriptDeskSearchCount.textContent = "";
+    }
+    return;
+  }
+
+  const activeTranscriptText = (els.transcriptText?.value || "") + " " + (els.translatedText?.value || "");
+  let activeMatches = 0;
+  if (lowerQuery && activeTranscriptText.trim()) {
+    const escapedQuery = lowerQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const matches = activeTranscriptText.toLowerCase().match(new RegExp(escapedQuery, "g"));
+    activeMatches = matches ? matches.length : 0;
+  }
+
+  const matchingVideos = state.videos.filter((video) => {
+    const searchable = [
+      video.title || "",
+      video.speaker || "",
+      video.tags || "",
+      video.notes || "",
+      video.transcript || "",
+      video.translation || "",
+    ].join(" ").toLowerCase();
+    return searchable.includes(lowerQuery);
+  });
+
+  if (els.scriptDeskSearchCount) {
+    const activeStr = activeMatches > 0 ? `${activeMatches} match${activeMatches === 1 ? "" : "es"} in script` : "";
+    const libStr = `${matchingVideos.length} video${matchingVideos.length === 1 ? "" : "s"} in library`;
+    els.scriptDeskSearchCount.textContent = activeStr ? `${activeStr} • ${libStr}` : libStr;
+  }
+
+  if (els.scriptDeskSearchResults) {
+    els.scriptDeskSearchResults.hidden = false;
+    if (matchingVideos.length === 0) {
+      els.scriptDeskSearchResults.innerHTML = `<div class="no-results-notice">No transcriptions or library items found matching “${escapeHtml(query)}”.</div>`;
+    } else {
+      els.scriptDeskSearchResults.innerHTML = matchingVideos
+        .map((video) => {
+          const isActive = video.id === state.selectedId;
+          const snippetSource = video.transcript || video.translation || video.notes || video.title || "";
+          return `<div class="script-desk-result-card${isActive ? " active-video" : ""}" data-video-id="${escapeHtml(video.id)}">
+            <div class="result-card-header">
+              <span class="result-card-title">${escapeHtml(video.title || "Untitled video")}</span>
+              ${video.speaker ? `<span class="result-card-speaker">👤 ${escapeHtml(video.speaker)}</span>` : ""}
+            </div>
+            <div class="result-card-snippet">${highlightSnippet(snippetSource, query)}</div>
+          </div>`;
+        })
+        .join("");
+
+      els.scriptDeskSearchResults.querySelectorAll(".script-desk-result-card").forEach((card) => {
+        card.addEventListener("click", () => {
+          const vid = card.getAttribute("data-video-id");
+          if (vid) {
+            selectVideo(vid);
+            performScriptDeskSearch();
+          }
+        });
+      });
+    }
+  }
 }
 
 function isLikelyVideoUrl(url) {

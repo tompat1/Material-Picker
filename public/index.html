@@ -422,6 +422,34 @@
             </label>
           </div>
 
+          <div class="transcript-search-section">
+            <div class="transcript-search-bar">
+              <div class="transcript-search-field">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <input id="scriptDeskSearch" type="search" placeholder="Search transcriptions, subjects, authors & terms..." aria-label="Search script desk transcriptions" />
+                <button id="clearScriptDeskSearch" class="clear-search-btn" type="button" aria-label="Clear search" hidden>&times;</button>
+              </div>
+              <span class="search-match-count" id="scriptDeskSearchCount"></span>
+            </div>
+
+            <div class="transcript-pills-section">
+              <div class="pills-header">
+                <span class="pills-label">Indexed Topics & Authors</span>
+                <span class="pills-count-badge" id="pillsCountBadge">0 terms</span>
+              </div>
+              <div class="transcript-pills-list" id="scriptDeskPills" role="listbox" aria-label="Indexed search terms">
+                <!-- Clickable search pills dynamically generated here -->
+              </div>
+            </div>
+
+            <div class="script-desk-results-panel" id="scriptDeskSearchResults" hidden>
+              <!-- List of matching library videos and transcript snippets -->
+            </div>
+          </div>
+
           <div class="transcript-status" id="transcriptStatus" role="status" aria-live="polite">
             Select a saved video to load or create its transcript.
           </div>

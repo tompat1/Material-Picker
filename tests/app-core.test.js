@@ -306,6 +306,39 @@ test("proofreadText removes timestamps and deduplicates consecutive speakers", (
   assert.ok(keptTimestamps.includes("[00:00:10] In today's session"));
 });
 
+test("indexLibraryTranscripts indexes authors, subjects, and terminology into clickable pills", () => {
+  const library = [
+    {
+      id: "vid1",
+      title: "Somatic Practice Intro",
+      speaker: "Mark Walsh",
+      tags: "Somatic, Breathwork",
+      transcript: "[00:05] Host Tana Saler: Welcome back to Whisper proofreading.",
+      translation: "Proofreading cleans stutters and formats HLS streams.",
+    },
+    {
+      id: "vid2",
+      title: "Advanced Proofreading with Whisper",
+      speaker: "Tana Saler",
+      tags: "Proofreading, Whisper",
+      transcript: "Mark Walsh: In today's session we explore Somatic movement.",
+      translation: "",
+    },
+  ];
+
+  const pills = core.indexLibraryTranscripts(library);
+  assert.ok(pills.length > 0, "Should generate indexed pills from library");
+
+  const authors = pills.filter((p) => p.type === "author");
+  assert.ok(authors.some((a) => a.text === "Mark Walsh"), "Should index Mark Walsh as author");
+
+  const subjects = pills.filter((p) => p.type === "subject");
+  assert.ok(subjects.some((s) => s.text.toLowerCase().includes("somatic")), "Should index Somatic as subject");
+
+  const terms = pills.filter((p) => p.type === "term");
+  assert.ok(terms.length > 0, "Should extract key terminology pills");
+});
+
 test("groupFolderEntries correctly groups HLS packages with master.m3u8, audio/video segments, and metadata", () => {
   const entries = [
     { name: "master.m3u8", relPath: "talk/master.m3u8" },

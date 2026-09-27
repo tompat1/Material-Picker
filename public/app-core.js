@@ -659,6 +659,132 @@
     return processedLines.join("\n");
   }
 
+  function indexLibraryTranscripts(videos) {
+    if (!Array.isArray(videos) || !videos.length) return [];
+
+    const authorMap = new Map();
+    const subjectMap = new Map();
+    const termMap = new Map();
+
+    const stopWords = new Set([
+      "the", "be", "to", "of", "and", "a", "in", "that", "have", "i",
+      "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
+      "this", "but", "his", "by", "from", "they", "we", "say", "her",
+      "she", "or", "an", "will", "my", "one", "all", "would", "there",
+      "their", "what", "so", "up", "out", "if", "about", "who", "get",
+      "which", "go", "me", "when", "make", "can", "like", "time", "no",
+      "just", "him", "know", "take", "people", "into", "year", "your",
+      "good", "some", "could", "them", "see", "other", "than", "then",
+      "now", "look", "only", "come", "its", "over", "think", "also",
+      "back", "after", "use", "two", "how", "our", "work", "first",
+      "well", "way", "even", "new", "want", "because", "any", "these",
+      "give", "day", "most", "us", "is", "are", "was", "were", "been",
+      "has", "had", "does", "did", "more", "very", "here"
+    ]);
+
+    for (const video of videos) {
+      if (!video) continue;
+      const vid = video.id;
+
+      if (video.speaker) {
+        const spk = video.speaker.trim();
+        if (spk) {
+          if (!authorMap.has(spk)) authorMap.set(spk, new Set());
+          authorMap.get(spk).add(vid);
+        }
+      }
+
+      const fullText = `${video.transcript || ""} ${video.translation || ""}`;
+
+      const speakerMatches = fullText.matchAll(/^(?:\[\d{1,2}:\d{2}.*?\]\s*)?\[?([A-Z\p{Lu}][\p{L}\p{N}\s.,'()\-#]{1,40}?)\]?:\s/gmu);
+      for (const match of speakerMatches) {
+        const name = match[1].trim();
+        if (
+          name &&
+          name.length > 2 &&
+          !NON_SPEAKER_LABELS.has(name.toLowerCase()) &&
+          !/^(http|https|www|video|source|date|title|notes|transcript|translation)$/i.test(name)
+        ) {
+          if (!authorMap.has(name)) authorMap.set(name, new Set());
+          authorMap.get(name).add(vid);
+        }
+      }
+
+      if (video.tags) {
+        const tagList = String(video.tags).split(/[,;\n]/).map((t) => t.trim()).filter(Boolean);
+        for (const tag of tagList) {
+          if (!subjectMap.has(tag)) subjectMap.set(tag, new Set());
+          subjectMap.get(tag).add(vid);
+        }
+      }
+
+      if (video.title) {
+        const titleWords = video.title.split(/[\s\-:|/]+/);
+        for (const word of titleWords) {
+          const cleaned = word.replace(/^[^\w]+|[^\w]+$/g, "");
+          if (cleaned.length >= 4 && !stopWords.has(cleaned.toLowerCase())) {
+            const formatted = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+            if (!subjectMap.has(formatted)) subjectMap.set(formatted, new Set());
+            subjectMap.get(formatted).add(vid);
+          }
+        }
+      }
+
+      const termMatches = fullText.matchAll(/\b([A-Z\p{Lu}][a-z\p{Ll}]{2,}(?:\s+[A-Z\p{Lu}][a-z\p{Ll}]{2,}){0,2})\b/gu);
+      for (const match of termMatches) {
+        const term = match[1].trim();
+        if (
+          term.length >= 4 &&
+          !stopWords.has(term.toLowerCase()) &&
+          !authorMap.has(term) &&
+          !NON_SPEAKER_LABELS.has(term.toLowerCase())
+        ) {
+          if (!termMap.has(term)) termMap.set(term, new Set());
+          termMap.get(term).add(vid);
+        }
+      }
+    }
+
+    const pills = [];
+
+    for (const [author, vids] of authorMap.entries()) {
+      pills.push({
+        text: author,
+        type: "author",
+        label: `👤 ${author}`,
+        count: vids.size,
+        videoIds: Array.from(vids),
+      });
+    }
+
+    for (const [subject, vids] of subjectMap.entries()) {
+      if (!authorMap.has(subject)) {
+        pills.push({
+          text: subject,
+          type: "subject",
+          label: `📚 ${subject}`,
+          count: vids.size,
+          videoIds: Array.from(vids),
+        });
+      }
+    }
+
+    for (const [term, vids] of termMap.entries()) {
+      if (!authorMap.has(term) && !subjectMap.has(term)) {
+        pills.push({
+          text: term,
+          type: "term",
+          label: `🏷️ ${term}`,
+          count: vids.size,
+          videoIds: Array.from(vids),
+        });
+      }
+    }
+
+    pills.sort((a, b) => b.count - a.count || a.text.localeCompare(b.text));
+    return pills;
+  }
+
   function groupFolderEntries(entries) {
     const hlsPackages = [];
     const packageByPrefix = new Map();
@@ -780,6 +906,7 @@
     moveVideosToCollection,
     playbackKind,
     proofreadText,
+    indexLibraryTranscripts,
     removeCollection,
     saveState,
     sanitizeOfflineHlsManifest,
