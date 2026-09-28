@@ -1850,8 +1850,18 @@ function clearScrapeHistory() {
 }
 
 function renderVideoCount() {
-  els.videoCount.textContent = state.videos.length;
-  if (els.videoCountLabel) els.videoCountLabel.textContent = state.videos.length === 1 ? "video" : "videos";
+  if (els.videoCount?.isConnected) {
+    els.videoCount.textContent = state.videos.length;
+    if (els.videoCountLabel) els.videoCountLabel.textContent = state.videos.length === 1 ? "video" : "videos";
+  }
+}
+
+function libraryCountLabel() {
+  const total = state.videos.length;
+  const visible = visibleVideos().length;
+  const noun = total === 1 ? "video" : "videos";
+  if (visible !== total) return `${visible} of ${total} ${noun}`;
+  return `${total} ${noun}`;
 }
 
 function cardDurationLabel(video) {
@@ -1881,17 +1891,18 @@ function syncNavSearch() {
 function renderLibraryTotals() {
   if (!els.libraryTotals) return;
   const { videos } = state;
+  const count = libraryCountLabel();
   if (!videos.length) {
-    els.libraryTotals.textContent = "";
+    els.libraryTotals.textContent = count;
     return;
   }
   const summary = libraryMediaSummary(videos);
-  const parts = [];
+  const parts = [count];
   if (summary.durationSeconds > 0) parts.push(formatDuration(summary.durationSeconds));
   if (summary.bytes > 0) parts.push(formatBytes(summary.bytes));
   const waiting = videos.some((video) => !video.mediaMeasured && canSaveOfflineUrl(video.url));
-  if (!parts.length && waiting) {
-    els.libraryTotals.textContent = "Measuring run time and file size…";
+  if (parts.length === 1 && waiting) {
+    els.libraryTotals.textContent = `${count} · Measuring run time and file size…`;
     return;
   }
   els.libraryTotals.textContent = parts.join(" · ");
