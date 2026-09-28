@@ -381,7 +381,28 @@ function bindEvents() {
   document.querySelector("#selectAllVideos")?.addEventListener("click", toggleSelectVisibleVideos);
   document.querySelector("#addSelectionToPlaylist")?.addEventListener("click", () => {
     if (!selectedVideoIds.size) return;
+    closeNoteMenu();
     openPlaylistMenu([...selectedVideoIds], document.querySelector("#addSelectionToPlaylist"));
+  });
+  document.querySelector("#addSelectionNote")?.addEventListener("click", () => {
+    if (!selectedVideoIds.size) return;
+    const menu = document.querySelector("#noteMenu");
+    if (menu && !menu.hidden) closeNoteMenu();
+    else openNoteMenu(document.querySelector("#addSelectionNote"));
+  });
+  document.querySelector("#noteMenuForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = document.querySelector("#noteMenuText");
+    const text = String(input?.value || "").trim();
+    if (!text) {
+      setStatus("Write a note first.");
+      input?.focus();
+      return;
+    }
+    const added = applyNoteToSelection(text);
+    if (!added) return;
+    input.value = "";
+    closeNoteMenu();
   });
   document.querySelector("#createPlaylistForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -511,11 +532,16 @@ function bindEvents() {
       else openPlaylistMenu(ids, button);
       return;
     }
-    if (event.target.closest("#addSelectionToPlaylist, #selectAllVideos")) return;
+    if (event.target.closest("#addSelectionToPlaylist, #selectAllVideos, #addSelectionNote")) return;
     if (menu && !menu.hidden && !event.target.closest("#playlistMenu")) closePlaylistMenu();
+    const noteMenu = document.querySelector("#noteMenu");
+    if (noteMenu && !noteMenu.hidden && !event.target.closest("#noteMenu")) closeNoteMenu();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closePlaylistMenu();
+    if (event.key === "Escape") {
+      closePlaylistMenu();
+      closeNoteMenu();
+    }
   });
   els.videoForm.addEventListener("submit", (event) => event.preventDefault());
   els.videoForm.addEventListener("input", updateSelectedFromForm);
@@ -1646,6 +1672,7 @@ function renderLibrary() {
     renderLibraryTotals();
     void measureLibraryMedia();
     syncSelectionPlaylistButton();
+    syncSelectionNoteButton();
     syncSelectAllButton();
     return;
   }
@@ -1686,6 +1713,7 @@ function renderLibrary() {
       renderCollectionManager();
       renderLibraryOfflineManager();
       syncSelectionPlaylistButton();
+      syncSelectionNoteButton();
       syncSelectAllButton();
     });
 
@@ -1741,6 +1769,7 @@ function renderLibrary() {
   renderLibraryTotals();
   void measureLibraryMedia();
   syncSelectionPlaylistButton();
+  syncSelectionNoteButton();
   syncSelectAllButton();
 }
 
@@ -1841,6 +1870,74 @@ function syncSelectionPlaylistButton() {
   const count = selectedVideoIds.size;
   button.hidden = count === 0;
   button.textContent = count > 1 ? `Add ${count} to playlist` : "Add to playlist";
+}
+
+function syncSelectionNoteButton() {
+  const button = document.querySelector("#addSelectionNote");
+  if (!button) return;
+  const count = selectedVideoIds.size;
+  button.hidden = count === 0;
+  button.textContent = count > 1 ? `Add note to ${count}` : "Add note";
+  if (!count) closeNoteMenu();
+}
+
+function openNoteMenu(anchor) {
+  const menu = document.querySelector("#noteMenu");
+  const lead = document.querySelector("#noteMenuLead");
+  if (!menu || !selectedVideoIds.size) return;
+  closePlaylistMenu();
+  const count = selectedVideoIds.size;
+  if (lead) {
+    lead.textContent = count === 1
+      ? "Add this note to the selected video. A note already on it stays."
+      : `Add this note to ${count} videos. Notes already on a video stay.`;
+  }
+  const rect = anchor.getBoundingClientRect();
+  menu.hidden = false;
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.min(Math.max(8, rect.right - menuRect.width), window.innerWidth - menuRect.width - 8);
+  let top = rect.bottom + 6;
+  if (top + menuRect.height > window.innerHeight - 8) top = Math.max(8, rect.top - menuRect.height - 6);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  document.querySelector("#noteMenuText")?.focus();
+}
+
+function closeNoteMenu() {
+  const menu = document.querySelector("#noteMenu");
+  if (menu) menu.hidden = true;
+}
+
+function applyNoteToSelection(note) {
+  const text = String(note || "").trim();
+  if (!text) {
+    setStatus("Write a note first.");
+    document.querySelector("#noteMenuText")?.focus();
+    return 0;
+  }
+  const ids = [...selectedVideoIds];
+  if (!ids.length) {
+    setStatus("Select a video first.");
+    return 0;
+  }
+  let added = 0;
+  ids.forEach((id) => {
+    const video = state.videos.find((item) => item.id === id);
+    if (!video) return;
+    const current = String(video.notes || "").trim();
+    const parts = current.split(/\n+/).map((part) => part.trim()).filter(Boolean);
+    if (current === text || parts.includes(text)) return;
+    video.notes = current ? `${current}\n\n${text}` : text;
+    added += 1;
+    scheduleFolderMetadataSave(video);
+  });
+  saveState();
+  renderForm();
+  renderLibrary();
+  setStatus(added
+    ? `Added the note to ${added === 1 ? "1 video" : `${added} videos`}.`
+    : "That note is already on the selected videos.");
+  return added;
 }
 
 function syncSelectAllButton() {

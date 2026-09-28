@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-26" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-27" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to library</a>
@@ -188,6 +188,7 @@
             <div class="filter-row">
               <button class="ghost-button" id="selectAllVideos" type="button" hidden>Select all</button>
               <button class="ghost-button" id="addSelectionToPlaylist" type="button" hidden>Add to playlist</button>
+              <button class="ghost-button" id="addSelectionNote" type="button" hidden>Add note</button>
               <button class="ghost-button" id="checkLibraryButton" type="button" title="Check whether each saved video can still play">
                 <span>Check all playback</span>
               </button>
@@ -526,6 +527,15 @@
       </div>
     </div>
 
+    <div class="playlist-menu note-menu" id="noteMenu" hidden>
+      <p class="playlist-menu-lead" id="noteMenuLead">Add this note to the selected videos. Notes already on a video stay.</p>
+      <form id="noteMenuForm">
+        <label class="sr-only" for="noteMenuText">Note</label>
+        <textarea id="noteMenuText" rows="4" maxlength="2000" placeholder="Note for the selected videos"></textarea>
+        <button class="primary-button" type="submit">Add note</button>
+      </form>
+    </div>
+
     <div class="playlist-menu" id="playlistMenu" hidden>
       <p class="playlist-menu-lead" id="playlistMenuLead"></p>
       <ul class="playlist-menu-list" id="playlistMenuList"></ul>
@@ -569,6 +579,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-18" defer></script>
-    <script src="./app.js?v=picker-nav-31" defer></script>
+    <script src="./app.js?v=picker-nav-32" defer></script>
   </body>
 </html>

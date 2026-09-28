@@ -2544,8 +2544,23 @@ progress::-moz-progress-bar {
 
 #reconnectFolderButton[hidden],
 #addSelectionToPlaylist[hidden],
+#addSelectionNote[hidden],
 #selectAllVideos[hidden] {
   display: none;
+}
+
+.note-menu {
+  width: min(22rem, calc(100vw - 16px));
+}
+
+.note-menu form {
+  display: grid;
+  gap: 8px;
+}
+
+.note-menu textarea {
+  min-height: 6.5rem;
+  resize: vertical;
 }
 
 .player-loading-overlay {
