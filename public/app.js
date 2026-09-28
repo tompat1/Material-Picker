@@ -22,7 +22,6 @@ const els = {
   folderScanForm: document.querySelector("#folderScanForm"),
   folderPath: document.querySelector("#folderPath"),
   browseFolderButton: document.querySelector("#browseFolderButton"),
-  scanFolderButton: document.querySelector("#scanFolderButton"),
   folderCreateCollection: document.querySelector("#folderCreateCollection"),
   localFolderInput: document.querySelector("#localFolderInput"),
   htmlPaste: document.querySelector("#htmlPaste"),
@@ -797,7 +796,7 @@ async function importFromDirectoryHandle(dirHandle, options = {}) {
   state.lastImportFolderName = rootFolderName;
   void rememberImportFolder(dirHandle);
   setStatus(options.quiet ? `Reconnecting “${rootFolderName}”...` : `Scanning “${rootFolderName}” and all subfolders for videos...`, true);
-  if (els.scanFolderButton) els.scanFolderButton.disabled = true;
+  if (els.browseFolderButton) els.browseFolderButton.disabled = true;
 
   try {
     const entries = [];
@@ -865,7 +864,7 @@ async function importFromDirectoryHandle(dirHandle, options = {}) {
   } catch (error) {
     setStatus(`Folder import error: ${error.message}`, false);
   } finally {
-    if (els.scanFolderButton) els.scanFolderButton.disabled = false;
+    if (els.browseFolderButton) els.browseFolderButton.disabled = false;
   }
 }
 
@@ -963,7 +962,7 @@ async function scanFolderPath(folderPath) {
   saveState();
   renderRecentSources();
   setStatus(`Scanning folder “${folderPath}” and all nested subfolders...`, true);
-  if (els.scanFolderButton) els.scanFolderButton.disabled = true;
+  if (els.browseFolderButton) els.browseFolderButton.disabled = true;
 
   try {
     const response = await fetch(`/api/scan-folder?path=${encodeURIComponent(folderPath)}`, {
@@ -1091,7 +1090,7 @@ async function scanFolderPath(folderPath) {
   } catch (error) {
     setStatus(`Folder scan error: ${error.message}`, false);
   } finally {
-    if (els.scanFolderButton) els.scanFolderButton.disabled = false;
+    if (els.browseFolderButton) els.browseFolderButton.disabled = false;
   }
 }
 
@@ -1517,8 +1516,7 @@ async function useLatestOfflineSource() {
 function useLatestScannedFolder() {
   if (!state.lastScannedFolder || !els.folderPath) return;
   els.folderPath.value = state.lastScannedFolder;
-  els.folderPath.focus();
-  setStatus(`Folder restored. Select Scan to import “${state.lastScannedFolder}” again.`);
+  void scanFolderPath(state.lastScannedFolder);
 }
 
 function renderScrapeHistory() {
