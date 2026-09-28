@@ -1381,6 +1381,16 @@ function clearAll() {
   if (!state.videos.length) return;
   const shouldClear = confirm("Clear all saved videos and transcripts from this browser?");
   if (!shouldClear) return;
+  const videoCount = state.videos.length;
+  const transcriptCount = state.videos.filter((video) => String(video.transcript || "").trim()).length;
+  const videoLabel = videoCount === 1 ? "The 1 video in the library will be removed" : `All ${videoCount} videos in the library will be removed`;
+  const transcriptLabel = transcriptCount === 0
+    ? "any transcripts saved with them will be removed too"
+    : transcriptCount === 1
+      ? "the 1 transcript saved with them will be removed too"
+      : `all ${transcriptCount} transcripts saved with them will be removed too`;
+  const confirmed = confirm(`${videoLabel}, and ${transcriptLabel}. This cannot be undone.`);
+  if (!confirmed) return;
   state = {
     selectedId: null,
     videos: [],
