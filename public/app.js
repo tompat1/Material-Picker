@@ -691,6 +691,7 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       packageId,
       offlineUrl: packageUrl,
       offlineArchivePath: pkg.rootPrefix || rootFolderName,
+      importRoot: rootFolderName,
       offlineFormat: "hls",
       offlineSize: meta?.size || totalBytes,
       offlineSavedAt: meta?.savedAt || meta?.downloadedAt || new Date().toISOString(),
@@ -725,6 +726,7 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       existing.packageId = packageId;
       existing.offlineUrl = packageUrl;
       existing.offlineArchivePath = pkg.rootPrefix || rootFolderName;
+      existing.importRoot = rootFolderName;
       existing.offlineFormat = "hls";
       existing.offlineSize = meta?.size || totalBytes || existing.offlineSize;
       existing.offlineSavedAt = meta?.savedAt || meta?.downloadedAt || existing.offlineSavedAt || new Date().toISOString();
@@ -843,6 +845,7 @@ async function importFromDirectoryHandle(dirHandle, options = {}) {
   const rootFolderName = dirHandle.name || "Imported Folder";
   if (els.folderPath) els.folderPath.value = rootFolderName;
   state.lastImportFolderName = rootFolderName;
+  importedFolderNames.add(rootFolderName);
   void rememberImportFolder(dirHandle);
   setStatus(options.quiet ? `Opening “${rootFolderName}”...` : `Scanning “${rootFolderName}” and all subfolders for videos...`, true);
   if (els.browseFolderButton) els.browseFolderButton.disabled = true;
@@ -3106,17 +3109,25 @@ function folderPromptNeeded(video = selectedVideo()) {
   return Boolean(video) && videoPackageMissing(video) && !localPlaybackUrl(video) && !playableRemoteUrl(video);
 }
 
+function folderLabelForVideo(video = selectedVideo()) {
+  if (video?.importRoot) return video.importRoot;
+  const parts = String(core.offlineArchivePath(video) || "").split("/").filter(Boolean);
+  if (parts.length > 1) return parts[0];
+  return "";
+}
+
 function setReconnectFolderButton(visible) {
   const button = document.querySelector("#reconnectFolderButton");
   if (!button) return;
   button.hidden = !visible;
   if (!visible) return;
-  button.textContent = state.lastImportFolderName ? `Reconnect “${state.lastImportFolderName}”` : "Reconnect folder";
+  const folder = folderLabelForVideo();
+  button.textContent = folder ? `Reconnect “${folder}”` : "Reconnect folder";
 }
 
 function showMissingFolder() {
   const video = selectedVideo();
-  const folder = state.lastImportFolderName;
+  const folder = folderLabelForVideo(video);
   if (!importFoldersRestored || importReconnectRunning) {
     if (els.playerShell.dataset.openingFolder === "1") return;
     els.playerShell.dataset.mode = "empty";
@@ -3635,6 +3646,8 @@ async function restorePersistedFolders() {
   await restoreDownloadFolder();
 }
 
+const importedFolderNames = new Set();
+
 async function restoreImportFolders() {
   try {
     if (!state.videos.some((video) => videoPackageMissing(video))) return;
@@ -3644,10 +3657,11 @@ async function restoreImportFolders() {
     for (const handle of handles) {
       if ((await handle.queryPermission({ mode: "read" })) === "granted") granted.push(handle);
     }
-    const handle = preferredImportHandle(granted);
-    if (!handle) return;
-    state.lastImportFolderName = handle.name || state.lastImportFolderName || "";
-    await importFromDirectoryHandle(handle, { quiet: true });
+    for (const handle of importHandlesForMissing(granted)) {
+      if (!state.videos.some((video) => videoPackageMissing(video))) break;
+      if (importedFolderNames.has(handle.name)) continue;
+      await importFromDirectoryHandle(handle, { quiet: true });
+    }
   } finally {
     importFoldersRestored = true;
     renderPlayer();
@@ -3668,16 +3682,12 @@ function mountImportFolder() {
   return folderMountPromise;
 }
 
-function preferredImportHandle(handles) {
-  const named = handles.find((handle) => handle?.name && handle.name === state.lastImportFolderName);
-  if (named) return named;
-  const names = new Set(
-    state.videos
-      .filter((video) => videoPackageMissing(video))
-      .flatMap((video) => String(core.offlineArchivePath(video) || "").split("/"))
-      .filter(Boolean)
-  );
-  return handles.find((handle) => names.has(handle?.name)) || handles[0] || null;
+function importHandlesForMissing(handles) {
+  const missing = state.videos.filter((video) => videoPackageMissing(video));
+  const wanted = new Set(missing.map((video) => folderLabelForVideo(video)).filter(Boolean));
+  if (!wanted.size) return handles;
+  const named = handles.filter((handle) => wanted.has(handle?.name));
+  return named.length ? named : handles;
 }
 
 async function reconnectImportFolder() {
@@ -3697,17 +3707,20 @@ async function reconnectImportFolder() {
     for (const handle of handles) {
       if (handle.queryPermission && (await handle.queryPermission({ mode: "read" })) === "granted") granted.push(handle);
     }
-    const ready = preferredImportHandle(granted);
-    if (ready) {
-      state.lastImportFolderName = ready.name || state.lastImportFolderName || "";
-      await importFromDirectoryHandle(ready, { quiet: true });
+    for (const handle of importHandlesForMissing(granted)) {
+      if (!state.videos.some((video) => videoPackageMissing(video))) break;
+      if (importedFolderNames.has(handle.name)) continue;
+      await importFromDirectoryHandle(handle, { quiet: true });
+    }
+    if (!state.videos.some((video) => folderPromptNeeded(video))) {
+      renderPlayer();
       return;
     }
-    const target = preferredImportHandle(handles.filter((handle) => handle.requestPermission));
+    const key = folderLabelForVideo(selectedVideo());
+    const target = (key && handles.find((handle) => handle?.name === key && handle.requestPermission && !importedFolderNames.has(handle.name))) || null;
     if (target) {
       const permission = await target.requestPermission({ mode: "read" });
       if (permission === "granted") {
-        state.lastImportFolderName = target.name || state.lastImportFolderName || "";
         await importFromDirectoryHandle(target, { quiet: true });
         return;
       }
@@ -3720,7 +3733,8 @@ async function reconnectImportFolder() {
     await importFromDirectoryHandle(picked, { quiet: true });
   } catch (error) {
     if (error?.name === "AbortError") {
-      setStatus(state.lastImportFolderName ? `“${state.lastImportFolderName}” was not reconnected.` : "The video folder was not reconnected.");
+      const folder = folderLabelForVideo();
+      setStatus(folder ? `“${folder}” was not reconnected.` : "The video folder was not reconnected.");
     } else {
       setStatus(`The video folder could not be reconnected: ${error.message}`);
     }
