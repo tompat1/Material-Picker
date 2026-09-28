@@ -294,7 +294,7 @@ function init() {
     selectedVideoIds.add(video.id);
   });
   saveState();
-  void restoreDownloadFolder().then(() => loadFolderScript(selectedVideo()));
+  void restorePersistedFolders().then(() => loadFolderScript(selectedVideo()));
   void reconcileOfflineLibrary();
   void repairLegacyPageRecords({ automatic: true });
 }
@@ -344,6 +344,7 @@ function bindEvents() {
   els.openVideoButton.addEventListener("click", openVideoSource);
   els.libraryOfflinePermission.addEventListener("change", renderLibraryOfflineManager);
   els.retryPlaybackButton.addEventListener("click", retryPlayback);
+  document.querySelector("#reconnectFolderButton")?.addEventListener("click", reconnectImportFolder);
   els.renameCollectionButton?.addEventListener("click", renameActiveCollection);
   els.searchLibrary.addEventListener("input", () => {
     syncNavSearch();
@@ -471,7 +472,7 @@ function isLocalServer() {
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }
 
-async function processImportedFolderEntries(entries, rootFolderName, defaultCollectionId = "") {
+async function processImportedFolderEntries(entries, rootFolderName, defaultCollectionId = "", options = {}) {
   if (!entries || entries.length === 0) {
     setStatus("Selected folder contains no supported video files.");
     return 0;
@@ -615,24 +616,28 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       if (!firstReconnectedId) firstReconnectedId = existing.id;
       reconnectedCount += 1;
       removedDuplicateCount += reconnectMatches.length - 1;
-      recordActivity({
-        action: "Imported",
-        title: existing.title,
-        videoId: existing.id,
-        detail: `Reconnected from ${rootFolderName}`,
-      }, { save: false });
+      if (!options.quiet) {
+        recordActivity({
+          action: "Imported",
+          title: existing.title,
+          videoId: existing.id,
+          detail: `Reconnected from ${rootFolderName}`,
+        }, { save: false });
+      }
       continue;
     }
 
     state.videos.unshift(nextVideo);
     if (!firstAddedId) firstAddedId = nextVideo.id;
     addedCount += 1;
-    recordActivity({
-      action: "Imported",
-      title: nextVideo.title,
-      videoId: nextVideo.id,
-      detail: rootFolderName,
-    }, { save: false });
+    if (!options.quiet) {
+      recordActivity({
+        action: "Imported",
+        title: nextVideo.title,
+        videoId: nextVideo.id,
+        detail: rootFolderName,
+      }, { save: false });
+    }
   }
 
   // Process standalone video entries
@@ -670,21 +675,32 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
     state.videos.unshift(nextVideo);
     if (!firstAddedId) firstAddedId = nextVideo.id;
     addedCount += 1;
-    recordActivity({
-      action: "Imported",
-      title: nextVideo.title,
-      videoId: nextVideo.id,
-      detail: rootFolderName,
-    }, { save: false });
+    if (!options.quiet) {
+      recordActivity({
+        action: "Imported",
+        title: nextVideo.title,
+        videoId: nextVideo.id,
+        detail: rootFolderName,
+      }, { save: false });
+    }
   }
 
   const targetId = firstReconnectedId || firstAddedId;
-  if (targetId) {
+  if (options.quiet) {
+    if (!state.selectedId && targetId) state.selectedId = targetId;
+  } else if (targetId) {
     state.selectedId = targetId;
   }
 
   saveState();
   render();
+
+  if (options.quiet) {
+    if (reconnectedCount || addedCount) {
+      setStatus(`Reconnected ${reconnectedCount + addedCount} from “${rootFolderName}”. Ready to play!`);
+    }
+    return addedCount;
+  }
 
   const resultParts = [];
   if (reconnectedCount) resultParts.push(`reconnected ${reconnectedCount}`);
@@ -701,10 +717,12 @@ function addLocalVideoFiles(videoFiles, rootFolderName, defaultCollectionId = ""
   return processImportedFolderEntries(videoFiles, rootFolderName, defaultCollectionId);
 }
 
-async function importFromDirectoryHandle(dirHandle) {
+async function importFromDirectoryHandle(dirHandle, options = {}) {
   const rootFolderName = dirHandle.name || "Imported Folder";
   if (els.folderPath) els.folderPath.value = rootFolderName;
-  setStatus(`Scanning “${rootFolderName}” and all subfolders for videos...`, true);
+  state.lastImportFolderName = rootFolderName;
+  void rememberImportFolder(dirHandle);
+  setStatus(options.quiet ? `Reconnecting “${rootFolderName}”...` : `Scanning “${rootFolderName}” and all subfolders for videos...`, true);
   if (els.scanFolderButton) els.scanFolderButton.disabled = true;
 
   try {
@@ -769,7 +787,7 @@ async function importFromDirectoryHandle(dirHandle) {
     };
 
     await walk(dirHandle, []);
-    await processImportedFolderEntries(entries, rootFolderName);
+    await processImportedFolderEntries(entries, rootFolderName, "", options);
   } catch (error) {
     setStatus(`Folder import error: ${error.message}`, false);
   } finally {
@@ -1297,6 +1315,7 @@ function clearAll() {
     activity: state.activity || [],
     playlists: state.playlists || [],
     favourites: state.favourites || [],
+    lastImportFolderName: state.lastImportFolderName || "",
     lastOfflineFolderName: state.lastOfflineFolderName || "",
     lastScannedFolder: state.lastScannedFolder || "",
   };
@@ -2270,6 +2289,40 @@ async function ensurePlayerPlaying() {
   }
 }
 
+function hlsPackageId(url) {
+  const match = String(url || "").match(/\/hls-package\/([^/]+)\//);
+  return match ? match[1] : "";
+}
+
+function videoPackageMissing(video) {
+  const packageId = hlsPackageId(video?.offlineUrl) || hlsPackageId(video?.url);
+  return Boolean(packageId && !offlinePackageFiles.has(packageId));
+}
+
+function setReconnectFolderButton(visible) {
+  const button = document.querySelector("#reconnectFolderButton");
+  if (!button) return;
+  button.hidden = !visible;
+  if (!visible) return;
+  button.textContent = state.lastImportFolderName ? `Reconnect “${state.lastImportFolderName}”` : "Reconnect folder";
+}
+
+function showMissingFolder() {
+  const folder = state.lastImportFolderName;
+  els.playerShell.dataset.mode = "empty";
+  const emptyTitle = els.emptyPlayer?.querySelector("strong");
+  const emptyCopy = els.emptyPlayer?.querySelector(".empty-caption");
+  if (emptyTitle) emptyTitle.textContent = "Reconnect this folder";
+  if (emptyCopy) {
+    emptyCopy.textContent = folder
+      ? `“${folder}” is still on this computer. Reconnect it to play these videos.`
+      : "These videos are still in their folder. Reconnect that folder to play them.";
+  }
+  setReconnectFolderButton(true);
+  setPlayerStatus(folder ? `Reconnect “${folder}” to play this video.` : "Reconnect the video folder to play this video.");
+  hidePlayerLoading();
+}
+
 function activeEmbedKey(video) {
   if (!video?.id || !video.url) return "";
   if (video.offlineUrl && !video.offlineStale) return "";
@@ -2294,6 +2347,7 @@ function renderPlayer(options = {}) {
 
   embedPlaying = false;
   embedPlaybackKey = "";
+  setReconnectFolderButton(false);
   destroyHlsPlayer();
   els.videoPlayer.pause();
   els.videoPlayer.onloadedmetadata = null;
@@ -2327,13 +2381,7 @@ function renderPlayer(options = {}) {
         const match = video.offlineUrl.match(/\/hls-package\/([^/]+)\//);
         const packageId = match ? match[1] : "";
         if (packageId && !offlinePackageFiles.has(packageId)) {
-          setPlayerStatus("Offline package files were cleared by page reload. Click Browse to select your video folder again.");
-          const emptyTitle = els.emptyPlayer.querySelector("strong");
-          const emptyCopy = els.emptyPlayer.querySelector("span");
-          if (emptyTitle) emptyTitle.textContent = "Folder re-connect required";
-          if (emptyCopy) emptyCopy.textContent = "Click Browse under Intake to re-open this folder for playback.";
-          els.playerShell.dataset.mode = "empty";
-          hidePlayerLoading();
+          showMissingFolder();
           return;
         }
       }
@@ -2417,6 +2465,10 @@ function markSelectedPlaybackReady(videoId, message) {
 async function retryPlayback() {
   const video = selectedVideo();
   if (!video) return;
+  if (videoPackageMissing(video)) {
+    await reconnectImportFolder();
+    return;
+  }
   if (video.offlineExportedTo && offlineExportDirectoryHandle) {
     const directory = await openSavedVideoFolder(video);
     if (directory && (await connectSavedArchive(video, directory))) {
@@ -2435,13 +2487,7 @@ async function retryPlayback() {
 function loadHlsVideo(url, isOffline = false) {
   const packageMatch = String(url || "").match(/\/hls-package\/([^/]+)\//);
   if (packageMatch && !offlinePackageFiles.has(packageMatch[1])) {
-    els.playerShell.dataset.mode = "empty";
-    const emptyTitle = els.emptyPlayer.querySelector("strong");
-    const emptyCopy = els.emptyPlayer.querySelector("span");
-    if (emptyTitle) emptyTitle.textContent = "Folder re-connect required";
-    if (emptyCopy) emptyCopy.textContent = "Scan the saved folder again to put these videos back in the library.";
-    setPlayerStatus("This offline video is not loaded. Scan its folder again.");
-    hidePlayerLoading();
+    showMissingFolder();
     return;
   }
   if (window.Hls?.isSupported()) {
@@ -2679,26 +2725,100 @@ function openFolderDatabase() {
   });
 }
 
-async function rememberDownloadFolder(handle) {
+async function rememberFolderHandle(key, handle) {
   const db = await openFolderDatabase();
   await new Promise((resolve, reject) => {
     const tx = db.transaction("handles", "readwrite");
-    tx.objectStore("handles").put(handle, "download");
+    tx.objectStore("handles").put(handle, key);
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
   db.close();
 }
 
-async function storedDownloadFolder() {
+async function storedFolderHandle(key) {
   const db = await openFolderDatabase();
   const handle = await new Promise((resolve, reject) => {
-    const request = db.transaction("handles", "readonly").objectStore("handles").get("download");
+    const request = db.transaction("handles", "readonly").objectStore("handles").get(key);
     request.onsuccess = () => resolve(request.result || null);
     request.onerror = () => reject(request.error);
   });
   db.close();
   return handle;
+}
+
+async function rememberDownloadFolder(handle) {
+  await rememberFolderHandle("download", handle);
+}
+
+async function storedDownloadFolder() {
+  return storedFolderHandle("download");
+}
+
+async function rememberImportFolder(handle) {
+  if (!handle?.queryPermission && !handle?.getDirectoryHandle && !handle?.values) return;
+  const stored = await storedFolderHandle("imports").catch(() => []);
+  const handles = Array.isArray(stored) ? stored : [];
+  const next = handles.filter((item) => item?.name !== handle.name);
+  next.unshift(handle);
+  state.lastImportFolderName = handle.name || state.lastImportFolderName || "";
+  saveState();
+  await rememberFolderHandle("imports", next.slice(0, 8));
+}
+
+async function restorePersistedFolders() {
+  await restoreImportFolders();
+  await restoreDownloadFolder();
+}
+
+async function restoreImportFolders() {
+  const needsReconnect = state.videos.some((video) => videoPackageMissing(video));
+  if (!needsReconnect) return;
+  const stored = await storedFolderHandle("imports").catch(() => []);
+  const handles = (Array.isArray(stored) ? stored : []).filter((handle) => handle?.queryPermission);
+  let restored = false;
+  for (const handle of handles) {
+    if ((await handle.queryPermission({ mode: "read" })) !== "granted") continue;
+    state.lastImportFolderName = handle.name || state.lastImportFolderName || "";
+    await importFromDirectoryHandle(handle, { quiet: true });
+    restored = true;
+  }
+  if (!restored) renderPlayer();
+}
+
+let importReconnectRunning = false;
+
+async function reconnectImportFolder() {
+  if (importReconnectRunning || folderBrowseRunning) return;
+  importReconnectRunning = true;
+  const button = document.querySelector("#reconnectFolderButton");
+  if (button) button.disabled = true;
+  try {
+    const stored = await storedFolderHandle("imports").catch(() => []);
+    const handles = (Array.isArray(stored) ? stored : []).filter((handle) => handle?.requestPermission);
+    for (const handle of handles) {
+      const permission = await handle.requestPermission({ mode: "read" });
+      if (permission !== "granted") continue;
+      state.lastImportFolderName = handle.name || state.lastImportFolderName || "";
+      await importFromDirectoryHandle(handle, { quiet: true });
+      return;
+    }
+    if (typeof window.showDirectoryPicker !== "function") {
+      setStatus("This browser cannot reopen a folder. Import the videos again from Add video.");
+      return;
+    }
+    const picked = await window.showDirectoryPicker({ mode: "read" });
+    await importFromDirectoryHandle(picked, { quiet: true });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      setStatus(state.lastImportFolderName ? `“${state.lastImportFolderName}” was not reconnected.` : "The video folder was not reconnected.");
+    } else {
+      setStatus(`The video folder could not be reconnected: ${error.message}`);
+    }
+  } finally {
+    importReconnectRunning = false;
+    if (button) button.disabled = false;
+  }
 }
 
 async function restoreDownloadFolder() {

@@ -2360,9 +2360,17 @@ progress::-moz-progress-bar {
 }
 
 .empty-caption {
-  max-width: 28ch;
+  max-width: 36ch;
   color: #685348;
   font-size: 0.92rem;
+}
+
+#reconnectFolderButton {
+  margin-top: 0.85rem;
+}
+
+#reconnectFolderButton[hidden] {
+  display: none;
 }
 
 .player-loading-overlay {
