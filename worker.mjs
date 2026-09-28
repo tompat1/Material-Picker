@@ -652,6 +652,49 @@ export function proofreadText(text, language = "en", options = {}) {
   return processedLines.join("\n");
 }
 
+function imageContentType(bytes) {
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (view[0] === 0x89 && view[1] === 0x50 && view[2] === 0x4e && view[3] === 0x47) return "image/png";
+  return "image/jpeg";
+}
+
+async function thumbnailBytes(result) {
+  if (!result) return null;
+  if (result instanceof ArrayBuffer) return new Uint8Array(result);
+  if (result instanceof Uint8Array) return result;
+  const encoded = typeof result.image === "string" ? result.image : typeof result.result?.image === "string" ? result.result.image : "";
+  if (encoded) {
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  }
+  if (typeof result.arrayBuffer === "function" || result instanceof ReadableStream) {
+    return new Uint8Array(await new Response(result).arrayBuffer());
+  }
+  return null;
+}
+
+async function renderThumbnail(request, ai) {
+  if (!ai?.run) return json(503, { error: "Thumbnail model is not connected." });
+  const body = await request.json().catch(() => ({}));
+  const prompt = String(body.prompt || "").trim().slice(0, 1200);
+  if (prompt.length < 8) return json(400, { error: "A thumbnail prompt is required." });
+  try {
+    const result = await ai.run("@cf/black-forest-labs/flux-1-schnell", { prompt });
+    const bytes = await thumbnailBytes(result);
+    if (!bytes?.byteLength) return json(502, { error: "The thumbnail model returned no image." });
+    return new Response(bytes, {
+      headers: {
+        "content-type": imageContentType(bytes),
+        "cache-control": "no-store",
+      },
+    });
+  } catch (error) {
+    return json(502, { error: error.message || "The thumbnail could not be rendered." });
+  }
+}
+
 export async function handleApiRequest(request, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch;
   const url = new URL(request.url);
@@ -744,6 +787,9 @@ export async function handleApiRequest(request, dependencies = {}) {
       return json(502, { error: error.message || "Translation failed." });
     }
   }
+  if (request.method === "POST" && url.pathname === "/api/thumbnail") {
+    return renderThumbnail(request, dependencies.ai);
+  }
   if (request.method === "POST" && url.pathname === "/api/proofread") {
     try {
       const body = await request.json().catch(() => ({}));
@@ -768,6 +814,7 @@ export default {
   async fetch(request, env) {
     return handleApiRequest(request, {
       renderPage: env?.BROWSER ? (url) => renderPage(env.BROWSER, url) : null,
+      ai: env?.AI,
     });
   },
 };

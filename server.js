@@ -1609,6 +1609,52 @@ function handleChooseFolder(response) {
   });
 }
 
+function imageContentType(bytes) {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  return "image/jpeg";
+}
+
+async function handleThumbnail(request, response) {
+  let body;
+  try {
+    body = await readJsonBody(request, 16_000);
+  } catch (error) {
+    return sendJson(response, 400, { error: error.message || "The request was not valid JSON." });
+  }
+  const prompt = String(body.prompt || "").trim().slice(0, 1200);
+  if (prompt.length < 8) return sendJson(response, 400, { error: "A thumbnail prompt is required." });
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  if (!accountId || !token) return sendJson(response, 503, { error: "Thumbnail model is not connected." });
+  try {
+    const aiResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ prompt }),
+    });
+    const contentType = aiResponse.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const data = await aiResponse.json();
+      const image = data?.result?.image || data?.image;
+      if (!aiResponse.ok || !image) {
+        return sendJson(response, 502, { error: data?.errors?.[0]?.message || "The thumbnail model returned no image." });
+      }
+      const bytes = Buffer.from(image, "base64");
+      response.writeHead(200, { "Content-Type": imageContentType(bytes), "Cache-Control": "no-store" });
+      return response.end(bytes);
+    }
+    if (!aiResponse.ok) return sendJson(response, 502, { error: "The thumbnail could not be rendered." });
+    const bytes = Buffer.from(await aiResponse.arrayBuffer());
+    response.writeHead(200, { "Content-Type": imageContentType(bytes), "Cache-Control": "no-store" });
+    return response.end(bytes);
+  } catch (error) {
+    return sendJson(response, 502, { error: error.message || "The thumbnail could not be rendered." });
+  }
+}
+
 function startServer() {
   fs.mkdirSync(VIDEO_ROOT, { recursive: true });
   const server = http.createServer(async (request, response) => {
@@ -1638,6 +1684,9 @@ function startServer() {
     }
     if (request.method === "POST" && requestUrl.pathname === "/api/proofread") {
       return handleProofread(request, response);
+    }
+    if (request.method === "POST" && requestUrl.pathname === "/api/thumbnail") {
+      return handleThumbnail(request, response);
     }
     if (request.method === "POST" && requestUrl.pathname === "/api/offline/save") {
       return handleOfflineSave(request, response);

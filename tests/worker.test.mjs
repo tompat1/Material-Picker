@@ -287,4 +287,43 @@ test("choose-folder and scan-folder endpoints provide helpful responses on worke
   assert.match(scanData.error, /local server|locally/i);
 });
 
+test("thumbnail rendering requires a prompt and a connected model", async () => {
+  const missing = await handleApiRequest(new Request("https://picker.example/api/thumbnail", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt: "A quiet documentary portrait, no text." }),
+  }));
+  assert.equal(missing.status, 503);
+
+  const empty = await handleApiRequest(new Request("https://picker.example/api/thumbnail", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt: "short" }),
+  }), { ai: { async run() { return new Uint8Array([0xff, 0xd8, 0xff, 0xd9]); } } });
+  assert.equal(empty.status, 400);
+});
+
+test("thumbnail rendering returns the Flux image bytes", async () => {
+  let seen = null;
+  const response = await handleApiRequest(new Request("https://picker.example/api/thumbnail", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt: "A quiet documentary portrait inspired by a workshop, no text." }),
+  }), {
+    ai: {
+      async run(model, input) {
+        seen = { model, input };
+        return new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+      },
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/jpeg");
+  assert.deepEqual(seen.model, "@cf/black-forest-labs/flux-1-schnell");
+  assert.match(seen.input.prompt, /documentary portrait/);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  assert.equal(bytes[0], 0xff);
+  assert.equal(bytes[1], 0xd8);
+});
+
 

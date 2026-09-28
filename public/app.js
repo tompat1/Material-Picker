@@ -1337,6 +1337,190 @@ function addVideo(video, options = {}) {
   return next.id;
 }
 
+const thumbnailUrls = new Map();
+const thumbnailQueued = new Set();
+const thumbnailJobs = [];
+let thumbnailDraining = false;
+let thumbnailStopped = false;
+let thumbnailNoticeSent = false;
+
+function thumbnailPrompt(video) {
+  const clip = (value, max) => String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+  const title = clip(video.title, 140) || "untitled session";
+  const speaker = clip(video.speaker, 80);
+  const tags = clip(video.tags, 160);
+  const notes = clip(video.notes, 280);
+  return [
+    "A single cinematic photograph, no text, no letters, no watermark, no logo.",
+    `Inspired by a video titled “${title}”.`,
+    speaker ? `The speaker is ${speaker}.` : "",
+    tags ? `Themes and tags: ${tags}.` : "",
+    notes ? `Notes: ${notes}.` : "",
+    "Warm amber light, dark wood tones, intimate documentary framing, shallow depth of field, photorealistic.",
+  ].filter(Boolean).join(" ");
+}
+
+function openThumbnailDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("material-picker-thumbs", 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains("thumbs")) request.result.createObjectStore("thumbs");
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readThumbnail(videoId) {
+  const db = await openThumbnailDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction("thumbs").objectStore("thumbs").get(videoId);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function writeThumbnail(videoId, blob) {
+  const db = await openThumbnailDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction("thumbs", "readwrite").objectStore("thumbs").put(blob, videoId);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function clearThumbnails() {
+  thumbnailJobs.length = 0;
+  thumbnailQueued.clear();
+  thumbnailUrls.forEach((url) => URL.revokeObjectURL(url));
+  thumbnailUrls.clear();
+  const db = await openThumbnailDb().catch(() => null);
+  if (!db) return;
+  await new Promise((resolve, reject) => {
+    const request = db.transaction("thumbs", "readwrite").objectStore("thumbs").clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function showThumbnail(videoId, url) {
+  document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(videoId)}"]`).forEach((element) => {
+    element.classList.remove("is-rendering");
+    const image = document.createElement("img");
+    image.alt = "";
+    image.src = url;
+    element.replaceChildren(image);
+  });
+}
+
+function markThumbnailRendering(videoId) {
+  document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(videoId)}"]`).forEach((element) => {
+    if (!element.querySelector("img")) element.classList.add("is-rendering");
+  });
+}
+
+async function applyCardThumbnail(element, video) {
+  if (!element || !video?.id) return;
+  const known = thumbnailUrls.get(video.id);
+  if (known) {
+    showThumbnail(video.id, known);
+    return;
+  }
+  const stored = await readThumbnail(video.id).catch(() => null);
+  if (stored) {
+    const url = URL.createObjectURL(stored);
+    thumbnailUrls.set(video.id, url);
+    showThumbnail(video.id, url);
+    return;
+  }
+  if (thumbnailStopped) return;
+  element.classList.add("is-rendering");
+  queueThumbnail(video);
+}
+
+async function compactThumbnail(blob) {
+  if (!blob || blob.size < 180000 || typeof createImageBitmap !== "function") return blob;
+  try {
+    const bitmap = await createImageBitmap(blob);
+    const scale = Math.min(1, 640 / bitmap.width);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+    const compact = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.72));
+    return compact || blob;
+  } catch {
+    return blob;
+  }
+}
+
+function queueMissingThumbnails() {
+  state.videos.forEach((video) => queueThumbnail(video));
+}
+
+function queueThumbnail(video) {
+  if (!video?.id || thumbnailStopped || thumbnailQueued.has(video.id) || thumbnailUrls.has(video.id)) return;
+  thumbnailQueued.add(video.id);
+  thumbnailJobs.push(video.id);
+  void drainThumbnails();
+}
+
+async function drainThumbnails() {
+  if (thumbnailDraining) return;
+  thumbnailDraining = true;
+  try {
+    while (thumbnailJobs.length && !thumbnailStopped) {
+      const id = thumbnailJobs.shift();
+      const video = state.videos.find((item) => item.id === id);
+      if (!video || thumbnailUrls.has(id)) continue;
+      const stored = await readThumbnail(id).catch(() => null);
+      if (stored) {
+        const url = URL.createObjectURL(stored);
+        thumbnailUrls.set(id, url);
+        showThumbnail(id, url);
+        continue;
+      }
+      markThumbnailRendering(id);
+      const continued = await requestThumbnail(video);
+      if (!continued) break;
+    }
+  } finally {
+    thumbnailDraining = false;
+    if (thumbnailJobs.length && !thumbnailStopped) void drainThumbnails();
+  }
+}
+
+async function requestThumbnail(video) {
+  let response;
+  try {
+    response = await fetch("/api/thumbnail", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: thumbnailPrompt(video) }),
+    });
+  } catch {
+    return true;
+  }
+  if (response.status === 503) {
+    thumbnailStopped = true;
+    if (!thumbnailNoticeSent) {
+      thumbnailNoticeSent = true;
+      setStatus("Thumbnails render with the Cloudflare image model. Connect that model to fill the list.");
+    }
+    document.querySelectorAll(".card-thumb.is-rendering").forEach((element) => element.classList.remove("is-rendering"));
+    return false;
+  }
+  if (!response.ok) return true;
+  const blob = await compactThumbnail(await response.blob());
+  if (!blob || !state.videos.some((item) => item.id === video.id)) return true;
+  await writeThumbnail(video.id, blob).catch(() => {});
+  const url = URL.createObjectURL(blob);
+  thumbnailUrls.set(video.id, url);
+  showThumbnail(video.id, url);
+  return true;
+}
+
 function updateSelectedFromForm() {
   const video = selectedVideo();
   if (!video) return;
@@ -1416,6 +1600,7 @@ function clearAll() {
       : `all ${transcriptCount} transcripts saved with them will be removed too`;
   const confirmed = confirm(`${videoLabel}, and ${transcriptLabel}. This cannot be undone.`);
   if (!confirmed) return;
+  void clearThumbnails();
   state = {
     selectedId: null,
     videos: [],
@@ -1449,6 +1634,7 @@ function render() {
   renderPlaylists();
   renderFavourites();
   syncPlayButton();
+  queueMissingThumbnails();
 }
 
 function recordScrape(url, details) {
@@ -1684,20 +1870,23 @@ function renderLibrary() {
     card.classList.toggle("active", video.id === state.selectedId);
     card.classList.toggle("selected", selectedVideoIds.has(video.id));
 
-    const collection = state.collections.find((item) => item.id === video.collectionId);
-    const details = [video.speaker || video.language || "No speaker yet", video.tags || "untagged"];
-    if (collection) details.push(collection.name);
+    const speaker = String(video.speaker || video.language || "").trim();
     const runtime = videoRuntimeLabel(video);
     const size = videoSizeLabel(video);
-    if (runtime) details.push(runtime);
-    if (size) details.push(size);
+    const timeLine = [runtime, size].filter(Boolean).join(" · ");
+    const extra = timeLine || String(video.tags || "").trim();
 
     const main = card.querySelector(".card-main");
     main.innerHTML = `
-      <strong>${escapeHtml(video.title || "Untitled video")}</strong>
-      <span>${escapeHtml(details.join(" · "))}</span>
+      <span class="card-thumb" data-video-id="${escapeHtml(video.id)}"></span>
+      <span class="card-copy">
+        <strong>${escapeHtml(video.title || "Untitled video")}</strong>
+        ${speaker ? `<span class="card-speaker">${escapeHtml(speaker)}</span>` : ""}
+        ${extra ? `<span class="card-meta">${escapeHtml(extra)}</span>` : ""}
+      </span>
     `;
     main.addEventListener("click", () => selectVideo(video.id));
+    void applyCardThumbnail(main.querySelector(".card-thumb"), video);
     const addButton = card.querySelector(".add-to-list");
     if (addButton) addButton.dataset.videoId = video.id;
     const favouriteButton = card.querySelector(".favourite-toggle");
