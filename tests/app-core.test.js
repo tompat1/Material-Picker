@@ -65,6 +65,7 @@ test("round-trips all videos through browser-style storage", () => {
         addedCount: 10,
       },
     ],
+    activity: [],
   };
 
   core.saveState(storage, "test-library", state);
@@ -82,6 +83,7 @@ test("migrates an older saved library with an empty scrape history", () => {
   };
 
   assert.deepEqual(core.loadState(storage, "old-library").scrapeHistory, []);
+  assert.deepEqual(core.loadState(storage, "old-library").activity, []);
   assert.deepEqual(core.loadState(storage, "old-library").collections, []);
 });
 

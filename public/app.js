@@ -3381,6 +3381,12 @@ async function pollOfflineJob(videoId) {
       video.offlineProvider = job.provider;
       video.offlineStale = false;
       saveState();
+      recordActivity({
+        action: "Downloaded",
+        title: video.title,
+        videoId: video.id,
+        detail: "Saved on this computer",
+      });
       renderLibrary();
       renderLibraryOfflineManager();
       renderPlayer();
@@ -3866,6 +3872,12 @@ async function startTranscription() {
       renderLibrary();
       setTranscriptButtons(false);
       const onDisk = await flushFolderMetadata(video);
+      recordActivity({
+        action: "Transcribed",
+        title: video.title,
+        videoId: video.id,
+        detail: data.label || data.language || "",
+      });
       setTranscriptStatus(
         onDisk
           ? `Saved ${data.cueCount} caption cues in this video's folder.`
@@ -3966,6 +3978,14 @@ async function transcribeHlsAudio(playbackUrl) {
   setTranscriptButtons(true);
   setTranscriptStatus("Reading audio track from the stream...", "working");
   setStatus("Transcribing the stream's audio segments. Keep the video playing.");
+  const transcribing = selectedVideo();
+  if (transcribing) {
+    recordActivity({
+      action: "Transcribing",
+      title: transcribing.title,
+      videoId: transcribing.id,
+    });
+  }
   await ensurePlayerPlaying();
 
   try {
@@ -4013,6 +4033,14 @@ function finishHlsTranscription(token, emptyMessage = "") {
   audioTrackTranscribing = false;
   setTranscriptButtons(false);
   if (els.transcriptText.value.trim()) {
+    const video = selectedVideo();
+    if (video) {
+      recordActivity({
+        action: "Transcribed",
+        title: video.title,
+        videoId: video.id,
+      });
+    }
     setTranscriptStatus("Audio track transcript saved for this video.", "ready");
     setStatus("Audio track transcript saved for this video.");
     return;
@@ -4210,6 +4238,14 @@ async function startElementTapTranscription() {
 
   audioTap = tap;
   audioTrackTranscribing = true;
+  const transcribing = selectedVideo();
+  if (transcribing) {
+    recordActivity({
+      action: "Transcribing",
+      title: transcribing.title,
+      videoId: transcribing.id,
+    });
+  }
   accumulatedSamples = [];
   accumulatedLength = 0;
   silentStreak = 0;
@@ -4342,6 +4378,13 @@ async function stopTranscription() {
   } else if (els.transcriptText.value.trim()) {
     const video = selectedVideo();
     const onDisk = video ? await flushFolderMetadata(video) : false;
+    if (video && els.transcriptText.value.trim()) {
+      recordActivity({
+        action: "Transcribed",
+        title: video.title,
+        videoId: video.id,
+      });
+    }
     setTranscriptStatus(onDisk ? "Transcript saved in this video's folder." : "Audio track transcript saved for this video.", "ready");
   } else if (els.transcriptStatus.dataset.tone !== "error") {
     setTranscriptStatus("Transcription stopped.", "ready");
