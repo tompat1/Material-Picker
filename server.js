@@ -1614,6 +1614,64 @@ function imageContentType(bytes) {
   return "image/jpeg";
 }
 
+const LIVE_THUMBNAIL_URL = "https://picker.rynell.org/api/thumbnail";
+
+function sendThumbnail(response, bytes, contentType) {
+  response.writeHead(200, {
+    "Content-Type": contentType || imageContentType(bytes),
+    "Cache-Control": "no-store",
+  });
+  response.end(bytes);
+}
+
+async function thumbnailFromAccount(prompt) {
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  if (!accountId || !token) return { error: "Thumbnail model is not connected.", status: 503 };
+  const aiResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ prompt }),
+  });
+  const contentType = aiResponse.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const data = await aiResponse.json();
+    const image = data?.result?.image || data?.image;
+    if (!aiResponse.ok || !image) {
+      return {
+        error: data?.errors?.[0]?.message || "The thumbnail model returned no image.",
+        status: aiResponse.ok ? 502 : aiResponse.status || 502,
+      };
+    }
+    const bytes = Buffer.from(image, "base64");
+    return { bytes, contentType: imageContentType(bytes) };
+  }
+  if (!aiResponse.ok) return { error: "The thumbnail could not be rendered.", status: aiResponse.status || 502 };
+  const bytes = Buffer.from(await aiResponse.arrayBuffer());
+  if (!bytes.byteLength) return { error: "The thumbnail model returned no image.", status: 502 };
+  return { bytes, contentType: contentType || imageContentType(bytes) };
+}
+
+async function thumbnailFromLiveSite(prompt) {
+  const live = await fetch(LIVE_THUMBNAIL_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt }),
+    signal: AbortSignal.timeout(90000),
+  });
+  const contentType = live.headers.get("content-type") || "";
+  if (!live.ok || contentType.includes("application/json")) {
+    const data = await live.json().catch(() => ({}));
+    return { error: data.error || "The thumbnail could not be rendered.", status: live.status || 502 };
+  }
+  const bytes = Buffer.from(await live.arrayBuffer());
+  if (!bytes.byteLength) return { error: "The thumbnail model returned no image.", status: 502 };
+  return { bytes, contentType: contentType || imageContentType(bytes) };
+}
+
 async function handleThumbnail(request, response) {
   let body;
   try {
@@ -1623,33 +1681,13 @@ async function handleThumbnail(request, response) {
   }
   const prompt = String(body.prompt || "").trim().slice(0, 1200);
   if (prompt.length < 8) return sendJson(response, 400, { error: "A thumbnail prompt is required." });
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-  const token = process.env.CLOUDFLARE_API_TOKEN;
-  if (!accountId || !token) return sendJson(response, 503, { error: "Thumbnail model is not connected." });
   try {
-    const aiResponse = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ prompt }),
-    });
-    const contentType = aiResponse.headers.get("content-type") || "";
-    if (contentType.includes("application/json")) {
-      const data = await aiResponse.json();
-      const image = data?.result?.image || data?.image;
-      if (!aiResponse.ok || !image) {
-        return sendJson(response, 502, { error: data?.errors?.[0]?.message || "The thumbnail model returned no image." });
-      }
-      const bytes = Buffer.from(image, "base64");
-      response.writeHead(200, { "Content-Type": imageContentType(bytes), "Cache-Control": "no-store" });
-      return response.end(bytes);
+    let result = await thumbnailFromAccount(prompt);
+    if (!result.bytes && (result.status === 503 || /authentication/i.test(result.error || ""))) {
+      result = await thumbnailFromLiveSite(prompt);
     }
-    if (!aiResponse.ok) return sendJson(response, 502, { error: "The thumbnail could not be rendered." });
-    const bytes = Buffer.from(await aiResponse.arrayBuffer());
-    response.writeHead(200, { "Content-Type": imageContentType(bytes), "Cache-Control": "no-store" });
-    return response.end(bytes);
+    if (!result.bytes) return sendJson(response, result.status || 502, { error: result.error || "The thumbnail could not be rendered." });
+    return sendThumbnail(response, result.bytes, result.contentType);
   } catch (error) {
     return sendJson(response, 502, { error: error.message || "The thumbnail could not be rendered." });
   }
