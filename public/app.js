@@ -292,6 +292,7 @@ const thumbnailJobs = [];
 let thumbnailDraining = false;
 let thumbnailActiveId = "";
 let thumbnailPausedUntil = 0;
+let thumbnailPauseTimer = 0;
 let thumbnailNoticeSent = false;
 
 function init() {
@@ -1409,6 +1410,8 @@ async function clearThumbnails() {
   thumbnailAttempts.clear();
   thumbnailActiveId = "";
   thumbnailPausedUntil = 0;
+  if (thumbnailPauseTimer) clearTimeout(thumbnailPauseTimer);
+  thumbnailPauseTimer = 0;
   thumbnailUrls.forEach((url) => URL.revokeObjectURL(url));
   thumbnailUrls.clear();
   const db = await openThumbnailDb().catch(() => null);
@@ -1601,14 +1604,15 @@ async function requestThumbnail(video) {
     return true;
   }
   if (response.status === 503) {
-    stopThumbnailQueue("Thumbnails render with the Cloudflare image model. Connect that model to fill the list.");
+    thumbnailAttempts.delete(video.id);
+    stopThumbnailQueue("Thumbnails render with the Cloudflare image model. Connect that model to fill the list.", 20000, true);
     return false;
   }
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     const message = String(data.error || "");
     if (/authentication/i.test(message)) {
-      stopThumbnailQueue("The thumbnail model rejected the Cloudflare API token. Check the token and account id, then refresh.");
+      stopThumbnailQueue("The thumbnail model rejected the Cloudflare API token. Check the token and account id, then refresh.", 60 * 60 * 1000, false);
       return false;
     }
     finishThumbnailMiss(video.id);
@@ -1632,9 +1636,22 @@ function finishThumbnailMiss(videoId) {
   showThumbnailRetry(videoId);
 }
 
-function stopThumbnailQueue(message) {
+function scheduleThumbnailPass(delay) {
+  if (thumbnailPauseTimer) clearTimeout(thumbnailPauseTimer);
+  thumbnailPauseTimer = setTimeout(() => {
+    thumbnailPauseTimer = 0;
+    thumbnailPausedUntil = 0;
+    queueMissingThumbnails();
+  }, delay);
+}
+
+function stopThumbnailQueue(message, pauseMs, resume) {
   thumbnailActiveId = "";
-  thumbnailPausedUntil = Date.now() + 60 * 60 * 1000;
+  if (thumbnailPauseTimer) {
+    clearTimeout(thumbnailPauseTimer);
+    thumbnailPauseTimer = 0;
+  }
+  thumbnailPausedUntil = Date.now() + pauseMs;
   thumbnailJobs.splice(0).forEach((id) => thumbnailInFlight.delete(id));
   thumbnailInFlight.clear();
   state.videos.forEach((video) => {
@@ -1644,6 +1661,7 @@ function stopThumbnailQueue(message) {
     thumbnailNoticeSent = true;
     setStatus(message);
   }
+  if (resume) scheduleThumbnailPass(pauseMs);
 }
 
 function updateSelectedFromForm() {
