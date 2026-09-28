@@ -99,6 +99,7 @@ let hlsPlayer = null;
 let embedPlaying = false;
 let embedPlaybackKey = "";
 let playlistMenuVideoId = "";
+let playlistMenuVideoIds = [];
 let offlineStoragePath = "";
 let offlineExportDirectoryHandle = null;
 let bulkOfflineRunning = false;
@@ -375,6 +376,11 @@ function bindEvents() {
     showDesk("downloads");
     setStatus(`“${video.title || "This video"}” is marked. Confirm permission, then download it.`);
   });
+  document.querySelector("#selectAllVideos")?.addEventListener("click", toggleSelectVisibleVideos);
+  document.querySelector("#addSelectionToPlaylist")?.addEventListener("click", () => {
+    if (!selectedVideoIds.size) return;
+    openPlaylistMenu([...selectedVideoIds], document.querySelector("#addSelectionToPlaylist"));
+  });
   document.querySelector("#createPlaylistForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const input = document.querySelector("#playlistNameInput");
@@ -390,19 +396,31 @@ function bindEvents() {
   document.querySelector("#playlistMenuForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const input = document.querySelector("#playlistMenuName");
-    const playlist = createPlaylist(input?.value || "", playlistMenuVideoId);
+    const playlist = createPlaylist(input?.value || "", playlistTargetIds());
     if (!playlist) {
       input?.focus();
       return;
     }
     input.value = "";
     renderPlaylistMenu();
-    setStatus(`Added to “${playlist.name}”.`);
+    const count = playlist.videoIds.length;
+    setStatus(count > 1 ? `Added ${count} videos to “${playlist.name}”.` : count === 1 ? `Added to “${playlist.name}”.` : `Created “${playlist.name}”.`);
   });
   document.querySelector("#playlistMenuList")?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-playlist-id]");
-    if (!button || !playlistMenuVideoId) return;
-    togglePlaylistVideo(button.dataset.playlistId, playlistMenuVideoId);
+    const ids = playlistTargetIds();
+    if (!button || !ids.length) return;
+    event.stopPropagation();
+    const playlist = playlists().find((item) => item.id === button.dataset.playlistId);
+    if (!playlist) return;
+    const already = new Set(playlist.videoIds || []);
+    const allIn = ids.every((id) => already.has(id));
+    const added = ids.filter((id) => !already.has(id)).length;
+    setPlaylistVideos(playlist.id, ids, !allIn);
+    const countLabel = (count) => (count === 1 ? "1 video" : `${count} videos`);
+    setStatus(allIn
+      ? `Removed ${countLabel(ids.length)} from “${playlist.name}”.`
+      : `Added ${countLabel(added)} to “${playlist.name}”.`);
   });
   document.querySelector("#playlistList")?.addEventListener("click", (event) => {
     const remove = event.target.closest("[data-remove-video]");
@@ -435,10 +453,15 @@ function bindEvents() {
     if (button) {
       const videoId = button.dataset.videoId || state.selectedId;
       if (!videoId || button.disabled) return;
-      if (menu && !menu.hidden && playlistMenuVideoId === videoId) closePlaylistMenu();
-      else openPlaylistMenu(videoId, button);
+      const ids = button.id !== "addCurrentToList" && selectedVideoIds.size > 1 && selectedVideoIds.has(videoId)
+        ? [...selectedVideoIds]
+        : [videoId];
+      const menuOpenForSame = menu && !menu.hidden && ids.length === playlistMenuVideoIds.length && ids.every((id) => playlistMenuVideoIds.includes(id));
+      if (menuOpenForSame) closePlaylistMenu();
+      else openPlaylistMenu(ids, button);
       return;
     }
+    if (event.target.closest("#addSelectionToPlaylist, #selectAllVideos")) return;
     if (menu && !menu.hidden && !event.target.closest("#playlistMenu")) closePlaylistMenu();
   });
   document.addEventListener("keydown", (event) => {
@@ -1563,6 +1586,8 @@ function renderLibrary() {
     renderVideoCount();
     renderLibraryTotals();
     void measureLibraryMedia();
+    syncSelectionPlaylistButton();
+    syncSelectAllButton();
     return;
   }
 
@@ -1601,6 +1626,8 @@ function renderLibrary() {
       card.classList.toggle("selected", checkbox.checked);
       renderCollectionManager();
       renderLibraryOfflineManager();
+      syncSelectionPlaylistButton();
+      syncSelectAllButton();
     });
 
     const badge = card.querySelector(".playback-badge");
@@ -1654,6 +1681,8 @@ function renderLibrary() {
   renderVideoCount();
   renderLibraryTotals();
   void measureLibraryMedia();
+  syncSelectionPlaylistButton();
+  syncSelectAllButton();
 }
 
 function playlists() {
@@ -1671,20 +1700,42 @@ function playlistVideos(playlist) {
   });
 }
 
-function createPlaylist(name, videoId = "") {
+function createPlaylist(name, videoIds = []) {
   const trimmed = String(name || "").trim();
   if (!trimmed) return null;
+  const ids = [...new Set((Array.isArray(videoIds) ? videoIds : videoIds ? [videoIds] : []).filter(Boolean))];
   const playlist = {
     id: crypto.randomUUID(),
     name: trimmed,
     createdAt: new Date().toISOString(),
-    videoIds: videoId ? [videoId] : [],
+    videoIds: ids,
   };
   state.playlists = [...playlists(), playlist];
   saveState();
   renderPlaylists();
   syncAddToListButtons();
   return playlist;
+}
+
+function playlistTargetIds() {
+  return playlistMenuVideoIds.filter((id) => state.videos.some((video) => video.id === id));
+}
+
+function setPlaylistVideos(playlistId, videoIds, include) {
+  const playlist = playlists().find((item) => item.id === playlistId);
+  if (!playlist) return;
+  const incoming = [...new Set(videoIds.filter(Boolean))];
+  if (include) {
+    const have = new Set(playlist.videoIds || []);
+    playlist.videoIds = [...(playlist.videoIds || []), ...incoming.filter((id) => !have.has(id))];
+  } else {
+    const drop = new Set(incoming);
+    playlist.videoIds = (playlist.videoIds || []).filter((id) => !drop.has(id));
+  }
+  saveState();
+  renderPlaylists();
+  syncAddToListButtons();
+  if (!document.querySelector("#playlistMenu")?.hidden) renderPlaylistMenu();
 }
 
 function togglePlaylistVideo(playlistId, videoId) {
@@ -1695,7 +1746,7 @@ function togglePlaylistVideo(playlistId, videoId) {
   saveState();
   renderPlaylists();
   syncAddToListButtons();
-  if (!document.querySelector("#playlistMenu")?.hidden && playlistMenuVideoId === videoId) renderPlaylistMenu();
+  if (!document.querySelector("#playlistMenu")?.hidden && playlistMenuVideoIds.includes(videoId)) renderPlaylistMenu();
 }
 
 function deletePlaylist(playlistId) {
@@ -1724,10 +1775,41 @@ function syncAddToListButtons() {
   });
 }
 
-function openPlaylistMenu(videoId, anchor) {
-  playlistMenuVideoId = videoId;
+function syncSelectionPlaylistButton() {
+  const button = document.querySelector("#addSelectionToPlaylist");
+  if (!button) return;
+  const count = selectedVideoIds.size;
+  button.hidden = count === 0;
+  button.textContent = count > 1 ? `Add ${count} to playlist` : "Add to playlist";
+}
+
+function syncSelectAllButton() {
+  const button = document.querySelector("#selectAllVideos");
+  if (!button) return;
+  const visible = visibleVideos();
+  const allSelected = visible.length > 0 && visible.every((video) => selectedVideoIds.has(video.id));
+  button.hidden = visible.length === 0;
+  button.textContent = allSelected ? "Unselect all" : "Select all";
+}
+
+function toggleSelectVisibleVideos() {
+  const visible = visibleVideos();
+  if (!visible.length) return;
+  const allSelected = visible.every((video) => selectedVideoIds.has(video.id));
+  visible.forEach((video) => {
+    if (allSelected) selectedVideoIds.delete(video.id);
+    else selectedVideoIds.add(video.id);
+  });
+  renderLibrary();
+  renderCollectionManager();
+  renderLibraryOfflineManager();
+}
+
+function openPlaylistMenu(videoIds, anchor) {
+  playlistMenuVideoIds = [...new Set((Array.isArray(videoIds) ? videoIds : [videoIds]).filter(Boolean))];
+  playlistMenuVideoId = playlistMenuVideoIds[0] || "";
   const menu = document.querySelector("#playlistMenu");
-  if (!menu) return;
+  if (!menu || !playlistMenuVideoIds.length) return;
   renderPlaylistMenu();
   menu.hidden = false;
   const rect = anchor.getBoundingClientRect();
@@ -1744,6 +1826,7 @@ function closePlaylistMenu() {
   const menu = document.querySelector("#playlistMenu");
   if (menu) menu.hidden = true;
   playlistMenuVideoId = "";
+  playlistMenuVideoIds = [];
 }
 
 function renderPlaylistMenu() {
@@ -1752,19 +1835,26 @@ function renderPlaylistMenu() {
   const input = document.querySelector("#playlistMenuName");
   if (!lead || !list) return;
   const items = playlists();
+  const ids = playlistTargetIds();
+  const count = ids.length;
   if (!items.length) {
-    lead.textContent = "No playlists yet. Create one and this video will be added.";
+    lead.textContent = count > 1
+      ? `No playlists yet. Create one and these ${count} videos will be added.`
+      : "No playlists yet. Create one and this video will be added.";
     list.hidden = true;
     list.innerHTML = "";
     if (input) input.placeholder = "Playlist name";
     return;
   }
   list.hidden = false;
-  lead.textContent = "Add to a playlist";
+  lead.textContent = count > 1 ? `Add ${count} videos to a playlist` : "Add to a playlist";
   if (input) input.placeholder = "New playlist";
   list.innerHTML = items.map((playlist) => {
-    const included = (playlist.videoIds || []).includes(playlistMenuVideoId);
-    return `<li><button type="button" data-playlist-id="${escapeHtml(playlist.id)}" aria-pressed="${included ? "true" : "false"}"><span>${escapeHtml(playlist.name)}</span><span class="playlist-menu-state">${included ? "Added" : "Add"}</span></button></li>`;
+    const members = new Set(playlist.videoIds || []);
+    const includedCount = ids.filter((id) => members.has(id)).length;
+    const allIn = count > 0 && includedCount === count;
+    const stateLabel = allIn ? "Added" : includedCount ? `Add ${count - includedCount}` : "Add";
+    return `<li><button type="button" data-playlist-id="${escapeHtml(playlist.id)}" aria-pressed="${allIn ? "true" : "false"}"><span>${escapeHtml(playlist.name)}</span><span class="playlist-menu-state">${stateLabel}</span></button></li>`;
   }).join("");
 }
 

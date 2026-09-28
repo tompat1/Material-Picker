@@ -1099,6 +1099,7 @@ select {
 
 .filter-row {
   flex: 1 1 16rem;
+  flex-wrap: wrap;
   justify-content: flex-end;
 }
 
@@ -2369,7 +2370,9 @@ progress::-moz-progress-bar {
   margin-top: 0.85rem;
 }
 
-#reconnectFolderButton[hidden] {
+#reconnectFolderButton[hidden],
+#addSelectionToPlaylist[hidden],
+#selectAllVideos[hidden] {
   display: none;
 }
 
