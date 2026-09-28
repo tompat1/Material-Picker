@@ -97,6 +97,7 @@ const els = {
 let recognition = null;
 let hlsPlayer = null;
 let embedPlaying = false;
+let embedPlaybackKey = "";
 let playlistMenuVideoId = "";
 let offlineStoragePath = "";
 let offlineExportDirectoryHandle = null;
@@ -2269,9 +2270,30 @@ async function ensurePlayerPlaying() {
   }
 }
 
-function renderPlayer() {
+function activeEmbedKey(video) {
+  if (!video?.id || !video.url) return "";
+  if (video.offlineUrl && !video.offlineStale) return "";
+  if (video.streamUrl) return "";
+  const embedUrl = toEmbedUrl(video.url);
+  return embedUrl ? `${video.id}|${embedUrl}` : "";
+}
+
+function renderPlayer(options = {}) {
   const video = selectedVideo();
+  const nextEmbedKey = activeEmbedKey(video);
+  const keepEmbed = !options.force
+    && nextEmbedKey
+    && nextEmbedKey === embedPlaybackKey
+    && els.playerShell?.dataset.mode === "embed"
+    && Boolean(els.embedPlayer?.getAttribute("src"));
+  if (keepEmbed) {
+    els.openVideoButton.disabled = !video?.url;
+    els.retryPlaybackButton.disabled = !video?.url;
+    return;
+  }
+
   embedPlaying = false;
+  embedPlaybackKey = "";
   destroyHlsPlayer();
   els.videoPlayer.pause();
   els.videoPlayer.onloadedmetadata = null;
@@ -2348,6 +2370,7 @@ function renderPlayer() {
         els.playerShell.dataset.mode = "video";
         loadHlsVideo(streamUrl, false);
       } else if (embedUrl) {
+        embedPlaybackKey = `${videoId}|${embedUrl}`;
         els.embedPlayer.onload = () => markSelectedPlaybackReady(videoId, "The provider player loaded successfully.");
         els.embedPlayer.src = embedUrl;
         els.playerShell.dataset.mode = "embed";
@@ -2359,6 +2382,7 @@ function renderPlayer() {
 
   const embedUrl = toEmbedUrl(video.url);
   if (embedUrl) {
+    embedPlaybackKey = `${video.id}|${embedUrl}`;
     els.embedPlayer.onload = () => markSelectedPlaybackReady(video.id, "The provider player loaded successfully.");
     els.embedPlayer.src = embedUrl;
     els.playerShell.dataset.mode = "embed";
@@ -2405,7 +2429,7 @@ async function retryPlayback() {
   delete video.streamType;
   delete video.streamProvider;
   saveState();
-  renderPlayer();
+  renderPlayer({ force: true });
 }
 
 function loadHlsVideo(url, isOffline = false) {
