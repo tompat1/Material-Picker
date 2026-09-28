@@ -100,6 +100,9 @@ let embedPlaying = false;
 let embedPlaybackKey = "";
 let playlistMenuVideoId = "";
 let playlistMenuVideoIds = [];
+let playlistAddOpenId = "";
+let playlistAddQuery = "";
+const playlistAddSelection = new Set();
 let offlineStoragePath = "";
 let offlineExportDirectoryHandle = null;
 let bulkOfflineRunning = false;
@@ -423,9 +426,45 @@ function bindEvents() {
       : `Added ${countLabel(added)} to “${playlist.name}”.`);
   });
   document.querySelector("#playlistList")?.addEventListener("click", (event) => {
+    const toggle = event.target.closest("[data-toggle-playlist]");
+    const add = event.target.closest("[data-add-to-playlist]");
     const remove = event.target.closest("[data-remove-video]");
     const removeList = event.target.closest("[data-delete-playlist]");
     const open = event.target.closest("[data-open-video]");
+    if (event.target.closest("[data-playlist-add-all]")) {
+      togglePlaylistAddSelection();
+      return;
+    }
+    if (event.target.closest("[data-playlist-add-commit]")) {
+      addSelectedVideosToPlaylist();
+      return;
+    }
+    if (toggle) {
+      const playlist = playlists().find((item) => item.id === toggle.dataset.togglePlaylist);
+      if (!playlist) return;
+      playlist.collapsed = !playlist.collapsed;
+      if (playlist.collapsed && playlistAddOpenId === playlist.id) closePlaylistAdder();
+      saveState();
+      renderPlaylists();
+      return;
+    }
+    if (add) {
+      const playlist = playlists().find((item) => item.id === add.dataset.addToPlaylist);
+      if (!playlist) return;
+      if (playlistAddOpenId === playlist.id) closePlaylistAdder();
+      else {
+        playlistAddOpenId = playlist.id;
+        playlistAddQuery = "";
+        playlistAddSelection.clear();
+        if (playlist.collapsed) {
+          playlist.collapsed = false;
+          saveState();
+        }
+      }
+      renderPlaylists();
+      document.querySelector(".playlist-add-search")?.focus();
+      return;
+    }
     if (remove) {
       togglePlaylistVideo(remove.dataset.removePlaylist, remove.dataset.removeVideo);
       return;
@@ -435,6 +474,18 @@ function bindEvents() {
       return;
     }
     if (open) selectVideo(open.dataset.openVideo);
+  });
+  document.querySelector("#playlistList")?.addEventListener("input", (event) => {
+    if (!event.target.closest(".playlist-add-search")) return;
+    playlistAddQuery = event.target.value;
+    renderPlaylistAddCandidates();
+  });
+  document.querySelector("#playlistList")?.addEventListener("change", (event) => {
+    const box = event.target.closest(".playlist-add-check");
+    if (!box) return;
+    if (box.checked) playlistAddSelection.add(box.value);
+    else playlistAddSelection.delete(box.value);
+    syncPlaylistAddControls();
   });
   document.querySelector("#favouriteList")?.addEventListener("click", (event) => {
     const open = event.target.closest("[data-open-video]");
@@ -1754,6 +1805,7 @@ function deletePlaylist(playlistId) {
   if (!playlist) return;
   if (!confirm(`Delete playlist “${playlist.name}”? The videos stay in the library.`)) return;
   state.playlists = playlists().filter((item) => item.id !== playlistId);
+  if (playlistAddOpenId === playlistId) closePlaylistAdder();
   saveState();
   renderPlaylists();
   syncAddToListButtons();
@@ -1858,6 +1910,93 @@ function renderPlaylistMenu() {
   }).join("");
 }
 
+function closePlaylistAdder() {
+  playlistAddOpenId = "";
+  playlistAddQuery = "";
+  playlistAddSelection.clear();
+}
+
+function playlistAddCandidates(playlist) {
+  const query = playlistAddQuery.trim().toLowerCase();
+  const members = new Set(playlist.videoIds || []);
+  return state.videos.filter((video) => {
+    if (members.has(video.id)) return false;
+    if (!query) return true;
+    return `${video.title || ""} ${video.speaker || ""}`.toLowerCase().includes(query);
+  });
+}
+
+function playlistAdderHtml(playlist) {
+  if (playlistAddOpenId !== playlist.id) return "";
+  return `<div class="playlist-adder"><input class="playlist-add-search" type="search" placeholder="Search the library" value="${escapeHtml(playlistAddQuery)}" aria-label="Search videos to add" /><p class="playlist-add-note" hidden></p><ul class="playlist-add-results"></ul><div class="playlist-add-toolbar"><button type="button" data-playlist-add-all>Select all</button><button class="primary-button" type="button" data-playlist-add-commit disabled>Add</button></div></div>`;
+}
+
+function syncPlaylistAddControls() {
+  const playlist = playlists().find((item) => item.id === playlistAddOpenId);
+  const allButton = document.querySelector("[data-playlist-add-all]");
+  const commit = document.querySelector("[data-playlist-add-commit]");
+  if (!playlist) return;
+  const candidates = playlistAddCandidates(playlist);
+  if (allButton) {
+    const allSelected = candidates.length > 0 && candidates.every((video) => playlistAddSelection.has(video.id));
+    allButton.hidden = !candidates.length;
+    allButton.textContent = allSelected ? "Unselect all" : "Select all";
+  }
+  if (commit) {
+    const count = selectedPlaylistAddIds(playlist).length;
+    commit.disabled = count === 0;
+    commit.textContent = count > 1 ? `Add ${count} videos` : count === 1 ? "Add 1 video" : "Add";
+  }
+}
+
+function selectedPlaylistAddIds(playlist) {
+  const members = new Set(playlist.videoIds || []);
+  return [...playlistAddSelection].filter((id) => state.videos.some((video) => video.id === id) && !members.has(id));
+}
+
+function renderPlaylistAddCandidates() {
+  const playlist = playlists().find((item) => item.id === playlistAddOpenId);
+  const list = document.querySelector(".playlist-add-results");
+  const note = document.querySelector(".playlist-add-note");
+  if (!playlist || !list || !note) return;
+  const candidates = playlistAddCandidates(playlist);
+  const available = state.videos.filter((video) => !(playlist.videoIds || []).includes(video.id));
+  note.hidden = candidates.length > 0;
+  if (!state.videos.length) note.textContent = "The library has no videos yet.";
+  else if (!available.length) note.textContent = "Every library video is already in this playlist.";
+  else note.textContent = "No videos match this search.";
+  list.hidden = !candidates.length;
+  list.innerHTML = candidates.map((video) => {
+    const checked = playlistAddSelection.has(video.id) ? " checked" : "";
+    const speaker = video.speaker ? `<span>${escapeHtml(video.speaker)}</span>` : "";
+    return `<li><label><input class="playlist-add-check" type="checkbox" value="${escapeHtml(video.id)}"${checked} /><span><strong>${escapeHtml(video.title || "Untitled video")}</strong>${speaker}</span></label></li>`;
+  }).join("");
+  syncPlaylistAddControls();
+}
+
+function togglePlaylistAddSelection() {
+  const playlist = playlists().find((item) => item.id === playlistAddOpenId);
+  if (!playlist) return;
+  const candidates = playlistAddCandidates(playlist);
+  const allSelected = candidates.length > 0 && candidates.every((video) => playlistAddSelection.has(video.id));
+  candidates.forEach((video) => {
+    if (allSelected) playlistAddSelection.delete(video.id);
+    else playlistAddSelection.add(video.id);
+  });
+  renderPlaylistAddCandidates();
+}
+
+function addSelectedVideosToPlaylist() {
+  const playlist = playlists().find((item) => item.id === playlistAddOpenId);
+  if (!playlist) return;
+  const ids = selectedPlaylistAddIds(playlist);
+  if (!ids.length) return;
+  playlistAddSelection.clear();
+  setPlaylistVideos(playlist.id, ids, true);
+  const countLabel = ids.length === 1 ? "1 video" : `${ids.length} videos`;
+  setStatus(`Added ${countLabel} to “${playlist.name}”.`);
+}
+
 function renderPlaylists() {
   const list = document.querySelector("#playlistList");
   const empty = document.querySelector("#playlistEmpty");
@@ -1870,8 +2009,13 @@ function renderPlaylists() {
       ? videos.map((video) => `<li><button class="playlist-open" type="button" data-open-video="${escapeHtml(video.id)}"><strong>${escapeHtml(video.title || "Untitled video")}</strong><span>${escapeHtml(video.speaker || "")}</span></button><button class="playlist-remove" type="button" data-remove-playlist="${escapeHtml(playlist.id)}" data-remove-video="${escapeHtml(video.id)}">Remove</button></li>`).join("")
       : `<li><p class="playlist-note">This playlist is empty.</p></li>`;
     const count = videos.length === 1 ? "1 video" : `${videos.length} videos`;
-    return `<section class="playlist-block"><header><div><h3>${escapeHtml(playlist.name)}</h3><span class="playlist-count">${count}</span></div><button class="playlist-delete" type="button" data-delete-playlist="${escapeHtml(playlist.id)}">Delete</button></header><ul class="playlist-videos">${rows}</ul></section>`;
+    const collapsed = Boolean(playlist.collapsed);
+    const panelId = `playlist-videos-${playlist.id}`;
+    const adding = playlistAddOpenId === playlist.id;
+    const adder = playlistAdderHtml(playlist);
+    return `<section class="playlist-block${collapsed ? " is-collapsed" : ""}"><header><button class="playlist-toggle" type="button" data-toggle-playlist="${escapeHtml(playlist.id)}" aria-expanded="${collapsed ? "false" : "true"}" aria-controls="${escapeHtml(panelId)}"><svg class="playlist-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="playlist-heading"><span class="playlist-name">${escapeHtml(playlist.name)}</span><span class="playlist-count">${count}</span></span></button><div class="playlist-actions"><button class="playlist-add" type="button" data-add-to-playlist="${escapeHtml(playlist.id)}" aria-expanded="${adding ? "true" : "false"}">${adding ? "Close" : "Add videos"}</button><button class="playlist-delete" type="button" data-delete-playlist="${escapeHtml(playlist.id)}">Delete</button></div></header>${adder}<ul class="playlist-videos" id="${escapeHtml(panelId)}"${collapsed ? " hidden" : ""}>${rows}</ul></section>`;
   }).join("");
+  renderPlaylistAddCandidates();
 }
 
 function favouriteIds() {

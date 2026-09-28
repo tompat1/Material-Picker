@@ -2072,14 +2072,6 @@ progress::-moz-progress-bar {
   gap: 1.25rem;
 }
 
-.playlist-block h3 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
 .playlist-block header {
   display: flex;
   align-items: flex-start;
@@ -2088,9 +2080,50 @@ progress::-moz-progress-bar {
   margin-bottom: 0.35rem;
 }
 
-.playlist-block header div {
+.playlist-block.is-collapsed header {
+  margin-bottom: 0;
+}
+
+.playlist-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.playlist-chevron {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.22rem;
+  flex: 0 0 auto;
+  transition: transform 160ms var(--ease);
+}
+
+.playlist-block.is-collapsed .playlist-chevron {
+  transform: rotate(-90deg);
+}
+
+.playlist-heading {
   display: grid;
   gap: 2px;
+  min-width: 0;
+}
+
+.playlist-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.playlist-videos[hidden] {
+  display: none;
 }
 
 .playlist-count {
@@ -2137,7 +2170,8 @@ progress::-moz-progress-bar {
 }
 
 .playlist-videos .playlist-remove,
-.playlist-delete {
+.playlist-delete,
+.playlist-add {
   flex: 0 0 auto;
   padding: 0.35rem 0;
   border: 0;
@@ -2146,8 +2180,98 @@ progress::-moz-progress-bar {
   font-size: 0.78rem;
 }
 
+.playlist-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex: 0 0 auto;
+}
+
 .playlist-remove:hover,
-.playlist-delete:hover {
+.playlist-delete:hover,
+.playlist-add:hover,
+.playlist-add[aria-expanded="true"] {
+  color: var(--accent);
+}
+
+.playlist-adder {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0.15rem 0 0.85rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.playlist-add-results {
+  max-height: 16rem;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.playlist-add-results[hidden],
+.playlist-add-note[hidden],
+.playlist-add-toolbar [data-playlist-add-all][hidden] {
+  display: none;
+}
+
+.playlist-add-results input {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.playlist-add-results li:last-child {
+  border-bottom: 0;
+}
+
+.playlist-add-results label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 44px;
+  padding: 0.35rem 0;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.playlist-add-results label span span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 450;
+}
+
+.playlist-add-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.playlist-add-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.playlist-add-toolbar [data-playlist-add-all] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.playlist-add-toolbar [data-playlist-add-all]:hover {
   color: var(--accent);
 }
 
