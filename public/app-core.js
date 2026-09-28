@@ -310,12 +310,14 @@
           collections: Array.isArray(stored.collections) ? stored.collections : [],
           scrapeHistory: Array.isArray(stored.scrapeHistory) ? stored.scrapeHistory : [],
           activity: Array.isArray(stored.activity) ? stored.activity : [],
+          playlists: Array.isArray(stored.playlists) ? stored.playlists : [],
+          favourites: Array.isArray(stored.favourites) ? stored.favourites : [],
         };
       }
     } catch {
       storage.removeItem(key);
     }
-    return { selectedId: null, videos: [], collections: [], scrapeHistory: [], activity: [] };
+    return { selectedId: null, videos: [], collections: [], scrapeHistory: [], activity: [], playlists: [], favourites: [] };
   }
 
   function parseOfflineArchiveRequirements(masterText, subPlaylists = {}) {

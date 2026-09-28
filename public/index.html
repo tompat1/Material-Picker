@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-16" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-18" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to library</a>
@@ -212,12 +212,25 @@
           <p class="activity-empty" id="activityEmpty">Imports, downloads, transcripts, and videos you watch will be listed here.</p>
         </section>
         <section class="nav-panel" id="playlistsPanel" aria-labelledby="playlistsTitle">
-          <h2 id="playlistsTitle">Playlists</h2>
-          <p>Playlists will be listed here.</p>
+          <div class="section-heading">
+            <h2 id="playlistsTitle">Playlists</h2>
+          </div>
+          <form class="playlist-create" id="createPlaylistForm">
+            <label for="playlistNameInput">New playlist</label>
+            <div class="input-row">
+              <input id="playlistNameInput" type="text" maxlength="80" placeholder="Name the playlist" />
+              <button class="primary-button" type="submit">Create</button>
+            </div>
+          </form>
+          <div id="playlistList"></div>
+          <p class="playlist-empty" id="playlistEmpty">No playlists yet. Create one to start a list.</p>
         </section>
         <section class="nav-panel" id="favouritesPanel" aria-labelledby="favouritesTitle">
-          <h2 id="favouritesTitle">Favourites</h2>
-          <p>Videos you mark as favourites will be listed here.</p>
+          <div class="section-heading">
+            <h2 id="favouritesTitle">Favourites</h2>
+          </div>
+          <ul class="playlist-videos" id="favouriteList"></ul>
+          <p class="playlist-empty" id="favouriteEmpty">No favourites yet. Use the heart on a video to save it here.</p>
         </section>
 
         <section class="downloads-panel" aria-labelledby="libraryOfflineTitle">
@@ -287,8 +300,20 @@
             </div>
 
             <div class="now-playing">
-              <h2 id="playerTitle">Select a video</h2>
-              <p id="nowPlayingMeta"></p>
+              <div class="now-playing-heading">
+                <div>
+                  <h2 id="playerTitle">Select a video</h2>
+                  <p id="nowPlayingMeta"></p>
+                </div>
+                <div class="now-playing-actions">
+                  <button class="add-to-list" id="addCurrentToList" type="button" title="Add to a playlist" aria-label="Add to a playlist" disabled>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h11M4 12h11M4 18h7"/><path d="M17 15v6M14 18h6"/></svg>
+                  </button>
+                  <button class="favourite-toggle" id="favouriteCurrent" type="button" title="Add to favourites" aria-label="Add to favourites" aria-pressed="false" disabled>
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/></svg>
+                  </button>
+                </div>
+              </div>
               <div class="button-row">
                 <button class="primary-button" id="playVideoButton" type="button" aria-pressed="false">Play</button>
                 <button class="secondary-button" id="downloadCurrentButton" type="button">Download</button>
@@ -500,6 +525,16 @@
       </div>
     </div>
 
+    <div class="playlist-menu" id="playlistMenu" hidden>
+      <p class="playlist-menu-lead" id="playlistMenuLead"></p>
+      <ul class="playlist-menu-list" id="playlistMenuList"></ul>
+      <form class="playlist-menu-create" id="playlistMenuForm">
+        <label class="sr-only" for="playlistMenuName">Playlist name</label>
+        <input id="playlistMenuName" type="text" maxlength="80" placeholder="Playlist name" />
+        <button class="primary-button" type="submit">Create</button>
+      </form>
+    </div>
+
     <dialog id="addVideoDialog">
       <form method="dialog" class="dialog-bar">
         <h2>Add video</h2>
@@ -516,6 +551,14 @@
         </label>
         <button class="card-main" type="button"></button>
         <span class="playback-badge"></span>
+        <div class="card-actions">
+          <button class="add-to-list" type="button" title="Add to a playlist" aria-label="Add to a playlist">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h11M4 12h11M4 18h7"/><path d="M17 15v6M14 18h6"/></svg>
+          </button>
+          <button class="favourite-toggle" type="button" title="Add to favourites" aria-label="Add to favourites" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/></svg>
+          </button>
+        </div>
         <div class="card-download-progress" hidden>
           <progress max="100" value="0"></progress>
           <span></span>
@@ -524,7 +567,7 @@
     </template>
 
     <script src="./vendor/hls.min.js" defer></script>
-    <script src="./app-core.js?v=picker-nav-14" defer></script>
-    <script src="./app.js?v=picker-nav-16" defer></script>
+    <script src="./app-core.js?v=picker-nav-18" defer></script>
+    <script src="./app.js?v=picker-nav-18" defer></script>
   </body>
 </html>

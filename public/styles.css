@@ -735,6 +735,13 @@ body:has(#desk-transcripts:checked) .app-shell {
   margin: 16px 0 8px;
 }
 
+.now-playing-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .now-playing h2 {
   margin: 0;
   font-size: 32px;
@@ -743,7 +750,7 @@ body:has(#desk-transcripts:checked) .app-shell {
 }
 
 .now-playing p {
-  margin: 0;
+  margin: 0.2rem 0 0;
   color: var(--muted);
 }
 
@@ -1897,7 +1904,7 @@ progress::-moz-progress-bar {
 .video-card {
   counter-increment: reel;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 0.15rem 0.2rem;
   border-bottom: 1px solid var(--line);
@@ -1991,6 +1998,224 @@ progress::-moz-progress-bar {
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.add-to-list,
+.favourite-toggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-right: 0.15rem;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.add-to-list svg,
+.favourite-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.add-to-list:hover,
+.add-to-list.is-listed,
+.favourite-toggle:hover,
+.favourite-toggle.is-favourite {
+  color: var(--accent);
+}
+
+.favourite-toggle.is-favourite svg {
+  fill: currentColor;
+}
+
+.card-actions,
+.now-playing-actions {
+  display: flex;
+  align-items: center;
+}
+
+.now-playing .add-to-list,
+.now-playing .favourite-toggle {
+  flex: 0 0 auto;
+  margin: 6px 0 0;
+}
+
+.playlist-create {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 1.25rem;
+}
+
+.playlist-create label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.playlist-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.playlist-list {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.playlist-block h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.playlist-block header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 0.35rem;
+}
+
+.playlist-block header div {
+  display: grid;
+  gap: 2px;
+}
+
+.playlist-count {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.playlist-videos {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.playlist-videos li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.playlist-videos button {
+  min-width: 0;
+  padding: 0.7rem 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.playlist-videos .playlist-open {
+  flex: 1;
+}
+
+.playlist-videos .favourite-toggle {
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+.playlist-videos .playlist-open span,
+.playlist-note {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.playlist-videos .playlist-remove,
+.playlist-delete {
+  flex: 0 0 auto;
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.playlist-remove:hover,
+.playlist-delete:hover {
+  color: var(--accent);
+}
+
+.playlist-menu {
+  position: fixed;
+  z-index: 40;
+  display: grid;
+  gap: 10px;
+  width: min(18rem, calc(100vw - 16px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--library);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.playlist-menu[hidden] {
+  display: none;
+}
+
+.playlist-menu-lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.playlist-menu-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.playlist-menu-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0.45rem 0.2rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.playlist-menu-list button[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.playlist-menu-state {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.playlist-menu-list button[aria-pressed="true"] .playlist-menu-state {
+  color: var(--accent);
+}
+
+.playlist-menu-create {
+  display: flex;
+  gap: 8px;
+}
+
+.playlist-menu-create input {
+  min-width: 0;
+  flex: 1;
 }
 
 .playback-badge {
@@ -2572,7 +2797,17 @@ button.is-busy .amber-throbber {
   }
 
   .video-card {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .video-card .card-actions {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .video-card .add-to-list,
+  .video-card .favourite-toggle {
+    margin-right: 0;
   }
 
   .playback-badge {

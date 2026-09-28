@@ -97,6 +97,7 @@ const els = {
 let recognition = null;
 let hlsPlayer = null;
 let embedPlaying = false;
+let playlistMenuVideoId = "";
 let offlineStoragePath = "";
 let offlineExportDirectoryHandle = null;
 let bulkOfflineRunning = false;
@@ -371,6 +372,75 @@ function bindEvents() {
     render();
     showDesk("downloads");
     setStatus(`“${video.title || "This video"}” is marked. Confirm permission, then download it.`);
+  });
+  document.querySelector("#createPlaylistForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = document.querySelector("#playlistNameInput");
+    const playlist = createPlaylist(input?.value || "");
+    if (!playlist) {
+      setStatus("Name the playlist first.");
+      input?.focus();
+      return;
+    }
+    input.value = "";
+    setStatus(`Created “${playlist.name}”.`);
+  });
+  document.querySelector("#playlistMenuForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = document.querySelector("#playlistMenuName");
+    const playlist = createPlaylist(input?.value || "", playlistMenuVideoId);
+    if (!playlist) {
+      input?.focus();
+      return;
+    }
+    input.value = "";
+    renderPlaylistMenu();
+    setStatus(`Added to “${playlist.name}”.`);
+  });
+  document.querySelector("#playlistMenuList")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-playlist-id]");
+    if (!button || !playlistMenuVideoId) return;
+    togglePlaylistVideo(button.dataset.playlistId, playlistMenuVideoId);
+  });
+  document.querySelector("#playlistList")?.addEventListener("click", (event) => {
+    const remove = event.target.closest("[data-remove-video]");
+    const removeList = event.target.closest("[data-delete-playlist]");
+    const open = event.target.closest("[data-open-video]");
+    if (remove) {
+      togglePlaylistVideo(remove.dataset.removePlaylist, remove.dataset.removeVideo);
+      return;
+    }
+    if (removeList) {
+      deletePlaylist(removeList.dataset.deletePlaylist);
+      return;
+    }
+    if (open) selectVideo(open.dataset.openVideo);
+  });
+  document.querySelector("#favouriteList")?.addEventListener("click", (event) => {
+    const open = event.target.closest("[data-open-video]");
+    if (open) selectVideo(open.dataset.openVideo);
+  });
+  document.addEventListener("click", (event) => {
+    const favourite = event.target.closest(".favourite-toggle");
+    if (favourite) {
+      const videoId = favourite.dataset.videoId || state.selectedId;
+      if (!videoId || favourite.disabled) return;
+      toggleFavourite(videoId);
+      return;
+    }
+    const button = event.target.closest(".add-to-list");
+    const menu = document.querySelector("#playlistMenu");
+    if (button) {
+      const videoId = button.dataset.videoId || state.selectedId;
+      if (!videoId || button.disabled) return;
+      if (menu && !menu.hidden && playlistMenuVideoId === videoId) closePlaylistMenu();
+      else openPlaylistMenu(videoId, button);
+      return;
+    }
+    if (menu && !menu.hidden && !event.target.closest("#playlistMenu")) closePlaylistMenu();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closePlaylistMenu();
   });
   els.videoForm.addEventListener("submit", (event) => event.preventDefault());
   els.videoForm.addEventListener("input", updateSelectedFromForm);
@@ -1224,6 +1294,8 @@ function clearAll() {
     collections: state.collections || [],
     scrapeHistory: state.scrapeHistory || [],
     activity: state.activity || [],
+    playlists: state.playlists || [],
+    favourites: state.favourites || [],
     lastOfflineFolderName: state.lastOfflineFolderName || "",
     lastScannedFolder: state.lastScannedFolder || "",
   };
@@ -1245,6 +1317,8 @@ function render() {
   renderTranscript();
   renderScriptDeskPills();
   renderActivity();
+  renderPlaylists();
+  renderFavourites();
   syncPlayButton();
 }
 
@@ -1493,6 +1567,10 @@ function renderLibrary() {
       <span>${escapeHtml(details.join(" · "))}</span>
     `;
     main.addEventListener("click", () => selectVideo(video.id));
+    const addButton = card.querySelector(".add-to-list");
+    if (addButton) addButton.dataset.videoId = video.id;
+    const favouriteButton = card.querySelector(".favourite-toggle");
+    if (favouriteButton) favouriteButton.dataset.videoId = video.id;
 
     const checkbox = card.querySelector(".video-select-input");
     checkbox.checked = selectedVideoIds.has(video.id);
@@ -1556,6 +1634,183 @@ function renderLibrary() {
   renderVideoCount();
   renderLibraryTotals();
   void measureLibraryMedia();
+}
+
+function playlists() {
+  return state.playlists || [];
+}
+
+function videoInAnyPlaylist(videoId) {
+  return playlists().some((playlist) => (playlist.videoIds || []).includes(videoId));
+}
+
+function playlistVideos(playlist) {
+  return (playlist.videoIds || []).flatMap((id) => {
+    const video = state.videos.find((item) => item.id === id);
+    return video ? [video] : [];
+  });
+}
+
+function createPlaylist(name, videoId = "") {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return null;
+  const playlist = {
+    id: crypto.randomUUID(),
+    name: trimmed,
+    createdAt: new Date().toISOString(),
+    videoIds: videoId ? [videoId] : [],
+  };
+  state.playlists = [...playlists(), playlist];
+  saveState();
+  renderPlaylists();
+  syncAddToListButtons();
+  return playlist;
+}
+
+function togglePlaylistVideo(playlistId, videoId) {
+  const playlist = playlists().find((item) => item.id === playlistId);
+  if (!playlist || !videoId) return;
+  const ids = playlist.videoIds || [];
+  playlist.videoIds = ids.includes(videoId) ? ids.filter((id) => id !== videoId) : [...ids, videoId];
+  saveState();
+  renderPlaylists();
+  syncAddToListButtons();
+  if (!document.querySelector("#playlistMenu")?.hidden && playlistMenuVideoId === videoId) renderPlaylistMenu();
+}
+
+function deletePlaylist(playlistId) {
+  const playlist = playlists().find((item) => item.id === playlistId);
+  if (!playlist) return;
+  if (!confirm(`Delete playlist “${playlist.name}”? The videos stay in the library.`)) return;
+  state.playlists = playlists().filter((item) => item.id !== playlistId);
+  saveState();
+  renderPlaylists();
+  syncAddToListButtons();
+  closePlaylistMenu();
+}
+
+function syncAddToListButtons() {
+  document.querySelectorAll(".add-to-list").forEach((button) => {
+    const videoId = button.dataset.videoId || (button.id === "addCurrentToList" ? state.selectedId : "");
+    const video = state.videos.find((item) => item.id === videoId);
+    const listed = Boolean(video && videoInAnyPlaylist(video.id));
+    button.classList.toggle("is-listed", listed);
+    button.setAttribute("aria-pressed", listed ? "true" : "false");
+    const title = video?.title || "this video";
+    const label = listed ? `${title} is in a playlist` : `Add ${title} to a playlist`;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    if (button.id === "addCurrentToList") button.disabled = !video;
+  });
+}
+
+function openPlaylistMenu(videoId, anchor) {
+  playlistMenuVideoId = videoId;
+  const menu = document.querySelector("#playlistMenu");
+  if (!menu) return;
+  renderPlaylistMenu();
+  menu.hidden = false;
+  const rect = anchor.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const left = Math.min(Math.max(8, rect.right - menuRect.width), window.innerWidth - menuRect.width - 8);
+  let top = rect.bottom + 6;
+  if (top + menuRect.height > window.innerHeight - 8) top = Math.max(8, rect.top - menuRect.height - 6);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  if (!playlists().length) document.querySelector("#playlistMenuName")?.focus();
+}
+
+function closePlaylistMenu() {
+  const menu = document.querySelector("#playlistMenu");
+  if (menu) menu.hidden = true;
+  playlistMenuVideoId = "";
+}
+
+function renderPlaylistMenu() {
+  const lead = document.querySelector("#playlistMenuLead");
+  const list = document.querySelector("#playlistMenuList");
+  const input = document.querySelector("#playlistMenuName");
+  if (!lead || !list) return;
+  const items = playlists();
+  if (!items.length) {
+    lead.textContent = "No playlists yet. Create one and this video will be added.";
+    list.hidden = true;
+    list.innerHTML = "";
+    if (input) input.placeholder = "Playlist name";
+    return;
+  }
+  list.hidden = false;
+  lead.textContent = "Add to a playlist";
+  if (input) input.placeholder = "New playlist";
+  list.innerHTML = items.map((playlist) => {
+    const included = (playlist.videoIds || []).includes(playlistMenuVideoId);
+    return `<li><button type="button" data-playlist-id="${escapeHtml(playlist.id)}" aria-pressed="${included ? "true" : "false"}"><span>${escapeHtml(playlist.name)}</span><span class="playlist-menu-state">${included ? "Added" : "Add"}</span></button></li>`;
+  }).join("");
+}
+
+function renderPlaylists() {
+  const list = document.querySelector("#playlistList");
+  const empty = document.querySelector("#playlistEmpty");
+  if (!list) return;
+  const items = playlists();
+  if (empty) empty.hidden = items.length > 0;
+  list.innerHTML = items.map((playlist) => {
+    const videos = playlistVideos(playlist);
+    const rows = videos.length
+      ? videos.map((video) => `<li><button class="playlist-open" type="button" data-open-video="${escapeHtml(video.id)}"><strong>${escapeHtml(video.title || "Untitled video")}</strong><span>${escapeHtml(video.speaker || "")}</span></button><button class="playlist-remove" type="button" data-remove-playlist="${escapeHtml(playlist.id)}" data-remove-video="${escapeHtml(video.id)}">Remove</button></li>`).join("")
+      : `<li><p class="playlist-note">This playlist is empty.</p></li>`;
+    const count = videos.length === 1 ? "1 video" : `${videos.length} videos`;
+    return `<section class="playlist-block"><header><div><h3>${escapeHtml(playlist.name)}</h3><span class="playlist-count">${count}</span></div><button class="playlist-delete" type="button" data-delete-playlist="${escapeHtml(playlist.id)}">Delete</button></header><ul class="playlist-videos">${rows}</ul></section>`;
+  }).join("");
+}
+
+function favouriteIds() {
+  return state.favourites || [];
+}
+
+function isFavourite(videoId) {
+  return favouriteIds().includes(videoId);
+}
+
+function favouriteVideos() {
+  return favouriteIds().flatMap((id) => {
+    const video = state.videos.find((item) => item.id === id);
+    return video ? [video] : [];
+  });
+}
+
+function toggleFavourite(videoId) {
+  if (!videoId || !state.videos.some((video) => video.id === videoId)) return;
+  state.favourites = isFavourite(videoId)
+    ? favouriteIds().filter((id) => id !== videoId)
+    : [videoId, ...favouriteIds()];
+  saveState();
+  renderFavourites();
+}
+
+function syncFavouriteButtons() {
+  document.querySelectorAll(".favourite-toggle").forEach((button) => {
+    const videoId = button.dataset.videoId || (button.id === "favouriteCurrent" ? state.selectedId : "");
+    const video = state.videos.find((item) => item.id === videoId);
+    const saved = Boolean(video && isFavourite(video.id));
+    button.classList.toggle("is-favourite", saved);
+    button.setAttribute("aria-pressed", saved ? "true" : "false");
+    const title = video?.title || "this video";
+    const label = saved ? `Remove ${title} from favourites` : `Add ${title} to favourites`;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    if (button.id === "favouriteCurrent") button.disabled = !video;
+  });
+}
+
+function renderFavourites() {
+  const list = document.querySelector("#favouriteList");
+  const empty = document.querySelector("#favouriteEmpty");
+  if (!list) return;
+  const videos = favouriteVideos();
+  if (empty) empty.hidden = videos.length > 0;
+  list.innerHTML = videos.map((video) => `<li><button class="playlist-open" type="button" data-open-video="${escapeHtml(video.id)}"><strong>${escapeHtml(video.title || "Untitled video")}</strong><span>${escapeHtml(video.speaker || "")}</span></button><button class="favourite-toggle" type="button" data-video-id="${escapeHtml(video.id)}" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/></svg></button></li>`).join("");
+  syncFavouriteButtons();
 }
 
 function visibleVideos() {
@@ -1929,6 +2184,8 @@ function renderForm() {
     downloadCurrentButton.title = savedOffline ? "Already saved offline" : "Download this video";
   }
   syncPlayButton();
+  syncAddToListButtons();
+  syncFavouriteButtons();
   renderScreenMeta(video);
   renderChapters(video);
   els.openSourceButton.disabled = !video?.sourceUrl;
