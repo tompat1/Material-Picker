@@ -658,17 +658,21 @@ function imageContentType(bytes) {
   return "image/jpeg";
 }
 
+function decodeImageString(encoded) {
+  const payload = String(encoded).replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "").replace(/\s/g, "");
+  const binary = atob(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
 async function thumbnailBytes(result) {
   if (!result) return null;
   if (result instanceof ArrayBuffer) return new Uint8Array(result);
   if (result instanceof Uint8Array) return result;
+  if (result instanceof Response) return new Uint8Array(await result.arrayBuffer());
   const encoded = typeof result.image === "string" ? result.image : typeof result.result?.image === "string" ? result.result.image : "";
-  if (encoded) {
-    const binary = atob(encoded);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    return bytes;
-  }
+  if (encoded) return decodeImageString(encoded);
   if (typeof result.arrayBuffer === "function" || result instanceof ReadableStream) {
     return new Uint8Array(await new Response(result).arrayBuffer());
   }

@@ -326,4 +326,21 @@ test("thumbnail rendering returns the Flux image bytes", async () => {
   assert.equal(bytes[1], 0xd8);
 });
 
+test("thumbnail rendering accepts a Flux image stream", async () => {
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const response = await handleApiRequest(new Request("https://picker.example/api/thumbnail", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ prompt: "A quiet documentary portrait inspired by a workshop, no text." }),
+  }), {
+    ai: {
+      async run() {
+        return new Response(jpeg).body;
+      },
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/jpeg");
+});
+
 
