@@ -6,7 +6,20 @@ const core = require('../public/app-core.js');
 
 function browserApp(videos) {
   const storage = new Map([['material-picker:v1', JSON.stringify({ videos, collections: [], selectedId: videos[0]?.id })]]);
-  const element = { checked: false, value: '' };
+  const element = {
+    checked: false,
+    value: '',
+    innerHTML: '',
+    hidden: true,
+    dataset: {},
+    classList: { toggle() {} },
+    querySelector() { return null; },
+    querySelectorAll() { return []; },
+    addEventListener() {},
+    append() {},
+    setAttribute() {},
+    removeAttribute() {},
+  };
   const context = vm.createContext({
     window: { MaterialPickerCore: core },
     document: { querySelector: () => element },
@@ -19,7 +32,7 @@ function browserApp(videos) {
     setStatus = () => {};
     showDesk = () => {};
     globalThis.app = {
-      repairDuplicateArchives, processImportedFolderEntries,
+      repairDuplicateArchives, processImportedFolderEntries, folderPromptNeeded,
       getState: () => state,
       load: (url, type = 'manifest') => new Promise((resolve, reject) => {
         new PackageHlsLoader({}).load({ url, type }, {}, {
@@ -83,6 +96,27 @@ test('repeated parent-folder scans reconnect metadata-free archives and load sep
     assert.match((await app.load(base + 'video/playlist.m3u8', 'level')).data, /EXTINF:2/);
     assert.equal(Buffer.from((await app.load(base + 'video/segments/00001.m4s', 'fragment')).data).toString(), 'video bytes');
   }
+});
+
+test('a playable video does not ask to reconnect its folder', () => {
+  const { app } = browserApp([{
+    id: 'talk',
+    title: 'A day 5 talk',
+    url: 'https://vimeo.com/123',
+    offlineUrl: '/hls-package/stale/master.m3u8',
+    offlineArchivePath: 'day5/A day 5 talk',
+    notes: 'HLS Package: day5/A day 5 talk (1 GB)',
+  }]);
+  assert.equal(app.folderPromptNeeded(app.getState().videos[0]), false);
+
+  const localOnly = browserApp([{
+    id: 'local',
+    title: 'Local only',
+    url: '/hls-package/stale/master.m3u8',
+    offlineUrl: '/hls-package/stale/master.m3u8',
+    offlineArchivePath: 'day5/Local only',
+  }]);
+  assert.equal(localOnly.app.folderPromptNeeded(localOnly.app.getState().videos[0]), true);
 });
 
 test('archive matching normalizes Mac Unicode filenames without merging similar titles', () => {
