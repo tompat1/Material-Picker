@@ -294,8 +294,6 @@ let thumbnailPausedUntil = 0;
 let thumbnailPauseTimer = 0;
 let thumbnailNoticeSent = false;
 
-init();
-
 function init() {
   repairDuplicateArchives();
   bindEvents();
@@ -6129,3 +6127,5 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+init();
