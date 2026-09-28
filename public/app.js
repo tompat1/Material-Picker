@@ -4269,6 +4269,26 @@ function renderTranscript() {
   } else {
     setTranscriptStatus(`Ready to transcribe “${video.title || "Untitled video"}”.`);
   }
+  syncTranscriptTarget(video);
+}
+
+function syncTranscriptTarget(video = selectedVideo()) {
+  const target = document.querySelector("#transcriptTarget");
+  const title = document.querySelector("#transcriptTargetTitle");
+  const speaker = document.querySelector("#transcriptTargetSpeaker");
+  if (!target || !title || !speaker) return;
+  if (!video) {
+    target.dataset.empty = "true";
+    title.textContent = "Select a video";
+    speaker.textContent = "";
+    target.removeAttribute("title");
+    return;
+  }
+  const name = video.title || "Untitled video";
+  target.dataset.empty = "false";
+  title.textContent = name;
+  speaker.textContent = video.speaker || "";
+  target.title = video.speaker ? `${name} · ${video.speaker}` : name;
 }
 
 function selectedVideo() {

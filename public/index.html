@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-25" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-26" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to library</a>
@@ -392,7 +392,7 @@
         <section class="transcript-panel" aria-labelledby="transcriptTitle">
           <div class="section-heading">
             <h2 class="sr-only" id="transcriptTitle">Transcript</h2>
-            <div class="button-row tight">
+            <div class="button-row tight transcript-actions">
               <button class="secondary-button" id="startTranscriptButton" type="button">
                 <span class="rec-dot" aria-hidden="true"></span>
                 <span>Transcribe</span>
@@ -400,6 +400,10 @@
               <button class="ghost-button" id="stopTranscriptButton" type="button">
                 <span>Stop</span>
               </button>
+              <p class="transcript-target" id="transcriptTarget">
+                <span class="transcript-target-title" id="transcriptTargetTitle">Select a video</span>
+                <span class="transcript-target-speaker" id="transcriptTargetSpeaker"></span>
+              </p>
             </div>
           </div>
 
@@ -571,6 +575,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-18" defer></script>
-    <script src="./app.js?v=picker-nav-28" defer></script>
+    <script src="./app.js?v=picker-nav-29" defer></script>
   </body>
 </html>
