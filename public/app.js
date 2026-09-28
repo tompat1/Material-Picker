@@ -287,6 +287,7 @@ class PackageHlsLoader {
 
 const thumbnailUrls = new Map();
 const thumbnailInFlight = new Set();
+const thumbnailQueued = new Set();
 const thumbnailAttempts = new Map();
 const thumbnailJobs = [];
 let thumbnailDraining = false;
@@ -357,7 +358,7 @@ function bindEvents() {
   els.openVideoButton.addEventListener("click", openVideoSource);
   els.libraryOfflinePermission.addEventListener("change", renderLibraryOfflineManager);
   els.retryPlaybackButton.addEventListener("click", retryPlayback);
-  document.querySelector("#reconnectFolderButton")?.addEventListener("click", reconnectImportFolder);
+  document.querySelector("#reconnectFolderButton")?.addEventListener("click", () => void mountImportFolder());
   els.renameCollectionButton?.addEventListener("click", renameActiveCollection);
   els.searchLibrary.addEventListener("input", () => {
     syncNavSearch();
@@ -1407,6 +1408,7 @@ async function writeThumbnail(videoId, blob) {
 async function clearThumbnails() {
   thumbnailJobs.length = 0;
   thumbnailInFlight.clear();
+  thumbnailQueued.clear();
   thumbnailAttempts.clear();
   thumbnailActiveId = "";
   thumbnailPausedUntil = 0;
@@ -1489,17 +1491,10 @@ async function applyCardThumbnail(element, video) {
     showThumbnail(video.id, known);
     return;
   }
-  if (thumbnailInFlight.has(video.id)) {
-    if (thumbnailActiveId === video.id) markThumbnailRendering(video.id);
-    return;
-  }
   const stored = await readThumbnail(video.id).catch(() => null);
+  if (!element.isConnected) return;
   if (thumbnailUrls.has(video.id)) {
     showThumbnail(video.id, thumbnailUrls.get(video.id));
-    return;
-  }
-  if (thumbnailInFlight.has(video.id)) {
-    if (thumbnailActiveId === video.id) markThumbnailRendering(video.id);
     return;
   }
   if (stored) {
@@ -1507,6 +1502,10 @@ async function applyCardThumbnail(element, video) {
     thumbnailUrls.set(video.id, url);
     thumbnailAttempts.set(video.id, Math.max(1, thumbnailAttempts.get(video.id) || 0));
     showThumbnail(video.id, url);
+    return;
+  }
+  if (thumbnailInFlight.has(video.id) || thumbnailQueued.has(video.id)) {
+    if (thumbnailActiveId === video.id) markThumbnailRendering(video.id);
     return;
   }
   if ((thumbnailAttempts.get(video.id) || 0) >= 1 || Date.now() < thumbnailPausedUntil) {
@@ -1541,6 +1540,7 @@ function queueMissingThumbnails() {
 function queueThumbnail(video, options = {}) {
   const manual = Boolean(options.manual);
   if (!video?.id || thumbnailUrls.has(video.id) || thumbnailInFlight.has(video.id)) return;
+  if (!manual && thumbnailQueued.has(video.id)) return;
   if (!manual && (thumbnailAttempts.get(video.id) || 0) >= 1) {
     showThumbnailRetry(video.id);
     return;
@@ -1550,7 +1550,8 @@ function queueThumbnail(video, options = {}) {
     return;
   }
   if (manual) thumbnailAttempts.delete(video.id);
-  thumbnailInFlight.add(video.id);
+  if (thumbnailQueued.has(video.id)) return;
+  thumbnailQueued.add(video.id);
   thumbnailJobs.push(video.id);
   void drainThumbnails();
 }
@@ -1561,6 +1562,7 @@ async function drainThumbnails() {
   try {
     while (thumbnailJobs.length) {
       const id = thumbnailJobs.shift();
+      thumbnailQueued.delete(id);
       const video = state.videos.find((item) => item.id === id);
       if (!video || thumbnailUrls.has(id)) {
         thumbnailInFlight.delete(id);
@@ -1580,6 +1582,7 @@ async function drainThumbnails() {
         showThumbnail(id, url);
         continue;
       }
+      thumbnailInFlight.add(id);
       thumbnailAttempts.set(id, 1);
       markThumbnailRendering(id);
       const continued = await requestThumbnail(video);
@@ -1652,8 +1655,12 @@ function stopThumbnailQueue(message, pauseMs, resume) {
     thumbnailPauseTimer = 0;
   }
   thumbnailPausedUntil = Date.now() + pauseMs;
-  thumbnailJobs.splice(0).forEach((id) => thumbnailInFlight.delete(id));
+  thumbnailJobs.splice(0).forEach((id) => {
+    thumbnailInFlight.delete(id);
+    thumbnailQueued.delete(id);
+  });
   thumbnailInFlight.clear();
+  thumbnailQueued.clear();
   state.videos.forEach((video) => {
     if (!thumbnailUrls.has(video.id)) showThumbnailRetry(video.id);
   });
@@ -2044,8 +2051,9 @@ function renderLibrary() {
     const extra = runtime || String(video.tags || "").trim();
 
     const main = card.querySelector(".card-main");
+    const knownThumb = thumbnailUrls.get(video.id);
     main.innerHTML = `
-      <span class="card-thumb" data-video-id="${escapeHtml(video.id)}"></span>
+      <span class="card-thumb" data-video-id="${escapeHtml(video.id)}">${knownThumb ? `<img alt="" src="${escapeHtml(knownThumb)}">` : ""}</span>
       <span class="card-copy">
         <strong>${escapeHtml(video.title || "Untitled video")}</strong>
         ${speaker ? `<span class="card-speaker">${escapeHtml(speaker)}</span>` : ""}
@@ -2155,6 +2163,7 @@ function playPlaylist(playlistId) {
     setStatus(`“${playlist.name}” has no videos to play.`);
     return;
   }
+  playlistFolderAttempted = false;
   playingPlaylistId = playlist.id;
   pendingPlaylistPlay = true;
   selectVideo(videos[0].id, { fromPlaylist: true });
@@ -3104,7 +3113,7 @@ function setReconnectFolderButton(visible) {
 function showMissingFolder() {
   const video = selectedVideo();
   const folder = state.lastImportFolderName;
-  if (!importFoldersRestored) {
+  if (!importFoldersRestored || importReconnectRunning) {
     if (els.playerShell.dataset.openingFolder === "1") return;
     els.playerShell.dataset.mode = "empty";
     els.playerShell.dataset.openingFolder = "1";
@@ -3177,6 +3186,10 @@ function renderPlayer(options = {}) {
     return;
   }
   if (!options.force && folderPromptNeeded(video)) {
+    if (pendingPlaylistPlay && !playlistFolderAttempted) {
+      playlistFolderAttempted = true;
+      void mountImportFolder().then(() => renderPlayer());
+    }
     showMissingFolder();
     return;
   }
@@ -3307,9 +3320,12 @@ function markSelectedPlaybackReady(videoId, message) {
 async function retryPlayback() {
   const video = selectedVideo();
   if (!video) return;
-  if (folderPromptNeeded(video)) {
-    await reconnectImportFolder();
-    return;
+  if (videoPackageMissing(video)) {
+    await mountImportFolder();
+    if (!folderPromptNeeded(video)) {
+      renderPlayer();
+      return;
+    }
   }
   if (video.offlineExportedTo && offlineExportDirectoryHandle) {
     const directory = await openSavedVideoFolder(video);
@@ -3636,6 +3652,17 @@ async function restoreImportFolders() {
 
 let importReconnectRunning = false;
 let importFoldersRestored = false;
+let folderMountPromise = null;
+let playlistFolderAttempted = false;
+
+function mountImportFolder() {
+  if (!folderMountPromise) {
+    folderMountPromise = reconnectImportFolder().finally(() => {
+      folderMountPromise = null;
+    });
+  }
+  return folderMountPromise;
+}
 
 function preferredImportHandle(handles) {
   const named = handles.find((handle) => handle?.name && handle.name === state.lastImportFolderName);
