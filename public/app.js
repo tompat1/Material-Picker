@@ -285,6 +285,15 @@ class PackageHlsLoader {
   }
 }
 
+const thumbnailUrls = new Map();
+const thumbnailInFlight = new Set();
+const thumbnailRetryAfter = new Map();
+const thumbnailJobs = [];
+let thumbnailDraining = false;
+let thumbnailPausedUntil = 0;
+let thumbnailPauseTimer = 0;
+let thumbnailNoticeSent = false;
+
 init();
 
 function init() {
@@ -1351,13 +1360,6 @@ function addVideo(video, options = {}) {
   return next.id;
 }
 
-const thumbnailUrls = new Map();
-const thumbnailQueued = new Set();
-const thumbnailJobs = [];
-let thumbnailDraining = false;
-let thumbnailStopped = false;
-let thumbnailNoticeSent = false;
-
 function thumbnailPrompt(video) {
   const clip = (value, max) => String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
   const title = clip(video.title, 140) || "untitled session";
@@ -1405,7 +1407,11 @@ async function writeThumbnail(videoId, blob) {
 
 async function clearThumbnails() {
   thumbnailJobs.length = 0;
-  thumbnailQueued.clear();
+  thumbnailInFlight.clear();
+  thumbnailRetryAfter.clear();
+  thumbnailPausedUntil = 0;
+  if (thumbnailPauseTimer) clearTimeout(thumbnailPauseTimer);
+  thumbnailPauseTimer = 0;
   thumbnailUrls.forEach((url) => URL.revokeObjectURL(url));
   thumbnailUrls.clear();
   const db = await openThumbnailDb().catch(() => null);
@@ -1447,7 +1453,7 @@ async function applyCardThumbnail(element, video) {
     showThumbnail(video.id, url);
     return;
   }
-  if (thumbnailStopped) return;
+  if (Date.now() < thumbnailPausedUntil) return;
   element.classList.add("is-rendering");
   queueThumbnail(video);
 }
@@ -1470,12 +1476,27 @@ async function compactThumbnail(blob) {
 }
 
 function queueMissingThumbnails() {
+  const wait = thumbnailPausedUntil - Date.now();
+  if (wait > 0) {
+    scheduleThumbnailPass(wait);
+    return;
+  }
   state.videos.forEach((video) => queueThumbnail(video));
 }
 
+function scheduleThumbnailPass(delay) {
+  if (thumbnailPauseTimer) return;
+  thumbnailPauseTimer = setTimeout(() => {
+    thumbnailPauseTimer = 0;
+    queueMissingThumbnails();
+  }, delay);
+}
+
 function queueThumbnail(video) {
-  if (!video?.id || thumbnailStopped || thumbnailQueued.has(video.id) || thumbnailUrls.has(video.id)) return;
-  thumbnailQueued.add(video.id);
+  if (!video?.id || thumbnailUrls.has(video.id) || thumbnailInFlight.has(video.id)) return;
+  if (Date.now() < thumbnailPausedUntil) return;
+  if (Date.now() < (thumbnailRetryAfter.get(video.id) || 0)) return;
+  thumbnailInFlight.add(video.id);
   thumbnailJobs.push(video.id);
   void drainThumbnails();
 }
@@ -1484,12 +1505,16 @@ async function drainThumbnails() {
   if (thumbnailDraining) return;
   thumbnailDraining = true;
   try {
-    while (thumbnailJobs.length && !thumbnailStopped) {
+    while (thumbnailJobs.length && Date.now() >= thumbnailPausedUntil) {
       const id = thumbnailJobs.shift();
       const video = state.videos.find((item) => item.id === id);
-      if (!video || thumbnailUrls.has(id)) continue;
+      if (!video || thumbnailUrls.has(id)) {
+        thumbnailInFlight.delete(id);
+        continue;
+      }
       const stored = await readThumbnail(id).catch(() => null);
       if (stored) {
+        thumbnailInFlight.delete(id);
         const url = URL.createObjectURL(stored);
         thumbnailUrls.set(id, url);
         showThumbnail(id, url);
@@ -1501,7 +1526,7 @@ async function drainThumbnails() {
     }
   } finally {
     thumbnailDraining = false;
-    if (thumbnailJobs.length && !thumbnailStopped) void drainThumbnails();
+    if (thumbnailJobs.length && Date.now() >= thumbnailPausedUntil) void drainThumbnails();
   }
 }
 
@@ -1514,10 +1539,14 @@ async function requestThumbnail(video) {
       body: JSON.stringify({ prompt: thumbnailPrompt(video) }),
     });
   } catch {
+    releaseThumbnailAttempt(video.id);
     return true;
   }
   if (response.status === 503) {
-    thumbnailStopped = true;
+    releaseThumbnailAttempt(video.id);
+    thumbnailJobs.splice(0).forEach((id) => thumbnailInFlight.delete(id));
+    thumbnailPausedUntil = Date.now() + 20000;
+    scheduleThumbnailPass(20000);
     if (!thumbnailNoticeSent) {
       thumbnailNoticeSent = true;
       setStatus("Thumbnails render with the Cloudflare image model. Connect that model to fill the list.");
@@ -1525,14 +1554,43 @@ async function requestThumbnail(video) {
     document.querySelectorAll(".card-thumb.is-rendering").forEach((element) => element.classList.remove("is-rendering"));
     return false;
   }
-  if (!response.ok) return true;
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const message = String(data.error || "");
+    thumbnailInFlight.delete(video.id);
+    document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(video.id)}"]`).forEach((element) => element.classList.remove("is-rendering"));
+    if (/authentication/i.test(message)) {
+      thumbnailJobs.splice(0).forEach((id) => thumbnailInFlight.delete(id));
+      thumbnailPausedUntil = Date.now() + 60 * 60 * 1000;
+      if (thumbnailPauseTimer) clearTimeout(thumbnailPauseTimer);
+      thumbnailPauseTimer = 0;
+      if (!thumbnailNoticeSent) {
+        thumbnailNoticeSent = true;
+        setStatus("The thumbnail model rejected the Cloudflare API token. Check the token and account id, then refresh.");
+      }
+      return false;
+    }
+    releaseThumbnailAttempt(video.id);
+    return true;
+  }
   const blob = await compactThumbnail(await response.blob());
-  if (!blob || !state.videos.some((item) => item.id === video.id)) return true;
+  if (!blob || !state.videos.some((item) => item.id === video.id)) {
+    thumbnailInFlight.delete(video.id);
+    return true;
+  }
+  thumbnailInFlight.delete(video.id);
+  thumbnailRetryAfter.delete(video.id);
   await writeThumbnail(video.id, blob).catch(() => {});
   const url = URL.createObjectURL(blob);
   thumbnailUrls.set(video.id, url);
   showThumbnail(video.id, url);
   return true;
+}
+
+function releaseThumbnailAttempt(videoId) {
+  thumbnailInFlight.delete(videoId);
+  thumbnailRetryAfter.set(videoId, Date.now() + 20000);
+  scheduleThumbnailPass(20000);
 }
 
 function updateSelectedFromForm() {
