@@ -96,6 +96,7 @@ const els = {
 
 let recognition = null;
 let hlsPlayer = null;
+let embedPlaying = false;
 let offlineStoragePath = "";
 let offlineExportDirectoryHandle = null;
 let bulkOfflineRunning = false;
@@ -358,13 +359,13 @@ function bindEvents() {
     if (store && mount && store.childElementCount) mount.append(...store.childNodes);
     document.querySelector("#addVideoDialog")?.showModal();
   });
-  document.querySelector("#playVideoButton")?.addEventListener("click", () => {
-    if (els.playerShell?.dataset.mode !== "video") return;
-    els.videoPlayer?.play()?.catch(() => {});
+  document.querySelector("#playVideoButton")?.addEventListener("click", togglePlayback);
+  ["play", "pause", "ended"].forEach((eventName) => {
+    els.videoPlayer?.addEventListener(eventName, syncPlayButton);
   });
   document.querySelector("#downloadCurrentButton")?.addEventListener("click", () => {
     const video = selectedVideo();
-    if (!video) return;
+    if (!video || hasDiskCopy(video)) return;
     selectedVideoIds.add(video.id);
     saveState();
     render();
@@ -1244,6 +1245,7 @@ function render() {
   renderTranscript();
   renderScriptDeskPills();
   renderActivity();
+  syncPlayButton();
 }
 
 function recordScrape(url, details) {
@@ -1921,7 +1923,12 @@ function renderForm() {
   const playVideoButton = document.querySelector("#playVideoButton");
   const downloadCurrentButton = document.querySelector("#downloadCurrentButton");
   if (playVideoButton) playVideoButton.disabled = !video;
-  if (downloadCurrentButton) downloadCurrentButton.disabled = !video;
+  if (downloadCurrentButton) {
+    const savedOffline = hasDiskCopy(video);
+    downloadCurrentButton.disabled = !video || savedOffline;
+    downloadCurrentButton.title = savedOffline ? "Already saved offline" : "Download this video";
+  }
+  syncPlayButton();
   renderScreenMeta(video);
   renderChapters(video);
   els.openSourceButton.disabled = !video?.sourceUrl;
@@ -1953,6 +1960,37 @@ async function resolveVideoStream(video) {
   return null;
 }
 
+function syncPlayButton() {
+  const button = document.querySelector("#playVideoButton");
+  if (!button) return;
+  const playing = els.playerShell?.dataset.mode === "embed"
+    ? embedPlaying
+    : Boolean(els.playerShell?.dataset.mode === "video" && els.videoPlayer && !els.videoPlayer.paused && !els.videoPlayer.ended);
+  button.textContent = playing ? "Pause" : "Play";
+  button.setAttribute("aria-pressed", playing ? "true" : "false");
+}
+
+function togglePlayback() {
+  if (!selectedVideo()) return;
+  const mode = els.playerShell?.dataset.mode;
+  if (mode === "video" && els.videoPlayer) {
+    if (els.videoPlayer.paused || els.videoPlayer.ended) els.videoPlayer.play()?.catch(() => {});
+    else els.videoPlayer.pause();
+    return;
+  }
+  if (mode !== "embed" || !els.embedPlayer) return;
+  const method = embedPlaying ? "pause" : "play";
+  const command = embedPlaying ? "pauseVideo" : "playVideo";
+  try {
+    els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ method }), "*");
+    els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ event: "command", func: command }), "*");
+  } catch (error) {
+    console.warn("Embedded player command failed:", error);
+  }
+  embedPlaying = !embedPlaying;
+  syncPlayButton();
+}
+
 async function ensurePlayerPlaying() {
   if (els.playerShell.dataset.mode === "video") {
     try {
@@ -1966,6 +2004,8 @@ async function ensurePlayerPlaying() {
     try {
       els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ method: "play" }), "*");
       els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "playVideo" }), "*");
+      embedPlaying = true;
+      syncPlayButton();
     } catch (error) {
       console.warn("Automatic embed playback could not be started:", error);
     }
@@ -1974,6 +2014,7 @@ async function ensurePlayerPlaying() {
 
 function renderPlayer() {
   const video = selectedVideo();
+  embedPlaying = false;
   destroyHlsPlayer();
   els.videoPlayer.pause();
   els.videoPlayer.onloadedmetadata = null;
@@ -3598,31 +3639,26 @@ function selectedVideo() {
   return state.videos.find((video) => video.id === state.selectedId) || null;
 }
 
-function sourcePreviewDocument({ title = "Source page", paragraphs = [], url = "", message = "" } = {}) {
-  const body = message
-    ? `<p class="notice">${escapeHtml(message)}</p>`
-    : paragraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join("");
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="color-scheme" content="light">
-  <style>
-    :root { font-family: ui-serif, Georgia, serif; color: #28241f; background: #f4f0e7; }
-    * { box-sizing: border-box; }
-    body { max-width: 72ch; margin: 0 auto; padding: 24px; line-height: 1.6; }
-    header { margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid #c9c0af; }
-    h1 { margin: 0 0 6px; font-size: 1.35rem; line-height: 1.25; }
-    small { display: block; overflow-wrap: anywhere; color: #756b5d; font: 0.72rem/1.45 ui-monospace, monospace; }
-    p { margin: 0 0 1em; }
-    .notice { color: #756b5d; font-style: italic; }
-  </style>
-</head>
-<body>
-  <header><h1>${escapeHtml(title)}</h1><small>${escapeHtml(url)}</small></header>
-  <main>${body || '<p class="notice">No readable page text was found.</p>'}</main>
-</body>
-</html>`;
+function renderSourcePreview({ title = "Source page", paragraphs = [], url = "", message = "" } = {}) {
+  const frame = els.sourceFrame;
+  if (!frame) return;
+  frame.replaceChildren();
+  const header = document.createElement("header");
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  const address = document.createElement("small");
+  address.textContent = url;
+  header.append(heading, address);
+  const main = document.createElement("div");
+  const lines = message ? [message] : paragraphs.slice();
+  if (!lines.length) lines.push("No readable page text was found.");
+  lines.forEach((text) => {
+    const paragraph = document.createElement("p");
+    if (message || !paragraphs.length) paragraph.className = "notice";
+    paragraph.textContent = text;
+    main.append(paragraph);
+  });
+  frame.append(header, main);
 }
 
 function buildSourcePreview(html, url) {
@@ -3633,14 +3669,14 @@ function buildSourcePreview(html, url) {
     .map((node) => node.textContent.replace(/\s+/g, " ").trim())
     .filter((text, index, items) => text.length >= 24 && items.indexOf(text) === index)
     .slice(0, 36);
-  return sourcePreviewDocument({ title, paragraphs, url });
+  return { title, paragraphs, url };
 }
 
 function cacheSourcePreview(url, html, finalUrl = url) {
   if (!url || typeof html !== "string") return;
   sourcePreviewCache.set(url, buildSourcePreview(html, finalUrl));
   if (sourcePreviewUrl === url && els.sourceDisclosure?.open) {
-    els.sourceFrame.srcdoc = sourcePreviewCache.get(url);
+    renderSourcePreview(sourcePreviewCache.get(url));
   }
 }
 
@@ -3648,12 +3684,12 @@ async function loadSourcePreview() {
   const url = sourcePreviewUrl;
   if (!url || !els.sourceFrame) return;
   if (sourcePreviewCache.has(url)) {
-    els.sourceFrame.srcdoc = sourcePreviewCache.get(url);
+    renderSourcePreview(sourcePreviewCache.get(url));
     return;
   }
 
   const requestId = ++sourcePreviewRequestId;
-  els.sourceFrame.srcdoc = sourcePreviewDocument({
+  renderSourcePreview({
     title: "Source page",
     url,
     message: "Preparing a quiet preview...",
@@ -3670,7 +3706,7 @@ async function loadSourcePreview() {
     cacheSourcePreview(url, data.html, data.finalUrl || url);
   } catch {
     if (requestId !== sourcePreviewRequestId || url !== sourcePreviewUrl) return;
-    els.sourceFrame.srcdoc = sourcePreviewDocument({
+    renderSourcePreview({
       title: "Preview unavailable",
       url,
       message: "This page could not be reduced to a local preview. Use Open to view the original.",
@@ -3681,12 +3717,10 @@ async function loadSourcePreview() {
 function setSourceFrame(url, updateInput = true) {
   sourcePreviewRequestId += 1;
   sourcePreviewUrl = String(url || "").trim();
-  els.sourceFrame?.removeAttribute("src");
   if (updateInput) els.sourceUrl.value = sourcePreviewUrl;
-  if (!els.sourceFrame) return;
-  els.sourceFrame.srcdoc = sourcePreviewUrl
-    ? sourcePreviewDocument({ title: "Source page", url: sourcePreviewUrl, message: "Open the preview to load a quiet page snapshot." })
-    : sourcePreviewDocument({ title: "No source page", message: "Add a source URL to preview its readable content." });
+  renderSourcePreview(sourcePreviewUrl
+    ? { title: "Source page", url: sourcePreviewUrl, message: "Open the preview to load a quiet page snapshot." }
+    : { title: "No source page", message: "Add a source URL to preview its readable content." });
   if (sourcePreviewUrl && els.sourceDisclosure?.open) void loadSourcePreview();
 }
 

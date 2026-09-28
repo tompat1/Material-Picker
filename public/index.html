@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-14" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-16" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to library</a>
@@ -290,7 +290,7 @@
               <h2 id="playerTitle">Select a video</h2>
               <p id="nowPlayingMeta"></p>
               <div class="button-row">
-                <button class="primary-button" id="playVideoButton" type="button">Play video</button>
+                <button class="primary-button" id="playVideoButton" type="button" aria-pressed="false">Play</button>
                 <button class="secondary-button" id="downloadCurrentButton" type="button">Download</button>
               </div>
             </div>
@@ -494,7 +494,7 @@
           </div>
           <details id="sourceDisclosure">
             <summary>Show preview</summary>
-            <iframe id="sourceFrame" title="Source page preview" sandbox referrerpolicy="no-referrer"></iframe>
+            <div id="sourceFrame" class="source-preview" role="region" aria-label="Source page preview"></div>
           </details>
         </section>
       </div>
@@ -525,6 +525,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-14" defer></script>
-    <script src="./app.js?v=picker-nav-14" defer></script>
+    <script src="./app.js?v=picker-nav-16" defer></script>
   </body>
 </html>

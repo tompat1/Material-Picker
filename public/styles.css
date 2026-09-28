@@ -1145,6 +1145,14 @@ select {
   transform: translateY(-1px);
 }
 
+.primary-button:disabled:hover,
+.secondary-button:disabled:hover,
+.ghost-button:disabled:hover,
+.danger-button:disabled:hover {
+  transform: none;
+  filter: grayscale(0.35);
+}
+
 .primary-button {
   background: var(--accent);
   color: var(--accent-ink);
@@ -2288,13 +2296,49 @@ button.is-busy .amber-throbber {
   line-height: 1.65;
 }
 
-#sourceDisclosure iframe,
-.source-panel iframe {
+.source-preview {
   width: 100%;
   min-height: 18rem;
   margin-top: 0.65rem;
+  padding: 24px;
   border: 1px solid var(--line);
-  background: #fff;
+  background: #f4f0e7;
+  color: #28241f;
+  font-family: ui-serif, Georgia, serif;
+  line-height: 1.6;
+}
+
+.source-preview header {
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #c9c0af;
+}
+
+.source-preview h3 {
+  margin: 0 0 6px;
+  color: #28241f;
+  font-family: ui-serif, Georgia, serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.source-preview small {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #756b5d;
+  font: 0.72rem/1.45 ui-monospace, monospace;
+}
+
+.source-preview p {
+  margin: 0 0 1em;
+}
+
+.source-preview .notice {
+  color: #756b5d;
+  font-style: italic;
 }
 
 .sr-only {
