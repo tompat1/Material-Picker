@@ -2782,6 +2782,7 @@ async function restoreImportFolders() {
     state.lastImportFolderName = handle.name || state.lastImportFolderName || "";
     await importFromDirectoryHandle(handle, { quiet: true });
     restored = true;
+    break;
   }
   if (!restored) renderPlayer();
 }
