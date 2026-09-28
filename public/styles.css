@@ -2081,8 +2081,22 @@ progress::-moz-progress-bar {
   color: var(--accent);
 }
 
-.favourite-toggle.is-favourite svg {
+.favourite-toggle .heart-solid {
+  display: none;
+}
+
+.favourite-toggle.is-favourite {
+  color: var(--accent);
+}
+
+.favourite-toggle.is-favourite .heart-line {
+  display: none;
+}
+
+.favourite-toggle.is-favourite .heart-solid {
+  display: block;
   fill: currentColor;
+  stroke: none;
 }
 
 .card-actions,

@@ -1701,7 +1701,10 @@ function renderLibrary() {
     const addButton = card.querySelector(".add-to-list");
     if (addButton) addButton.dataset.videoId = video.id;
     const favouriteButton = card.querySelector(".favourite-toggle");
-    if (favouriteButton) favouriteButton.dataset.videoId = video.id;
+    if (favouriteButton) {
+      favouriteButton.dataset.videoId = video.id;
+      favouriteButton.classList.toggle("is-favourite", isFavourite(video.id));
+    }
 
     const checkbox = card.querySelector(".video-select-input");
     checkbox.checked = selectedVideoIds.has(video.id);
@@ -2168,7 +2171,7 @@ function renderFavourites() {
   if (!list) return;
   const videos = favouriteVideos();
   if (empty) empty.hidden = videos.length > 0;
-  list.innerHTML = videos.map((video) => `<li><button class="playlist-open" type="button" data-open-video="${escapeHtml(video.id)}"><strong>${escapeHtml(video.title || "Untitled video")}</strong><span>${escapeHtml(video.speaker || "")}</span></button><button class="favourite-toggle" type="button" data-video-id="${escapeHtml(video.id)}" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/></svg></button></li>`).join("");
+  list.innerHTML = videos.map((video) => `<li><button class="playlist-open" type="button" data-open-video="${escapeHtml(video.id)}"><strong>${escapeHtml(video.title || "Untitled video")}</strong><span>${escapeHtml(video.speaker || "")}</span></button><button class="favourite-toggle is-favourite" type="button" data-video-id="${escapeHtml(video.id)}" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-line" d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/><path class="heart-solid" d="M12 21.35 10.55 20C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/></svg></button></li>`).join("");
   syncFavouriteButtons();
 }
 
