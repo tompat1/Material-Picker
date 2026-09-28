@@ -1990,12 +1990,12 @@ progress::-moz-progress-bar {
 
 .card-main {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  column-gap: 0.7rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.9rem;
   align-items: center;
   width: 100%;
-  min-height: 3.35rem;
-  padding: 0.45rem 0.35rem;
+  min-height: 4.75rem;
+  padding: 0.1rem 0.15rem;
   border: 0;
   background: transparent;
   color: inherit;
@@ -2003,25 +2003,15 @@ progress::-moz-progress-bar {
 }
 
 .card-main::before {
-  content: counter(reel, decimal-leading-zero);
-  grid-column: 1;
-  grid-row: 1 / span 2;
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 0.68rem;
-}
-
-.video-card.active .card-main::before {
-  color: var(--accent);
+  content: none;
 }
 
 .card-thumb {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  width: 4.6rem;
-  height: 2.7rem;
+  grid-column: 1;
+  width: 4.75rem;
+  height: 4.75rem;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(255, 122, 61, 0.16), rgba(40, 30, 25, 0.2)),
     #2a211c;
@@ -2047,7 +2037,10 @@ progress::-moz-progress-bar {
 }
 
 .card-copy {
-  grid-column: 3;
+  grid-column: 2;
+  display: grid;
+  align-content: center;
+  gap: 0.16rem;
   min-width: 0;
 }
 
@@ -2058,12 +2051,14 @@ progress::-moz-progress-bar {
 }
 
 .card-copy strong {
+  display: -webkit-box;
   overflow: hidden;
-  font-size: 0.98rem;
-  font-weight: 560;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 1.05rem;
+  font-weight: 640;
+  line-height: 1.22;
+  letter-spacing: -0.015em;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .library-totals {
@@ -2074,14 +2069,19 @@ progress::-moz-progress-bar {
   letter-spacing: 0.04em;
 }
 
-.card-copy > span {
-  margin-top: 0.12rem;
+.card-speaker,
+.card-meta {
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.75rem;
-  line-height: 1.35;
+  font-size: 0.84rem;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.card-meta {
+  color: #b3a394;
+  font-size: 0.78rem;
 }
 
 .add-to-list,
@@ -2385,12 +2385,43 @@ progress::-moz-progress-bar {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
 }
 
+.menu-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.menu-close svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.menu-close:hover,
+.menu-close:focus-visible {
+  color: var(--ink);
+  background: rgba(244, 235, 221, 0.08);
+}
+
 .playlist-menu[hidden] {
   display: none;
 }
 
 .playlist-menu-lead {
   margin: 0;
+  padding-right: 1.4rem;
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.4;
@@ -2438,6 +2469,10 @@ progress::-moz-progress-bar {
 .playlist-menu-create input {
   min-width: 0;
   flex: 1;
+}
+
+.playback-badge[data-status="unchecked"] {
+  display: none;
 }
 
 .playback-badge {
@@ -3060,7 +3095,7 @@ button.is-busy .amber-throbber {
   .playback-badge {
     grid-column: 2;
     justify-self: start;
-    margin: 0 0 0.55rem 2.55rem;
+    margin: 0 0 0.45rem 5.65rem;
   }
 
   .video-select {

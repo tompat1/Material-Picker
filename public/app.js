@@ -512,6 +512,12 @@ function bindEvents() {
     if (open) selectVideo(open.dataset.openVideo);
   });
   document.addEventListener("click", (event) => {
+    const closeBox = event.target.closest("[data-close-menu]");
+    if (closeBox) {
+      if (closeBox.closest("#noteMenu")) closeNoteMenu();
+      else closePlaylistMenu();
+      return;
+    }
     const favourite = event.target.closest(".favourite-toggle");
     if (favourite) {
       const videoId = favourite.dataset.videoId || state.selectedId;
@@ -1779,6 +1785,16 @@ function renderVideoCount() {
   if (els.videoCountLabel) els.videoCountLabel.textContent = state.videos.length === 1 ? "video" : "videos";
 }
 
+function cardDurationLabel(video) {
+  const seconds = Math.round(Number(video?.durationSeconds) || 0);
+  if (seconds <= 0) return "";
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remain = seconds % 60;
+  const clock = `${minutes}:${String(remain).padStart(2, "0")}`;
+  return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remain).padStart(2, "0")}` : clock;
+}
+
 function videoRuntimeLabel(video) {
   const seconds = Number(video?.durationSeconds) || 0;
   return seconds > 0 ? formatDuration(seconds) : "";
@@ -1871,10 +1887,8 @@ function renderLibrary() {
     card.classList.toggle("selected", selectedVideoIds.has(video.id));
 
     const speaker = String(video.speaker || video.language || "").trim();
-    const runtime = videoRuntimeLabel(video);
-    const size = videoSizeLabel(video);
-    const timeLine = [runtime, size].filter(Boolean).join(" · ");
-    const extra = timeLine || String(video.tags || "").trim();
+    const runtime = cardDurationLabel(video);
+    const extra = runtime || String(video.tags || "").trim();
 
     const main = card.querySelector(".card-main");
     main.innerHTML = `
