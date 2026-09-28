@@ -1563,6 +1563,7 @@ async function drainThumbnails() {
     while (thumbnailJobs.length) {
       const id = thumbnailJobs.shift();
       thumbnailQueued.delete(id);
+      thumbnailInFlight.add(id);
       const video = state.videos.find((item) => item.id === id);
       if (!video || thumbnailUrls.has(id)) {
         thumbnailInFlight.delete(id);
@@ -1574,6 +1575,10 @@ async function drainThumbnails() {
         continue;
       }
       const stored = await readThumbnail(id).catch(() => null);
+      if (thumbnailUrls.has(id)) {
+        thumbnailInFlight.delete(id);
+        continue;
+      }
       if (stored) {
         thumbnailInFlight.delete(id);
         thumbnailAttempts.set(id, 1);
@@ -1582,7 +1587,6 @@ async function drainThumbnails() {
         showThumbnail(id, url);
         continue;
       }
-      thumbnailInFlight.add(id);
       thumbnailAttempts.set(id, 1);
       markThumbnailRendering(id);
       const continued = await requestThumbnail(video);
@@ -3320,7 +3324,7 @@ function markSelectedPlaybackReady(videoId, message) {
 async function retryPlayback() {
   const video = selectedVideo();
   if (!video) return;
-  if (videoPackageMissing(video)) {
+  if (folderPromptNeeded(video)) {
     await mountImportFolder();
     if (!folderPromptNeeded(video)) {
       renderPlayer();
