@@ -1289,6 +1289,42 @@ async function getDirectorySize(dir) {
   return total;
 }
 
+async function mapLimit(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+async function locateHlsManifest(dirPath, entries) {
+  const listed = isHlsPackageDirectory(entries);
+  if (listed) return listed;
+  const dirNames = new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name.toLowerCase()));
+  const hasBucket = dirNames.has("audio") || dirNames.has("video") || dirNames.has("segments");
+  if (!hasBucket) return null;
+  const hasMediaHint =
+    (dirNames.has("audio") && dirNames.has("video")) ||
+    entries.some((entry) => entry.isFile() && (entry.name.toLowerCase() === "metadata.json" || entry.name.toLowerCase().endsWith(".m3u8")));
+  if (!hasMediaHint) return null;
+  const probes = ["master.m3u8", "index.m3u8", "playlist.m3u8", "video/playlist.m3u8", "audio/playlist.m3u8"];
+  for (const probe of probes) {
+    try {
+      await fsp.access(path.join(dirPath, probe));
+      return probe;
+    } catch {
+      // This layout does not use that manifest path.
+    }
+  }
+  return null;
+}
+
 async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs = new Set()) {
   const resolved = path.resolve(dirPath);
   let real;
@@ -1307,8 +1343,8 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
     return [];
   }
 
-  // Check if this directory itself is an HLS package (contains master.m3u8 with audio/video segments)
-  const hlsManifestName = isHlsPackageDirectory(entries);
+  // One library item per saved video. Do not open audio/video/segments folders.
+  const hlsManifestName = await locateHlsManifest(resolved, entries);
   if (hlsManifestName) {
     let meta = null;
     const metaEntry = entries.find((e) => e.isFile() && e.name.toLowerCase() === "metadata.json");
@@ -1331,7 +1367,7 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
     return [
       {
         id: meta?.id || undefined,
-        name: hlsManifestName,
+        name: path.basename(hlsManifestName),
         title: title || hlsManifestName,
         relativePath: rel,
         absolutePath: full,
@@ -1344,8 +1380,6 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
         language: meta?.language || undefined,
         tags: meta?.tags || undefined,
         notes: meta?.notes || undefined,
-        transcript: meta?.transcript || undefined,
-        translation: meta?.translation || undefined,
         transcriptLanguage: meta?.transcriptLanguage || undefined,
         transcriptSource: meta?.transcriptSource || undefined,
         durationSeconds: Number(meta?.durationSeconds) || undefined,
@@ -1358,49 +1392,48 @@ async function scanDirectoryForVideos(dirPath, relativePrefix = "", visitedDirs 
     ];
   }
 
-  const results = [];
-  entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+  const visible = entries.filter((entry) => !entry.name.startsWith("."));
+  visible.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+  const directories = visible.filter((entry) => entry.isDirectory());
+  const files = visible.filter((entry) => entry.isFile());
+  const nested = await mapLimit(directories, 8, (entry) => {
+    const rel = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
+    return scanDirectoryForVideos(path.join(resolved, entry.name), rel, visitedDirs);
+  });
+  const results = nested.flat();
 
-  for (const entry of entries) {
-    if (entry.name.startsWith(".")) continue;
+  for (const entry of files) {
     const rel = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
     const full = path.join(resolved, entry.name);
+    const lowerName = entry.name.toLowerCase();
+    const isInternalHls =
+      lowerName === "playlist.m3u8" ||
+      lowerName === "master.m3u8" ||
+      lowerName === "index.m3u8" ||
+      lowerName === "metadata.json" ||
+      /^\d{5,}\.(mp4|m4s|ts)$/i.test(lowerName);
+    if (isInternalHls) continue;
 
-    if (entry.isDirectory()) {
-      const nested = await scanDirectoryForVideos(full, rel, visitedDirs);
-      results.push(...nested);
-    } else if (entry.isFile()) {
-      const lowerName = entry.name.toLowerCase();
-      const isInternalHls =
-        lowerName === "playlist.m3u8" ||
-        lowerName === "master.m3u8" ||
-        lowerName === "index.m3u8" ||
-        lowerName === "metadata.json" ||
-        /^\d{5,}\.(mp4|m4s|ts)$/i.test(lowerName);
-      if (isInternalHls) continue;
-
-      const ext = path.extname(entry.name).toLowerCase();
-      if (STANDALONE_VIDEO_EXTENSIONS.has(ext)) {
-        try {
-          const stats = await fsp.stat(full);
-          const title = entry.name
-            .replace(/\.[a-z0-9]+$/i, "")
-            .replace(/[-_]+/g, " ")
-            .trim();
-          results.push({
-            name: entry.name,
-            title: title || entry.name,
-            relativePath: rel,
-            absolutePath: full,
-            subfolder: relativePrefix || "",
-            size: stats.size,
-            format: ext.replace(".", ""),
-            url: `/local-media/${encodeURIComponent(resolved)}/${entry.name}`,
-          });
-        } catch {
-          // Ignore unreadable files
-        }
-      }
+    const ext = path.extname(entry.name).toLowerCase();
+    if (!STANDALONE_VIDEO_EXTENSIONS.has(ext)) continue;
+    try {
+      const stats = await fsp.stat(full);
+      const title = entry.name
+        .replace(/\.[a-z0-9]+$/i, "")
+        .replace(/[-_]+/g, " ")
+        .trim();
+      results.push({
+        name: entry.name,
+        title: title || entry.name,
+        relativePath: rel,
+        absolutePath: full,
+        subfolder: relativePrefix || "",
+        size: stats.size,
+        format: ext.replace(".", ""),
+        url: `/local-media/${encodeURIComponent(resolved)}/${entry.name}`,
+      });
+    } catch {
+      // Ignore unreadable files
     }
   }
   return results;

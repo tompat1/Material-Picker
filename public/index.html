@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-12" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-14" />
   </head>
   <body>
     <a class="skip-link" href="#workspace">Skip to library</a>
@@ -205,8 +205,11 @@
         </section>
 
         <section class="nav-panel" id="historyPanel" aria-labelledby="historyTitle">
-          <h2 id="historyTitle">History</h2>
-          <p>Videos you watch will be listed here.</p>
+          <div class="section-heading">
+            <h2 id="historyTitle">History</h2>
+          </div>
+          <ol class="activity-list" id="activityList"></ol>
+          <p class="activity-empty" id="activityEmpty">Imports, downloads, transcripts, and videos you watch will be listed here.</p>
         </section>
         <section class="nav-panel" id="playlistsPanel" aria-labelledby="playlistsTitle">
           <h2 id="playlistsTitle">Playlists</h2>
@@ -521,7 +524,7 @@
     </template>
 
     <script src="./vendor/hls.min.js" defer></script>
-    <script src="./app-core.js?v=archive-repair-2" defer></script>
-    <script src="./app.js?v=picker-nav-11" defer></script>
+    <script src="./app-core.js?v=picker-nav-14" defer></script>
+    <script src="./app.js?v=picker-nav-14" defer></script>
   </body>
 </html>

@@ -309,12 +309,13 @@
           ...stored,
           collections: Array.isArray(stored.collections) ? stored.collections : [],
           scrapeHistory: Array.isArray(stored.scrapeHistory) ? stored.scrapeHistory : [],
+          activity: Array.isArray(stored.activity) ? stored.activity : [],
         };
       }
     } catch {
       storage.removeItem(key);
     }
-    return { selectedId: null, videos: [], collections: [], scrapeHistory: [] };
+    return { selectedId: null, videos: [], collections: [], scrapeHistory: [], activity: [] };
   }
 
   function parseOfflineArchiveRequirements(masterText, subPlaylists = {}) {

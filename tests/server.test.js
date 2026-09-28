@@ -257,6 +257,30 @@ test("scanDirectoryForVideos recognizes master.m3u8 with audio/video folders as 
   assert.ok(results.every((item) => !item.name.endsWith(".m4s")));
 });
 
+test("scanDirectoryForVideos treats audio and video folders as one video without listing segments", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "material-picker-hls-buckets-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const talkDir = path.join(root, "Panel Talk");
+  fs.mkdirSync(path.join(talkDir, "audio"), { recursive: true });
+  fs.mkdirSync(path.join(talkDir, "video"), { recursive: true });
+  fs.writeFileSync(path.join(talkDir, "metadata.json"), JSON.stringify({ title: "Panel Talk", size: 4096 }));
+  fs.writeFileSync(path.join(talkDir, "audio", "playlist.m3u8"), "#EXTM3U\n00001.m4s");
+  fs.writeFileSync(path.join(talkDir, "video", "playlist.m3u8"), "#EXTM3U\n00001.m4s");
+  for (let index = 1; index <= 40; index += 1) {
+    const name = String(index).padStart(5, "0") + ".m4s";
+    fs.writeFileSync(path.join(talkDir, "audio", name), "a");
+    fs.writeFileSync(path.join(talkDir, "video", name), "v");
+  }
+
+  const results = await scanDirectoryForVideos(root);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].format, "hls");
+  assert.equal(results[0].title, "Panel Talk");
+  assert.equal(results[0].name, "playlist.m3u8");
+  assert.ok(results[0].url.endsWith("/video/playlist.m3u8"));
+});
+
 test("isHlsPackageDirectory recognizes various HLS layouts and case variations", () => {
   const entries1 = [
     { isFile: () => true, isDirectory: () => false, name: "MASTER.M3U8" },

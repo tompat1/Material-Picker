@@ -569,6 +569,65 @@ button:disabled {
   color: var(--muted);
 }
 
+.activity-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity-list button {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  width: 100%;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.activity-action {
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.activity-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: normal;
+}
+
+.activity-list time {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.activity-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+body:has(#activityList:not(:empty)) .activity-empty {
+  display: none;
+}
+
 body:has(#desk-history:checked) #historyPanel,
 body:has(#desk-playlists:checked) #playlistsPanel,
 body:has(#desk-favourites:checked) #favouritesPanel {

@@ -115,6 +115,7 @@ let activeCollectionId = "all";
 let folderBrowseRunning = false;
 const selectedVideoIds = new Set();
 const offlinePackageFiles = new Map();
+const packageRoots = new WeakMap();
 const sourcePreviewCache = new Map();
 let sourcePreviewUrl = "";
 let sourcePreviewRequestId = 0;
@@ -178,6 +179,7 @@ class PackageHlsLoader {
     if (!target) {
       const reqBase = requestedPath.split("/").pop().toLowerCase();
       for (const [key, val] of fileMap.entries()) {
+        if (typeof key !== "string") continue;
         const lKey = key.toLowerCase();
         const lReq = requestedPath.toLowerCase();
         if (lKey === lReq || lKey.endsWith("/" + lReq) || lReq.endsWith("/" + lKey) || lKey.split("/").pop() === reqBase) {
@@ -187,21 +189,22 @@ class PackageHlsLoader {
       }
     }
 
-    if (!target) {
-      console.warn("File not found in package:", requestedPath, "Available entries:", Array.from(fileMap.keys()).slice(0, 15));
-      if (callbacks?.onError) {
-        callbacks.onError({ code: 404, text: `File “${requestedPath}” not found in package` }, context);
+    const servePackageFile = (found) => {
+      if (!found) {
+        console.warn("File not found in package:", requestedPath, "Available entries:", Array.from(fileMap.keys()).filter((key) => typeof key === "string").slice(0, 15));
+        if (callbacks?.onError) {
+          callbacks.onError({ code: 404, text: `File “${requestedPath}” not found in package` }, context);
+        }
+        return;
       }
-      return;
-    }
 
-    const resolveFile = () => {
-      if (target instanceof File) return Promise.resolve(target);
-      if (target.file instanceof File) return Promise.resolve(target.file);
-      if (typeof target.getFile === "function") return target.getFile();
-      if (typeof target.handle?.getFile === "function") return target.handle.getFile();
-      return Promise.reject(new Error(`File handle not readable for ${requestedPath}`));
-    };
+      const resolveFile = () => {
+        if (found instanceof File) return Promise.resolve(found);
+        if (found.file instanceof File) return Promise.resolve(found.file);
+        if (typeof found.getFile === "function") return found.getFile();
+        if (typeof found.handle?.getFile === "function") return found.handle.getFile();
+        return Promise.reject(new Error(`File handle not readable for ${requestedPath}`));
+      };
 
     const isPlaylist =
       context.type === "manifest" ||
@@ -254,6 +257,23 @@ class PackageHlsLoader {
           callbacks.onError({ code: 404, text: err.message }, context);
         }
       });
+    };
+
+    if (target) {
+      servePackageFile(target);
+      return;
+    }
+    const rootHandle = packageRoots.get(fileMap);
+    if (!rootHandle) {
+      servePackageFile(null);
+      return;
+    }
+    resolveHandlePath(rootHandle, requestedPath)
+      .then((handle) => {
+        if (handle) rememberPackageEntry(fileMap, requestedPath, handle);
+        servePackageFile(handle);
+      })
+      .catch(() => servePackageFile(null));
   }
 }
 
@@ -430,6 +450,8 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       rememberPackageEntry(fileMap, innerPath, e);
       totalBytes += Number(e.file?.size || e.size || 0);
     });
+    const rootHandle = pkg.entries.find((entry) => entry.packageRootHandle)?.packageRootHandle;
+    if (rootHandle) packageRoots.set(fileMap, rootHandle);
     offlinePackageFiles.set(packageId, fileMap);
 
     let meta = null;
@@ -521,12 +543,24 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       if (!firstReconnectedId) firstReconnectedId = existing.id;
       reconnectedCount += 1;
       removedDuplicateCount += reconnectMatches.length - 1;
+      recordActivity({
+        action: "Imported",
+        title: existing.title,
+        videoId: existing.id,
+        detail: `Reconnected from ${rootFolderName}`,
+      }, { save: false });
       continue;
     }
 
     state.videos.unshift(nextVideo);
     if (!firstAddedId) firstAddedId = nextVideo.id;
     addedCount += 1;
+    recordActivity({
+      action: "Imported",
+      title: nextVideo.title,
+      videoId: nextVideo.id,
+      detail: rootFolderName,
+    }, { save: false });
   }
 
   // Process standalone video entries
@@ -564,6 +598,12 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
     state.videos.unshift(nextVideo);
     if (!firstAddedId) firstAddedId = nextVideo.id;
     addedCount += 1;
+    recordActivity({
+      action: "Imported",
+      title: nextVideo.title,
+      videoId: nextVideo.id,
+      detail: rootFolderName,
+    }, { save: false });
   }
 
   const targetId = firstReconnectedId || firstAddedId;
@@ -599,45 +639,62 @@ async function importFromDirectoryHandle(dirHandle) {
     const entries = [];
 
     const walk = async (handle, pathParts = []) => {
+      const children = [];
       try {
         for await (const entry of handle.values()) {
-          try {
-            if (entries.length && entries.length % 400 === 0) {
-              setStatus(`Scanning “${rootFolderName}”… ${entries.length} files`, true);
-              await new Promise((resolve) => setTimeout(resolve, 0));
-            }
-            if (entry.kind === "file") {
-              const lowerName = entry.name.toLowerCase();
-              if (
-                core.isLikelyVideoUrl(entry.name) ||
-                lowerName.endsWith(".m3u8") ||
-                lowerName.endsWith(".m4s") ||
-                lowerName.endsWith(".ts") ||
-                lowerName === "metadata.json"
-              ) {
-                let file = null;
-                if (lowerName === "metadata.json") {
-                  try { file = await entry.getFile(); } catch {}
-                }
-                entries.push({
-                  file,
-                  handle: entry,
-                  name: entry.name,
-                  subfolders: pathParts,
-                  relPath: [...pathParts, entry.name].join("/"),
-                });
-              }
-            } else if (entry.kind === "directory" && !entry.name.startsWith(".") && entry.name !== "node_modules") {
-              await walk(entry, [...pathParts, entry.name]);
-            }
-          } catch (entryErr) {
-            console.warn("Skipping file entry:", entry.name, entryErr);
-          }
+          if (!entry.name.startsWith(".") && entry.name !== "node_modules") children.push(entry);
         }
       } catch (dirErr) {
         console.warn("Skipping directory:", pathParts.join("/"), dirErr);
+        return;
       }
-    }
+
+      const fileNames = new Set(children.filter((entry) => entry.kind === "file").map((entry) => entry.name.toLowerCase()));
+      const dirNames = new Set(children.filter((entry) => entry.kind === "directory").map((entry) => entry.name.toLowerCase()));
+      if (directoryLooksLikeHlsPackage(fileNames, dirNames)) {
+        for (const entry of children) {
+          if (entry.kind !== "file") continue;
+          const lowerName = entry.name.toLowerCase();
+          if (!lowerName.endsWith(".m3u8") && lowerName !== "metadata.json") continue;
+          let file = null;
+          if (lowerName === "metadata.json") {
+            try { file = await entry.getFile(); } catch {}
+          }
+          entries.push({
+            file,
+            handle: entry,
+            name: entry.name,
+            subfolders: pathParts,
+            relPath: [...pathParts, entry.name].join("/"),
+            packageRootHandle: handle,
+          });
+        }
+        if (entries.length && entries.length % 25 === 0) {
+          setStatus(`Scanning “${rootFolderName}”… ${entries.length} videos`, true);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        return;
+      }
+
+      for (const entry of children) {
+        try {
+          if (entry.kind === "file") {
+            if (!core.isLikelyVideoUrl(entry.name)) continue;
+            entries.push({
+              file: null,
+              handle: entry,
+              name: entry.name,
+              subfolders: pathParts,
+              relPath: [...pathParts, entry.name].join("/"),
+            });
+          } else if (entry.kind === "directory" && entry.name.toLowerCase() !== "segments") {
+            await walk(entry, [...pathParts, entry.name]);
+          }
+        } catch (entryErr) {
+          console.warn("Skipping file entry:", entry.name, entryErr);
+        }
+      }
+    };
 
     await walk(dirHandle, []);
     await processImportedFolderEntries(entries, rootFolderName);
@@ -746,7 +803,7 @@ async function scanFolderPath(folderPath) {
 
   try {
     const response = await fetch(`/api/scan-folder?path=${encodeURIComponent(folderPath)}`, {
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(180000),
     });
     const text = await response.text();
     let result = null;
@@ -842,6 +899,12 @@ async function scanFolderPath(folderPath) {
       state.videos.unshift(nextVideo);
       if (!firstAddedId) firstAddedId = nextVideo.id;
       addedCount += 1;
+      recordActivity({
+        action: "Imported",
+        title: nextVideo.title,
+        videoId: nextVideo.id,
+        detail: folderName,
+      }, { save: false });
     });
 
     const targetId = firstAddedId || firstMatchedId;
@@ -1073,6 +1136,12 @@ function addVideo(video, options = {}) {
   };
   state.videos.unshift(next);
   state.selectedId = next.id;
+  recordActivity({
+    action: "Imported",
+    title: next.title,
+    videoId: next.id,
+    detail: next.sourceUrl,
+  }, { save: false });
   saveState();
   render();
   if (options.reveal !== false) showDesk("screen");
@@ -1126,6 +1195,12 @@ function selectVideo(id) {
   const current = selectedVideo();
   if (current && current.id !== id) void flushFolderMetadata(current);
   state.selectedId = id;
+  const video = selectedVideo();
+  recordActivity({
+    action: "Watched",
+    title: video?.title,
+    videoId: id,
+  }, { save: false });
   saveState();
   render();
   showDesk("screen");
@@ -1147,6 +1222,7 @@ function clearAll() {
     videos: [],
     collections: state.collections || [],
     scrapeHistory: state.scrapeHistory || [],
+    activity: state.activity || [],
     lastOfflineFolderName: state.lastOfflineFolderName || "",
     lastScannedFolder: state.lastScannedFolder || "",
   };
@@ -1167,6 +1243,7 @@ function render() {
   renderLibraryOfflineManager();
   renderTranscript();
   renderScriptDeskPills();
+  renderActivity();
 }
 
 function recordScrape(url, details) {
@@ -1183,6 +1260,58 @@ function recordScrape(url, details) {
   state.scrapeHistory = [entry, ...(state.scrapeHistory || [])].slice(0, 100);
   saveState();
   renderScrapeHistory();
+}
+
+function recordActivity(entry, options = {}) {
+  const item = {
+    id: crypto.randomUUID(),
+    action: entry.action || "Saved",
+    title: entry.title || "Untitled video",
+    videoId: entry.videoId || "",
+    detail: entry.detail || "",
+    at: new Date().toISOString(),
+  };
+  state.activity = [item, ...(state.activity || [])].slice(0, 300);
+  if (options.save !== false) saveState();
+  renderActivity();
+}
+
+function formatActivityTime(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function renderActivity() {
+  const list = document.querySelector("#activityList");
+  if (!list) return;
+  const items = state.activity || [];
+  list.innerHTML = items.map((item) => {
+    const detail = item.detail ? `<span class="activity-detail">${escapeHtml(item.detail)}</span>` : "";
+    return `<li>
+      <button type="button" data-video-id="${escapeHtml(item.videoId || "")}">
+        <span class="activity-action">${escapeHtml(item.action || "Saved")}</span>
+        <span class="activity-title">${escapeHtml(item.title || "Untitled video")}${detail}</span>
+        <time datetime="${escapeHtml(item.at || "")}">${escapeHtml(formatActivityTime(item.at))}</time>
+      </button>
+    </li>`;
+  }).join("");
+  list.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const videoId = button.dataset.videoId;
+      if (!videoId || !state.videos.some((video) => video.id === videoId)) {
+        setStatus("That video is no longer in the library.");
+        return;
+      }
+      selectVideo(videoId);
+    });
+  });
 }
 
 function renderRecentSources() {
@@ -2276,11 +2405,55 @@ function rememberPackageEntry(fileMap, relativePath, entry) {
   if (filename && !fileMap.has(filename.toLowerCase())) fileMap.set(filename.toLowerCase(), entry);
 }
 
+async function resolveHandlePath(rootHandle, relativePath) {
+  const parts = String(relativePath || "").split("/").filter(Boolean);
+  if (!parts.length || !rootHandle?.getDirectoryHandle || !rootHandle?.getFileHandle) return null;
+  let handle = rootHandle;
+  try {
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      handle = await handle.getDirectoryHandle(parts[index]);
+    }
+    return await handle.getFileHandle(parts[parts.length - 1]);
+  } catch {
+    return null;
+  }
+}
+
+function directoryLooksLikeHlsPackage(fileNames, dirNames) {
+  if (fileNames.has("master.m3u8") || fileNames.has("index.m3u8")) return true;
+  if (fileNames.has("playlist.m3u8") && (dirNames.has("audio") || dirNames.has("video") || dirNames.has("segments"))) return true;
+  if ((dirNames.has("audio") || dirNames.has("video") || dirNames.has("segments")) && [...fileNames].some((name) => name.endsWith(".m3u8"))) return true;
+  return dirNames.has("audio") && dirNames.has("video");
+}
+
 async function collectSavedArchiveFiles(directory, prefix = "", fileMap = new Map()) {
+  const children = [];
   for await (const entry of directory.values()) {
-    if (entry.name.startsWith(".")) continue;
+    if (!entry.name.startsWith(".")) children.push(entry);
+  }
+  const fileNames = new Set(children.filter((entry) => entry.kind === "file").map((entry) => entry.name.toLowerCase()));
+  const dirNames = new Set(children.filter((entry) => entry.kind === "directory").map((entry) => entry.name.toLowerCase()));
+  if (directoryLooksLikeHlsPackage(fileNames, dirNames)) {
+    packageRoots.set(fileMap, directory);
+    for (const entry of children) {
+      if (entry.kind !== "file") continue;
+      const lowerName = entry.name.toLowerCase();
+      if (!lowerName.endsWith(".m3u8") && lowerName !== "metadata.json") continue;
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      rememberPackageEntry(fileMap, relativePath, entry);
+    }
+    for (const relativePath of ["video/playlist.m3u8", "audio/playlist.m3u8"]) {
+      if (fileMap.has(relativePath)) continue;
+      const handle = await resolveHandlePath(directory, relativePath);
+      if (handle) rememberPackageEntry(fileMap, relativePath, handle);
+    }
+    return fileMap;
+  }
+
+  for (const entry of children) {
     const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
     if (entry.kind === "directory") {
+      if (entry.name.toLowerCase() === "segments") continue;
       await collectSavedArchiveFiles(entry, relativePath, fileMap);
     } else if (entry.kind === "file") {
       rememberPackageEntry(fileMap, relativePath, entry);
@@ -2292,7 +2465,7 @@ async function collectSavedArchiveFiles(directory, prefix = "", fileMap = new Ma
 async function connectSavedArchive(video, directory) {
   if (!video || !directory?.values) return false;
   const fileMap = await collectSavedArchiveFiles(directory);
-  const manifestName = ["master.m3u8", "playlist.m3u8", "index.m3u8"].find((name) => fileMap.has(name));
+  const manifestName = ["master.m3u8", "index.m3u8", "video/playlist.m3u8", "audio/playlist.m3u8", "playlist.m3u8"].find((name) => fileMap.has(name));
 
   if (manifestName) {
     const packageId = savedPackageId(video);
@@ -2622,6 +2795,12 @@ async function writeDownloadPlan(video, plan) {
   delete video.offlineResumePaths;
   delete video.offlineStalled;
   saveState();
+  recordActivity({
+    action: "Downloaded",
+    title: video.title,
+    videoId: video.id,
+    detail: video.offlineExportedTo || "",
+  });
   renderLibrary();
   renderLibraryOfflineManager();
 }
@@ -2813,6 +2992,12 @@ async function exportOfflineCopy(video) {
   video.offlineExportedAt = new Date().toISOString();
   await connectSavedArchive(video, destination);
   saveState();
+  recordActivity({
+    action: "Downloaded",
+    title: video.title,
+    videoId: video.id,
+    detail: video.offlineExportedTo || "",
+  });
   renderLibrary();
   renderLibraryOfflineManager();
   setStatus(`Copied “${video.title || "Untitled video"}” to “${offlineExportDirectoryHandle.name}”.`);
