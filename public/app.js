@@ -99,6 +99,8 @@ let embedPlaying = false;
 let embedPlaybackKey = "";
 let playlistMenuVideoId = "";
 let playlistMenuVideoIds = [];
+let playingPlaylistId = "";
+let pendingPlaylistPlay = false;
 let playlistAddOpenId = "";
 let playlistAddQuery = "";
 const playlistAddSelection = new Set();
@@ -369,6 +371,7 @@ function bindEvents() {
   ["play", "pause", "ended"].forEach((eventName) => {
     els.videoPlayer?.addEventListener(eventName, syncPlayButton);
   });
+  els.videoPlayer?.addEventListener("ended", advancePlaylist);
   document.querySelector("#downloadCurrentButton")?.addEventListener("click", () => {
     const video = selectedVideo();
     if (!video || hasDiskCopy(video)) return;
@@ -491,6 +494,11 @@ function bindEvents() {
     }
     if (removeList) {
       deletePlaylist(removeList.dataset.deletePlaylist);
+      return;
+    }
+    const playList = event.target.closest("[data-play-playlist]");
+    if (playList) {
+      playPlaylist(playList.dataset.playPlaylist);
       return;
     }
     if (open) selectVideo(open.dataset.openVideo);
@@ -1570,7 +1578,12 @@ function updateTranscriptFields() {
   scheduleFolderMetadataSave(video);
 }
 
-function selectVideo(id) {
+function selectVideo(id, options = {}) {
+  if (!options.fromPlaylist) {
+    const playlist = playlists().find((item) => item.id === playingPlaylistId);
+    if (!playlist || !playlistVideos(playlist).some((video) => video.id === id)) playingPlaylistId = "";
+    pendingPlaylistPlay = false;
+  }
   const current = selectedVideo();
   if (current && current.id !== id) void flushFolderMetadata(current);
   state.selectedId = id;
@@ -1994,6 +2007,68 @@ function playlistVideos(playlist) {
   });
 }
 
+function playPlaylist(playlistId) {
+  const playlist = playlists().find((item) => item.id === playlistId);
+  if (!playlist) return;
+  const videos = playlistVideos(playlist);
+  if (!videos.length) {
+    setStatus(`“${playlist.name}” has no videos to play.`);
+    return;
+  }
+  playingPlaylistId = playlist.id;
+  pendingPlaylistPlay = true;
+  selectVideo(videos[0].id, { fromPlaylist: true });
+  setStatus(`Playing “${playlist.name}”.`);
+}
+
+function advancePlaylist() {
+  if (!playingPlaylistId || pendingPlaylistPlay || transcriptionEndedHandler) return;
+  const playlist = playlists().find((item) => item.id === playingPlaylistId);
+  const videos = playlist ? playlistVideos(playlist) : [];
+  const index = videos.findIndex((video) => video.id === state.selectedId);
+  const next = index >= 0 ? videos[index + 1] : null;
+  if (!playlist || !next) {
+    const name = playlist?.name;
+    playingPlaylistId = "";
+    pendingPlaylistPlay = false;
+    if (name) setStatus(`Finished “${name}”.`);
+    renderPlaylists();
+    return;
+  }
+  pendingPlaylistPlay = true;
+  selectVideo(next.id, { fromPlaylist: true });
+}
+
+function armPlaylistAutoplay() {
+  if (!pendingPlaylistPlay || !els.videoPlayer) return;
+  const armedFor = state.selectedId;
+  const start = () => {
+    if (!pendingPlaylistPlay || state.selectedId !== armedFor) return;
+    pendingPlaylistPlay = false;
+    void ensurePlayerPlaying();
+  };
+  if (els.playerShell?.dataset.mode === "embed") {
+    const player = els.embedPlayer;
+    const previous = player.onload;
+    player.onload = (event) => {
+      if (typeof previous === "function") previous.call(player, event);
+      start();
+    };
+    return;
+  }
+  if (els.videoPlayer.readyState >= 2 && els.videoPlayer.src) {
+    start();
+    return;
+  }
+  const onReady = () => {
+    els.videoPlayer.removeEventListener("loadeddata", onReady);
+    els.videoPlayer.removeEventListener("canplay", onReady);
+    start();
+  };
+  els.videoPlayer.addEventListener("loadeddata", onReady);
+  els.videoPlayer.addEventListener("canplay", onReady);
+}
+
 function createPlaylist(name, videoIds = []) {
   const trimmed = String(name || "").trim();
   if (!trimmed) return null;
@@ -2324,7 +2399,8 @@ function renderPlaylists() {
     const panelId = `playlist-videos-${playlist.id}`;
     const adding = playlistAddOpenId === playlist.id;
     const adder = playlistAdderHtml(playlist);
-    return `<section class="playlist-block${collapsed ? " is-collapsed" : ""}"><header><button class="playlist-toggle" type="button" data-toggle-playlist="${escapeHtml(playlist.id)}" aria-expanded="${collapsed ? "false" : "true"}" aria-controls="${escapeHtml(panelId)}"><svg class="playlist-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="playlist-heading"><span class="playlist-name">${escapeHtml(playlist.name)}</span><span class="playlist-count">${count}</span></span></button><div class="playlist-actions"><button class="playlist-add" type="button" data-add-to-playlist="${escapeHtml(playlist.id)}" aria-expanded="${adding ? "true" : "false"}">${adding ? "Close" : "Add videos"}</button><button class="playlist-delete" type="button" data-delete-playlist="${escapeHtml(playlist.id)}">Delete</button></div></header>${adder}<ul class="playlist-videos" id="${escapeHtml(panelId)}"${collapsed ? " hidden" : ""}>${rows}</ul></section>`;
+    const playing = playingPlaylistId === playlist.id;
+    return `<section class="playlist-block${collapsed ? " is-collapsed" : ""}${playing ? " is-playing" : ""}"><header><button class="playlist-toggle" type="button" data-toggle-playlist="${escapeHtml(playlist.id)}" aria-expanded="${collapsed ? "false" : "true"}" aria-controls="${escapeHtml(panelId)}"><svg class="playlist-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="playlist-heading"><span class="playlist-name">${escapeHtml(playlist.name)}</span><span class="playlist-count">${count}</span></span></button><div class="playlist-actions"><button class="playlist-play" type="button" data-play-playlist="${escapeHtml(playlist.id)}"${videos.length ? "" : " disabled"}>Play</button><button class="playlist-add" type="button" data-add-to-playlist="${escapeHtml(playlist.id)}" aria-expanded="${adding ? "true" : "false"}">${adding ? "Close" : "Add videos"}</button><button class="playlist-delete" type="button" data-delete-playlist="${escapeHtml(playlist.id)}">Delete</button></div></header>${adder}<ul class="playlist-videos" id="${escapeHtml(panelId)}"${collapsed ? " hidden" : ""}>${rows}</ul></section>`;
   }).join("");
   renderPlaylistAddCandidates();
 }
@@ -2887,6 +2963,10 @@ function renderPlayer(options = {}) {
   if (keepEmbed) {
     els.openVideoButton.disabled = !video?.url;
     els.retryPlaybackButton.disabled = !video?.url;
+    if (pendingPlaylistPlay) {
+      pendingPlaylistPlay = false;
+      void ensurePlayerPlaying();
+    }
     return;
   }
 
@@ -2915,6 +2995,10 @@ function renderPlayer(options = {}) {
       if (emptyCopy) emptyCopy.textContent = "Select a reel, or scan a folder to load one.";
       setPlayerStatus("Select a saved video to begin.");
     }
+    if (pendingPlaylistPlay) {
+      pendingPlaylistPlay = false;
+      advancePlaylist();
+    }
     return;
   }
 
@@ -2936,6 +3020,7 @@ function renderPlayer(options = {}) {
       els.videoPlayer.onerror = () => setPlayerStatus("The browser could not load this saved video copy.");
       els.videoPlayer.src = video.offlineUrl;
       setPlayerStatus("Loading the saved disk copy...");
+      armPlaylistAutoplay();
     }
     return;
   }
@@ -2949,6 +3034,7 @@ function renderPlayer(options = {}) {
       els.videoPlayer.onerror = () => setPlayerStatus("This media server blocked browser playback.");
       els.videoPlayer.src = video.streamUrl;
       setPlayerStatus("Loading direct video...");
+      armPlaylistAutoplay();
     }
     return;
   }
@@ -2965,6 +3051,7 @@ function renderPlayer(options = {}) {
       } else if (embedUrl) {
         embedPlaybackKey = `${videoId}|${embedUrl}`;
         els.embedPlayer.onload = () => markSelectedPlaybackReady(videoId, "The provider player loaded successfully.");
+        armPlaylistAutoplay();
         els.embedPlayer.src = embedUrl;
         els.playerShell.dataset.mode = "embed";
         setPlayerStatus("Loading the provider's embedded player.");
@@ -2977,6 +3064,7 @@ function renderPlayer(options = {}) {
   if (embedUrl) {
     embedPlaybackKey = `${video.id}|${embedUrl}`;
     els.embedPlayer.onload = () => markSelectedPlaybackReady(video.id, "The provider player loaded successfully.");
+    armPlaylistAutoplay();
     els.embedPlayer.src = embedUrl;
     els.playerShell.dataset.mode = "embed";
     setPlayerStatus("Loading the provider's secure embedded player. Use Open original if access requires sign-in.");
@@ -2994,6 +3082,7 @@ function renderPlayer(options = {}) {
     setPlayerStatus("This media server blocked browser playback. Try Open original or verify that the link is still public.");
   els.videoPlayer.src = video.url;
   setPlayerStatus("Loading direct video...");
+  armPlaylistAutoplay();
 }
 
 function markSelectedPlaybackReady(videoId, message) {
@@ -3079,6 +3168,7 @@ function loadHlsVideo(url, isOffline = false) {
         ? "Loading local HLS stream with separate audio/video segments..."
         : "Loading video stream..."
     );
+    armPlaylistAutoplay();
     return;
   }
 
@@ -3094,6 +3184,7 @@ function loadHlsVideo(url, isOffline = false) {
       );
     els.videoPlayer.src = url;
     setPlayerStatus(isOffline ? "Loading the saved HLS copy from disk..." : "Loading HLS with native playback...");
+    armPlaylistAutoplay();
     return;
   }
 

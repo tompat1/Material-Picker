@@ -2291,6 +2291,23 @@ progress::-moz-progress-bar {
   color: var(--accent);
 }
 
+.playlist-play {
+  flex: 0 0 auto;
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+.playlist-play:hover {
+  color: var(--ink);
+}
+
+.playlist-block.is-playing .playlist-name {
+  color: var(--accent);
+}
+
 .playlist-adder {
   display: grid;
   gap: 0.65rem;
