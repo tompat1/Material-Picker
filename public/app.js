@@ -287,11 +287,11 @@ class PackageHlsLoader {
 
 const thumbnailUrls = new Map();
 const thumbnailInFlight = new Set();
-const thumbnailRetryAfter = new Map();
+const thumbnailAttempts = new Map();
 const thumbnailJobs = [];
 let thumbnailDraining = false;
+let thumbnailActiveId = "";
 let thumbnailPausedUntil = 0;
-let thumbnailPauseTimer = 0;
 let thumbnailNoticeSent = false;
 
 function init() {
@@ -1406,10 +1406,9 @@ async function writeThumbnail(videoId, blob) {
 async function clearThumbnails() {
   thumbnailJobs.length = 0;
   thumbnailInFlight.clear();
-  thumbnailRetryAfter.clear();
+  thumbnailAttempts.clear();
+  thumbnailActiveId = "";
   thumbnailPausedUntil = 0;
-  if (thumbnailPauseTimer) clearTimeout(thumbnailPauseTimer);
-  thumbnailPauseTimer = 0;
   thumbnailUrls.forEach((url) => URL.revokeObjectURL(url));
   thumbnailUrls.clear();
   const db = await openThumbnailDb().catch(() => null);
@@ -1423,7 +1422,7 @@ async function clearThumbnails() {
 
 function showThumbnail(videoId, url) {
   document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(videoId)}"]`).forEach((element) => {
-    element.classList.remove("is-rendering");
+    element.classList.remove("is-rendering", "needs-render");
     const image = document.createElement("img");
     image.alt = "";
     image.src = url;
@@ -1431,9 +1430,52 @@ function showThumbnail(videoId, url) {
   });
 }
 
+function thumbnailSpinner() {
+  const spinner = document.createElement("span");
+  spinner.className = "thumb-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  return spinner;
+}
+
+function thumbnailRetryControl(videoId) {
+  const button = document.createElement("span");
+  button.className = "thumb-render";
+  button.dataset.renderThumb = videoId;
+  button.setAttribute("role", "button");
+  button.tabIndex = 0;
+  button.setAttribute("aria-label", "Render thumbnail");
+  button.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.35-3.45"/><path d="M13.2 2.4v3.1H10"/></svg>`;
+  const start = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const video = state.videos.find((item) => item.id === videoId);
+    if (video) queueThumbnail(video, { manual: true });
+  };
+  button.addEventListener("click", start);
+  button.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    start(event);
+  });
+  return button;
+}
+
 function markThumbnailRendering(videoId) {
+  thumbnailActiveId = videoId;
   document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(videoId)}"]`).forEach((element) => {
-    if (!element.querySelector("img")) element.classList.add("is-rendering");
+    if (element.querySelector("img")) return;
+    element.classList.remove("needs-render");
+    element.classList.add("is-rendering");
+    element.replaceChildren(thumbnailSpinner());
+  });
+}
+
+function showThumbnailRetry(videoId) {
+  if (thumbnailActiveId === videoId) thumbnailActiveId = "";
+  document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(videoId)}"]`).forEach((element) => {
+    if (element.querySelector("img")) return;
+    element.classList.remove("is-rendering");
+    element.classList.add("needs-render");
+    element.replaceChildren(thumbnailRetryControl(videoId));
   });
 }
 
@@ -1444,15 +1486,30 @@ async function applyCardThumbnail(element, video) {
     showThumbnail(video.id, known);
     return;
   }
+  if (thumbnailInFlight.has(video.id)) {
+    if (thumbnailActiveId === video.id) markThumbnailRendering(video.id);
+    return;
+  }
   const stored = await readThumbnail(video.id).catch(() => null);
+  if (thumbnailUrls.has(video.id)) {
+    showThumbnail(video.id, thumbnailUrls.get(video.id));
+    return;
+  }
+  if (thumbnailInFlight.has(video.id)) {
+    if (thumbnailActiveId === video.id) markThumbnailRendering(video.id);
+    return;
+  }
   if (stored) {
     const url = URL.createObjectURL(stored);
     thumbnailUrls.set(video.id, url);
+    thumbnailAttempts.set(video.id, Math.max(1, thumbnailAttempts.get(video.id) || 0));
     showThumbnail(video.id, url);
     return;
   }
-  if (Date.now() < thumbnailPausedUntil) return;
-  element.classList.add("is-rendering");
+  if ((thumbnailAttempts.get(video.id) || 0) >= 1 || Date.now() < thumbnailPausedUntil) {
+    showThumbnailRetry(video.id);
+    return;
+  }
   queueThumbnail(video);
 }
 
@@ -1474,26 +1531,22 @@ async function compactThumbnail(blob) {
 }
 
 function queueMissingThumbnails() {
-  const wait = thumbnailPausedUntil - Date.now();
-  if (wait > 0) {
-    scheduleThumbnailPass(wait);
-    return;
-  }
+  if (Date.now() < thumbnailPausedUntil) return;
   state.videos.forEach((video) => queueThumbnail(video));
 }
 
-function scheduleThumbnailPass(delay) {
-  if (thumbnailPauseTimer) return;
-  thumbnailPauseTimer = setTimeout(() => {
-    thumbnailPauseTimer = 0;
-    queueMissingThumbnails();
-  }, delay);
-}
-
-function queueThumbnail(video) {
+function queueThumbnail(video, options = {}) {
+  const manual = Boolean(options.manual);
   if (!video?.id || thumbnailUrls.has(video.id) || thumbnailInFlight.has(video.id)) return;
-  if (Date.now() < thumbnailPausedUntil) return;
-  if (Date.now() < (thumbnailRetryAfter.get(video.id) || 0)) return;
+  if (!manual && (thumbnailAttempts.get(video.id) || 0) >= 1) {
+    showThumbnailRetry(video.id);
+    return;
+  }
+  if (!manual && Date.now() < thumbnailPausedUntil) {
+    showThumbnailRetry(video.id);
+    return;
+  }
+  if (manual) thumbnailAttempts.delete(video.id);
   thumbnailInFlight.add(video.id);
   thumbnailJobs.push(video.id);
   void drainThumbnails();
@@ -1503,21 +1556,28 @@ async function drainThumbnails() {
   if (thumbnailDraining) return;
   thumbnailDraining = true;
   try {
-    while (thumbnailJobs.length && Date.now() >= thumbnailPausedUntil) {
+    while (thumbnailJobs.length) {
       const id = thumbnailJobs.shift();
       const video = state.videos.find((item) => item.id === id);
       if (!video || thumbnailUrls.has(id)) {
         thumbnailInFlight.delete(id);
         continue;
       }
+      if ((thumbnailAttempts.get(id) || 0) >= 1) {
+        thumbnailInFlight.delete(id);
+        showThumbnailRetry(id);
+        continue;
+      }
       const stored = await readThumbnail(id).catch(() => null);
       if (stored) {
         thumbnailInFlight.delete(id);
+        thumbnailAttempts.set(id, 1);
         const url = URL.createObjectURL(stored);
         thumbnailUrls.set(id, url);
         showThumbnail(id, url);
         continue;
       }
+      thumbnailAttempts.set(id, 1);
       markThumbnailRendering(id);
       const continued = await requestThumbnail(video);
       if (!continued) break;
@@ -1537,47 +1597,29 @@ async function requestThumbnail(video) {
       body: JSON.stringify({ prompt: thumbnailPrompt(video) }),
     });
   } catch {
-    releaseThumbnailAttempt(video.id);
+    finishThumbnailMiss(video.id);
     return true;
   }
   if (response.status === 503) {
-    releaseThumbnailAttempt(video.id);
-    thumbnailJobs.splice(0).forEach((id) => thumbnailInFlight.delete(id));
-    thumbnailPausedUntil = Date.now() + 20000;
-    scheduleThumbnailPass(20000);
-    if (!thumbnailNoticeSent) {
-      thumbnailNoticeSent = true;
-      setStatus("Thumbnails render with the Cloudflare image model. Connect that model to fill the list.");
-    }
-    document.querySelectorAll(".card-thumb.is-rendering").forEach((element) => element.classList.remove("is-rendering"));
+    stopThumbnailQueue("Thumbnails render with the Cloudflare image model. Connect that model to fill the list.");
     return false;
   }
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     const message = String(data.error || "");
-    thumbnailInFlight.delete(video.id);
-    document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(video.id)}"]`).forEach((element) => element.classList.remove("is-rendering"));
     if (/authentication/i.test(message)) {
-      thumbnailJobs.splice(0).forEach((id) => thumbnailInFlight.delete(id));
-      thumbnailPausedUntil = Date.now() + 60 * 60 * 1000;
-      if (thumbnailPauseTimer) clearTimeout(thumbnailPauseTimer);
-      thumbnailPauseTimer = 0;
-      if (!thumbnailNoticeSent) {
-        thumbnailNoticeSent = true;
-        setStatus("The thumbnail model rejected the Cloudflare API token. Check the token and account id, then refresh.");
-      }
+      stopThumbnailQueue("The thumbnail model rejected the Cloudflare API token. Check the token and account id, then refresh.");
       return false;
     }
-    releaseThumbnailAttempt(video.id);
+    finishThumbnailMiss(video.id);
     return true;
   }
   const blob = await compactThumbnail(await response.blob());
   if (!blob || !state.videos.some((item) => item.id === video.id)) {
-    thumbnailInFlight.delete(video.id);
+    finishThumbnailMiss(video.id);
     return true;
   }
   thumbnailInFlight.delete(video.id);
-  thumbnailRetryAfter.delete(video.id);
   await writeThumbnail(video.id, blob).catch(() => {});
   const url = URL.createObjectURL(blob);
   thumbnailUrls.set(video.id, url);
@@ -1585,10 +1627,23 @@ async function requestThumbnail(video) {
   return true;
 }
 
-function releaseThumbnailAttempt(videoId) {
+function finishThumbnailMiss(videoId) {
   thumbnailInFlight.delete(videoId);
-  thumbnailRetryAfter.set(videoId, Date.now() + 20000);
-  scheduleThumbnailPass(20000);
+  showThumbnailRetry(videoId);
+}
+
+function stopThumbnailQueue(message) {
+  thumbnailActiveId = "";
+  thumbnailPausedUntil = Date.now() + 60 * 60 * 1000;
+  thumbnailJobs.splice(0).forEach((id) => thumbnailInFlight.delete(id));
+  thumbnailInFlight.clear();
+  state.videos.forEach((video) => {
+    if (!thumbnailUrls.has(video.id)) showThumbnailRetry(video.id);
+  });
+  if (!thumbnailNoticeSent) {
+    thumbnailNoticeSent = true;
+    setStatus(message);
+  }
 }
 
 function updateSelectedFromForm() {

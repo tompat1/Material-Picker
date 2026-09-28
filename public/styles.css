@@ -2008,6 +2008,8 @@ progress::-moz-progress-bar {
 
 .card-thumb {
   grid-column: 1;
+  display: grid;
+  place-items: center;
   width: 4.75rem;
   height: 4.75rem;
   overflow: hidden;
@@ -2018,21 +2020,52 @@ progress::-moz-progress-bar {
   box-shadow: inset 0 0 0 1px rgba(244, 235, 221, 0.08);
 }
 
-.card-thumb.is-rendering {
-  background-image: linear-gradient(100deg, rgba(255, 122, 61, 0.05), rgba(255, 122, 61, 0.28), rgba(255, 122, 61, 0.05));
-  background-size: 200% 100%;
-  animation: thumb-wait 1.1s ease infinite;
+.thumb-spinner {
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 2px solid rgba(244, 235, 221, 0.28);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: thumb-spin 0.7s linear infinite;
 }
 
-@keyframes thumb-wait {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
+@keyframes thumb-spin {
+  to { transform: rotate(360deg); }
+}
+
+.thumb-render {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: rgba(40, 30, 25, 0.62);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.thumb-render svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.thumb-render:hover,
+.thumb-render:focus-visible {
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .card-thumb img {
   display: block;
   width: 100%;
   height: 100%;
+  align-self: stretch;
+  justify-self: stretch;
   object-fit: cover;
 }
 
