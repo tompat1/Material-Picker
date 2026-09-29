@@ -948,11 +948,58 @@ body:has(#chapterList:not(:empty)) .chapter-empty {
 
 .topic-result {
   display: grid;
-  grid-template-columns: 4.6rem minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.topic-open {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr);
   gap: 0.65rem;
   align-items: center;
-  padding: 0.55rem 0;
-  border-top: 1px solid var(--line);
+  min-width: 0;
+  padding: 0.2rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.topic-open:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+.topic-download {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.topic-download svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.topic-download[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 .topic-result img,
@@ -975,11 +1022,6 @@ body:has(#chapterList:not(:empty)) .chapter-empty {
 .topic-result span span {
   color: var(--muted);
   font-size: 0.78rem;
-}
-
-.topic-result .secondary-button {
-  min-height: 2rem;
-  padding: 0 0.75rem;
 }
 
 dialog {

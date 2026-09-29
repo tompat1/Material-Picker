@@ -361,9 +361,14 @@ function bindEvents() {
       }
       return;
     }
-    const addButton = event.target.closest("[data-add-topic]");
-    if (!addButton) return;
-    addTopicResult(addButton.closest(".topic-results"), addButton.dataset.addTopic);
+    const downloadButton = event.target.closest("[data-download-topic]");
+    if (downloadButton) {
+      queueTopicDownload(downloadButton.closest(".topic-results"), downloadButton.dataset.downloadTopic);
+      return;
+    }
+    const openButton = event.target.closest("[data-open-topic]");
+    if (!openButton) return;
+    openTopicResult(openButton.closest(".topic-results"), openButton.dataset.openTopic);
   });
   els.parsePasteButton.addEventListener("click", handlePasteExtract);
   els.addBlankButton.addEventListener("click", () => {
@@ -1402,17 +1407,23 @@ function topicSourceLabel() {
 
 function topicResultMarkup(results) {
   return results.map((item, index) => {
-    const saved = state.videos.some((video) => video.url === item.url);
+    const saved = state.videos.find((video) => video.url === item.url);
+    const marked = Boolean(saved && selectedVideoIds.has(saved.id));
+    const title = item.title || "Untitled video";
     const thumb = item.thumbnail
       ? `<img alt="" src="${escapeHtml(item.thumbnail)}" />`
       : `<span class="topic-thumb-fallback" aria-hidden="true"></span>`;
     return `<article class="topic-result">
-      ${thumb}
-      <span>
-        <strong>${escapeHtml(item.title || "Untitled video")}</strong>
-        <span>${escapeHtml([item.speaker, item.duration, item.source].filter(Boolean).join(" · "))}</span>
-      </span>
-      <button class="secondary-button" type="button" data-add-topic="${index}" ${saved ? "disabled" : ""}>${saved ? "In library" : "Add"}</button>
+      <button class="topic-open" type="button" data-open-topic="${index}">
+        ${thumb}
+        <span>
+          <strong>${escapeHtml(title)}</strong>
+          <span>${escapeHtml([item.speaker, item.duration, item.source].filter(Boolean).join(" · "))}</span>
+        </span>
+      </button>
+      <button class="topic-download" type="button" data-download-topic="${index}" aria-pressed="${marked ? "true" : "false"}" aria-label="${escapeHtml(marked ? `${title} is on the download list` : `Add ${title} to downloads`)}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg>
+      </button>
     </article>`;
   }).join("");
 }
@@ -1520,28 +1531,43 @@ async function searchTopics(event) {
   list.dataset.results = JSON.stringify(results);
 }
 
-function addTopicResult(list, index) {
+function topicItem(list, index) {
   const results = JSON.parse(list?.dataset.results || "[]");
   const item = results[Number(index)];
-  if (!item?.url) return;
-  if (state.videos.some((video) => video.url === item.url)) return;
-  addVideo({
+  return item?.url ? item : null;
+}
+
+function ensureTopicVideo(item) {
+  const existing = state.videos.find((video) => video.url === item.url);
+  if (existing) return existing.id;
+  return addVideo({
     title: item.title,
     speaker: item.speaker || "",
     url: item.url,
     sourceUrl: item.url,
     tags: item.source || topicSource,
   }, { reveal: false });
-  document.querySelectorAll(".topic-results").forEach((resultsList) => {
-    JSON.parse(resultsList.dataset.results || "[]").forEach((entry, entryIndex) => {
-      if (entry.url !== item.url) return;
-      const button = resultsList.querySelector(`[data-add-topic="${entryIndex}"]`);
-      if (!button) return;
-      button.disabled = true;
-      button.textContent = "In library";
-    });
-  });
-  setStatus(`Added “${item.title || "video"}”.`);
+}
+
+function openTopicResult(list, index) {
+  const item = topicItem(list, index);
+  if (!item) return;
+  document.querySelector("#addVideoDialog")?.close();
+  selectVideo(ensureTopicVideo(item));
+}
+
+function queueTopicDownload(list, index) {
+  const item = topicItem(list, index);
+  if (!item) return;
+  document.querySelector("#addVideoDialog")?.close();
+  const id = ensureTopicVideo(item);
+  selectedVideoIds.add(id);
+  saveState();
+  render();
+  document.body.classList.remove("is-mobile-player", "is-more-open");
+  document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
+  showDesk("downloads");
+  setStatus(`“${item.title || "This video"}” is on the download list. Confirm permission, then download it.`);
 }
 
 function addVideo(video, options = {}) {
