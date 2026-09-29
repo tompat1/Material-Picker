@@ -3730,19 +3730,29 @@ html[data-picker-theme="new-age"] .history-list {
 
   .library-filters {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.45rem;
-    overflow: auto;
+    position: relative;
+    z-index: 2;
   }
 
   .library-filters button {
     flex: none;
-    min-height: 2rem;
-    padding: 0.2rem 0.8rem;
+    min-height: 2.75rem;
+    padding: 0.35rem 0.95rem;
     border: 1px solid var(--line);
     border-radius: 999px;
     background: transparent;
     color: var(--ink);
     font: 560 0.82rem/1 var(--sans);
+    cursor: pointer;
+  }
+
+  .library-filter-status {
+    flex: 1 0 100%;
+    margin: 0.15rem 0 0;
+    color: var(--muted);
+    font-size: 0.82rem;
   }
 
   .library-filters button[aria-pressed="true"] {

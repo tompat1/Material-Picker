@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-46" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-47" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -247,6 +247,7 @@
               <button type="button" data-library-filter="all" aria-pressed="true">All videos</button>
               <button type="button" data-library-filter="offline" aria-pressed="false">Offline</button>
               <button type="button" data-library-filter="favourites" aria-pressed="false">Favourites</button>
+              <p id="libraryFilterStatus" class="library-filter-status" hidden></p>
             </div>
             <div class="filter-row">
               <button class="ghost-button" id="selectAllVideos" type="button" hidden>Select all</button>
@@ -658,6 +659,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-20" defer></script>
-    <script src="./app.js?v=picker-nav-64" defer></script>
+    <script src="./app.js?v=picker-nav-65" defer></script>
   </body>
 </html>

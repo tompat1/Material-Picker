@@ -349,6 +349,12 @@ function bindEvents() {
   els.importForm.addEventListener("submit", handleImport);
   document.querySelector("#topicSearchForm")?.addEventListener("submit", searchTopics);
   document.addEventListener("click", (event) => {
+    const filterButton = event.target.closest("[data-library-filter]");
+    if (filterButton) {
+      mobileLibraryFilter = filterButton.dataset.libraryFilter || "all";
+      renderLibrary();
+      return;
+    }
     const sourceButton = event.target.closest("[data-topic-source]");
     if (sourceButton) {
       topicSource = sourceButton.dataset.topicSource || "youtube";
@@ -394,15 +400,6 @@ function bindEvents() {
   document.querySelector("#moreClearLibrary")?.addEventListener("click", () => {
     closeMobileMenus();
     document.querySelector("#clearAllButton")?.click();
-  });
-  document.querySelectorAll("[data-library-filter]").forEach((button) => {
-    button.addEventListener("click", () => {
-      mobileLibraryFilter = button.dataset.libraryFilter || "all";
-      document.querySelectorAll("[data-library-filter]").forEach((item) => {
-        item.setAttribute("aria-pressed", item === button ? "true" : "false");
-      });
-      renderLibrary();
-    });
   });
   els.checkLibraryButton.addEventListener("click", checkLibraryPlayback);
   els.chooseLibraryFolderButton.addEventListener("click", chooseOfflineFolder);
@@ -2517,6 +2514,7 @@ async function measureLibraryMedia() {
 }
 
 function renderLibrary() {
+  syncLibraryFilters();
   const filtered = visibleVideos();
 
   els.videoList.innerHTML = "";
@@ -2536,6 +2534,7 @@ function renderLibrary() {
     syncSelectionPlaylistButton();
     syncSelectionNoteButton();
     syncSelectAllButton();
+    syncFavouriteButtons();
     paintLibraryTopics();
     return;
   }
@@ -2639,6 +2638,7 @@ function renderLibrary() {
   syncSelectionPlaylistButton();
   syncSelectionNoteButton();
   syncSelectAllButton();
+  syncFavouriteButtons();
   paintLibraryTopics();
 }
 
@@ -3078,6 +3078,7 @@ function toggleFavourite(videoId) {
     : [videoId, ...favouriteIds()];
   saveState();
   renderFavourites();
+  renderLibrary();
 }
 
 function syncFavouriteButtons() {
@@ -3103,6 +3104,30 @@ function renderFavourites() {
   if (empty) empty.hidden = videos.length > 0;
   list.innerHTML = videos.map((video) => `<li><button class="playlist-open" type="button" data-open-video="${escapeHtml(video.id)}"><strong>${escapeHtml(video.title || "Untitled video")}</strong><span>${escapeHtml(video.speaker || "")}</span></button><button class="favourite-toggle is-favourite" type="button" data-video-id="${escapeHtml(video.id)}" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-line" d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/><path class="heart-solid" d="M12 21.35 10.55 20C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/></svg></button></li>`).join("");
   syncFavouriteButtons();
+}
+
+function syncLibraryFilters() {
+  document.querySelectorAll("[data-library-filter]").forEach((button) => {
+    button.setAttribute("aria-pressed", button.dataset.libraryFilter === mobileLibraryFilter ? "true" : "false");
+  });
+  const status = document.querySelector("#libraryFilterStatus");
+  if (!status) return;
+  const visible = visibleVideos().length;
+  const total = state.videos.length;
+  if (mobileLibraryFilter === "offline") {
+    status.hidden = false;
+    status.textContent = visible
+      ? `${visible} of ${total} saved on this computer`
+      : "No videos saved on this computer yet.";
+  } else if (mobileLibraryFilter === "favourites") {
+    status.hidden = false;
+    status.textContent = visible
+      ? `${visible} favourite${visible === 1 ? "" : "s"}`
+      : "No favourites yet. Use the heart on a video.";
+  } else {
+    status.hidden = true;
+    status.textContent = "";
+  }
 }
 
 function visibleVideos() {
