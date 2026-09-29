@@ -1599,7 +1599,8 @@ async function handleUpdateFolderMetadata(request, response) {
         : "";
       if (cinematic) current.cinematic = cinematic;
       if (newAge) current.newAge = newAge;
-      if (cinematic || newAge) next.thumbnails = current;
+      if (incoming.thumbnails.newAgeLook === "pastel") current.newAgeLook = "pastel";
+      if (cinematic || newAge || current.newAgeLook) next.thumbnails = current;
       if (cinematic) next.thumbnail = cinematic;
     }
     if ("size" in incoming && Number(incoming.size) > 0) next.size = Number(incoming.size);

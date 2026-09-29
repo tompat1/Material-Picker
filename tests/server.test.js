@@ -450,7 +450,7 @@ test("folder metadata writes notes and a transcript into the video folder", asyn
         notes: "Remember the opening",
         transcript: "[00:01] Hello",
         thumbnail: "data:image/jpeg;base64,abc",
-        thumbnails: { cinematic: "data:image/jpeg;base64,abc", newAge: "data:image/jpeg;base64,def" },
+        thumbnails: { cinematic: "data:image/jpeg;base64,abc", newAge: "data:image/jpeg;base64,def", newAgeLook: "pastel" },
       },
     })),
   ]);
@@ -474,5 +474,6 @@ test("folder metadata writes notes and a transcript into the video folder", asyn
   assert.equal(saved.thumbnail, "data:image/jpeg;base64,abc");
   assert.equal(saved.thumbnails.cinematic, "data:image/jpeg;base64,abc");
   assert.equal(saved.thumbnails.newAge, "data:image/jpeg;base64,def");
+  assert.equal(saved.thumbnails.newAgeLook, "pastel");
 });
 

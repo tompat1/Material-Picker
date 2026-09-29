@@ -1373,15 +1373,15 @@ function thumbnailStyle() {
 }
 
 function thumbnailJobId(videoId, style = thumbnailStyle()) {
-  return style === "new-age" ? `${videoId}::new-age` : videoId;
+  return style === "new-age" ? `${videoId}::new-age-pastel` : videoId;
 }
 
 function videoIdFromThumbnailKey(key) {
-  return String(key || "").replace(/::new-age$/, "");
+  return String(key || "").replace(/::new-age(?:-pastel)?$/, "");
 }
 
 function styleFromThumbnailKey(key) {
-  return String(key || "").endsWith("::new-age") ? "new-age" : "cinematic";
+  return /::new-age(?:-pastel)?$/.test(String(key || "")) ? "new-age" : "cinematic";
 }
 
 function thumbnailPrompt(video, style = thumbnailStyle()) {
@@ -1398,9 +1398,9 @@ function thumbnailPrompt(video, style = thumbnailStyle()) {
   ].filter(Boolean);
   if (style === "new-age") {
     return [
-      "A single square photograph, no text, no letters, no watermark, no logo, no collage.",
+      "A single square photorealistic photograph, no text, no letters, no watermark, no logo, no collage, no portrait, no people.",
       ...subject,
-      "New-age contemplative still. Warm terracotta, clay, and sand. Quiet architecture with arches or stairs and an open sky, or a wide natural landscape with one small distant figure. Soft daylight, spacious and calm, photorealistic, no close-up portrait.",
+      "Dreamy new-age nature still in soft pastel light. One calm scene: sunrise over a misty mountain lake with wildflowers, warm dawn dunes, a dew-lit fern, a pale stone form in gentle daylight, a pink lotus on still water, a misty pine forest, or a quiet beach at sunset. Airy lavender, peach, blush, sage, and cream. Soft haze, spacious and serene.",
     ].join(" ");
   }
   return [
@@ -1414,7 +1414,7 @@ function syncThumbnailStyleControl() {
   const style = thumbnailStyle();
   document.documentElement.dataset.pickerTheme = style === "new-age" ? "new-age" : "cinematic";
   const themeColor = document.querySelector('meta[name="theme-color"]');
-  if (themeColor) themeColor.setAttribute("content", style === "new-age" ? "#f6efe8" : "#281E19");
+  if (themeColor) themeColor.setAttribute("content", style === "new-age" ? "#f3f0ed" : "#281E19");
   const cinematic = document.querySelector("#thumbStyleCinematic");
   const newer = document.querySelector("#thumbStyleNewAge");
   if (cinematic) cinematic.setAttribute("aria-pressed", style === "cinematic" ? "true" : "false");
@@ -1480,9 +1480,10 @@ function thumbnailDataUrl(value) {
 
 function metadataThumbnails(meta) {
   const stored = meta?.thumbnails && typeof meta.thumbnails === "object" ? meta.thumbnails : {};
+  const pastel = stored.newAgeLook === "pastel" ? thumbnailDataUrl(stored.newAge) || thumbnailDataUrl(stored["new-age"]) : "";
   return {
     cinematic: thumbnailDataUrl(stored.cinematic) || thumbnailDataUrl(meta?.thumbnail),
-    "new-age": thumbnailDataUrl(stored.newAge) || thumbnailDataUrl(stored["new-age"]),
+    "new-age": pastel,
   };
 }
 
@@ -1548,8 +1549,10 @@ function assignThumbnailMetadata(existing, style, dataUrl) {
   const record = existing && typeof existing === "object" ? existing : {};
   const thumbs = record.thumbnails && typeof record.thumbnails === "object" ? { ...record.thumbnails } : {};
   const field = style === "new-age" ? "newAge" : "cinematic";
-  if (thumbnailDataUrl(thumbs[field]) === dataUrl && (field === "newAge" || thumbnailDataUrl(record.thumbnail) === dataUrl)) return record;
+  const sameLook = field !== "newAge" || thumbs.newAgeLook === "pastel";
+  if (sameLook && thumbnailDataUrl(thumbs[field]) === dataUrl && (field === "newAge" || thumbnailDataUrl(record.thumbnail) === dataUrl)) return record;
   thumbs[field] = dataUrl;
+  if (field === "newAge") thumbs.newAgeLook = "pastel";
   record.thumbnails = thumbs;
   if (field === "cinematic") record.thumbnail = dataUrl;
   record.updatedAt = new Date().toISOString();
@@ -4338,7 +4341,10 @@ async function writeOfflineMetadata(destination, video, extra) {
       record.thumbnail = images.cinematic;
       record.thumbnails.cinematic = images.cinematic;
     }
-    if (images["new-age"]) record.thumbnails.newAge = images["new-age"];
+    if (images["new-age"]) {
+      record.thumbnails.newAge = images["new-age"];
+      record.thumbnails.newAgeLook = "pastel";
+    }
   }
   await writePlannedFile(destination, { path: "metadata.json", text: `${JSON.stringify(record, null, 2)}\n` }, () => {});
 }
