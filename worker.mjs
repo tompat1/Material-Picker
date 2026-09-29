@@ -1,4 +1,4 @@
-import { searchVideos } from "./video-search.mjs";
+import { searchVideos, videoFeed } from "./video-search.mjs";
 
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
@@ -706,7 +706,10 @@ export async function handleApiRequest(request, dependencies = {}) {
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/api/video-search") {
     try {
-      const results = await searchVideos(url.searchParams.get("q"), url.searchParams.get("source"), fetchImpl);
+      const feed = url.searchParams.get("feed");
+      const results = feed
+        ? await videoFeed(feed, fetchImpl)
+        : await searchVideos(url.searchParams.get("q"), url.searchParams.get("source"), fetchImpl);
       return json(200, { results });
     } catch (error) {
       return json(error.status || 502, { error: error.message || "The search could not be completed." });

@@ -146,12 +146,11 @@ function sendJson(response, status, data) {
 
 async function handleVideoSearch(response, requestUrl) {
   try {
-    const { searchVideos } = await import("./video-search.mjs");
-    const results = await searchVideos(
-      requestUrl.searchParams.get("q"),
-      requestUrl.searchParams.get("source"),
-      fetch,
-    );
+    const { searchVideos, videoFeed } = await import("./video-search.mjs");
+    const feed = requestUrl.searchParams.get("feed");
+    const results = feed
+      ? await videoFeed(feed, fetch)
+      : await searchVideos(requestUrl.searchParams.get("q"), requestUrl.searchParams.get("source"), fetch);
     return sendJson(response, 200, { results });
   } catch (error) {
     return sendJson(response, error.status || 502, { error: error.message || "The search could not be completed." });

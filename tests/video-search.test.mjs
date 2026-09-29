@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { searchVideos, videosFromDuckDuckGo, youtubeFromPayload } from "../video-search.mjs";
+import { searchVideos, videoFeed, videosFromDuckDuckGo, vimeoFromChannel, youtubeFromPayload } from "../video-search.mjs";
 
 test("youtube search keeps playable videos and skips duplicates", () => {
   const results = youtubeFromPayload({
@@ -33,6 +33,39 @@ test("web and vimeo results keep direct video pages", () => {
   const web = videosFromDuckDuckGo(html, "web");
   assert.equal(web.length, 2);
   assert.equal(web[1].source, "youtube");
+});
+
+test("vimeo staff picks keep the film page and runtime", () => {
+  const results = vimeoFromChannel([
+    { id: 173544356, title: "Jade", user_name: "Ada Clay", duration: 125, thumbnail_large: "https://i.vimeocdn.com/jade.jpg" },
+    { id: "nope", title: "Skip" },
+  ]);
+  assert.equal(results.length, 1);
+  assert.equal(results[0].url, "https://vimeo.com/173544356");
+  assert.equal(results[0].speaker, "Ada Clay");
+  assert.equal(results[0].duration, "2:05");
+  assert.equal(results[0].thumbnail, "https://i.vimeocdn.com/jade.jpg");
+  assert.equal(results[0].source, "vimeo");
+});
+
+test("popular feed asks YouTube for this week's most watched videos", async () => {
+  const results = await videoFeed("youtube-popular", async (url, options) => {
+    assert.match(url, /youtubei\/v1\/search/);
+    const body = JSON.parse(options.body);
+    assert.equal(body.params, "CAMSAggD");
+    assert.equal(body.query, "a");
+    return new Response(JSON.stringify({
+      contents: [{ videoRenderer: { videoId: "abcdefghijk", title: { simpleText: "A popular film" }, ownerText: { simpleText: "Studio" }, lengthText: { simpleText: "4:01" } } }],
+    }));
+  });
+  assert.equal(results[0].title, "A popular film");
+  assert.equal(results[0].source, "youtube");
+});
+
+test("unknown feeds are rejected before the network", async () => {
+  await assert.rejects(() => videoFeed("nope", async () => {
+    throw new Error("should not fetch");
+  }), /Unknown feed/);
 });
 
 test("search rejects a blank topic before calling the network", async () => {

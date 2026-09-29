@@ -127,6 +127,15 @@ let libraryTopicTimer = 0;
 let libraryTopicRequest = 0;
 let libraryTopicResults = [];
 let libraryTopicMessage = "";
+let libraryFeed = "youtube-popular";
+let libraryFeedRequest = 0;
+let libraryFeedResults = [];
+let libraryFeedMessage = "";
+const LIBRARY_FEEDS = [
+  { id: "youtube-popular", label: "YouTube Popular" },
+  { id: "youtube-latest", label: "YouTube Latest" },
+  { id: "vimeo-staff-picks", label: "Vimeo Staff Picks" },
+];
 let folderBrowseRunning = false;
 const selectedVideoIds = new Set();
 const offlinePackageFiles = new Map();
@@ -315,6 +324,7 @@ function init() {
     selectedVideoIds.add(video.id);
   });
   saveState();
+  void loadLibraryFeed();
   void restorePersistedFolders().then(() => loadFolderScript(selectedVideo()));
   void reconcileOfflineLibrary();
   void repairLegacyPageRecords({ automatic: true });
@@ -353,6 +363,12 @@ function bindEvents() {
     if (filterButton) {
       mobileLibraryFilter = filterButton.dataset.libraryFilter || "all";
       renderLibrary();
+      return;
+    }
+    const feedButton = event.target.closest("[data-video-feed]");
+    if (feedButton) {
+      libraryFeed = feedButton.dataset.videoFeed || "youtube-popular";
+      void loadLibraryFeed();
       return;
     }
     const sourceButton = event.target.closest("[data-topic-source]");
@@ -1446,6 +1462,62 @@ function paintLibraryTopics() {
     list.dataset.results = JSON.stringify(libraryTopicResults);
   }
   els.videoList.append(section);
+}
+
+function libraryFeedLabel() {
+  return LIBRARY_FEEDS.find((feed) => feed.id === libraryFeed)?.label || "Latest";
+}
+
+function paintLibraryFeeds() {
+  const topic = els.searchLibrary?.value.trim() || "";
+  if (mobileLibraryFilter !== "all" || topic.length >= 2 || !libraryFeedMessage) return;
+  const section = document.createElement("section");
+  section.className = "library-topic";
+  section.innerHTML = `
+    <h3>Latest</h3>
+    <div class="topic-sources" role="group" aria-label="Latest feeds">
+      ${LIBRARY_FEEDS.map((feed) => `<button type="button" data-video-feed="${feed.id}" aria-pressed="${feed.id === libraryFeed}">${feed.label}</button>`).join("")}
+    </div>
+    <p class="hint">${escapeHtml(libraryFeedMessage)}</p>
+    <div class="topic-results"></div>
+  `;
+  const list = section.querySelector(".topic-results");
+  if (libraryFeedResults.length && list) {
+    list.innerHTML = topicResultMarkup(libraryFeedResults);
+    list.dataset.results = JSON.stringify(libraryFeedResults);
+  }
+  els.videoList.append(section);
+}
+
+async function loadLibraryFeed() {
+  const requestId = ++libraryFeedRequest;
+  const feed = libraryFeed;
+  libraryFeedResults = [];
+  libraryFeedMessage = `Loading ${libraryFeedLabel()}…`;
+  renderLibrary();
+  let response;
+  try {
+    response = await fetch(`/api/video-search?feed=${encodeURIComponent(feed)}`);
+  } catch {
+    if (requestId !== libraryFeedRequest) return;
+    libraryFeedResults = [];
+    libraryFeedMessage = "That feed could not reach the server.";
+    renderLibrary();
+    return;
+  }
+  if (requestId !== libraryFeedRequest) return;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    libraryFeedResults = [];
+    libraryFeedMessage = data.error || "That feed is unavailable right now.";
+    renderLibrary();
+    return;
+  }
+  libraryFeedResults = Array.isArray(data.results) ? data.results : [];
+  libraryFeedMessage = libraryFeedResults.length
+    ? `${libraryFeedResults.length} videos · ${libraryFeedLabel()}`
+    : `No videos in ${libraryFeedLabel()} right now.`;
+  renderLibrary();
 }
 
 function queueLibraryTopicSearch({ immediate = false } = {}) {
@@ -2595,6 +2667,7 @@ function renderLibrary() {
     syncSelectAllButton();
     syncFavouriteButtons();
     paintLibraryTopics();
+    paintLibraryFeeds();
     return;
   }
 
@@ -2699,6 +2772,7 @@ function renderLibrary() {
   syncSelectAllButton();
   syncFavouriteButtons();
   paintLibraryTopics();
+  paintLibraryFeeds();
 }
 
 function playlists() {

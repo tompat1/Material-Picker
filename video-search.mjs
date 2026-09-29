@@ -88,7 +88,12 @@ export function videosFromDuckDuckGo(html, source) {
   return found;
 }
 
-async function youtubeSearch(topic, fetchImpl) {
+async function youtubeSearch(topic, fetchImpl, params) {
+  const body = {
+    context: { client: { clientName: "WEB", clientVersion: "2.20250925.01.00", hl: "en" } },
+    query: topic,
+  };
+  if (params) body.params = params;
   const response = await fetchImpl("https://www.youtube.com/youtubei/v1/search?prettyPrint=false", {
     method: "POST",
     headers: {
@@ -96,10 +101,7 @@ async function youtubeSearch(topic, fetchImpl) {
       origin: "https://www.youtube.com",
       "user-agent": USER_AGENT,
     },
-    body: JSON.stringify({
-      context: { client: { clientName: "WEB", clientVersion: "2.20250925.01.00", hl: "en" } },
-      query: topic,
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(20000),
   });
   if (!response.ok) {
@@ -122,6 +124,69 @@ async function duckDuckGo(query, fetchImpl) {
     throw error;
   }
   return response.text();
+}
+
+const FEEDS = {
+  "youtube-popular": {
+    label: "YouTube Popular",
+    load: (fetchImpl) => youtubeSearch("a", fetchImpl, "CAMSAggD"),
+  },
+  "youtube-latest": {
+    label: "YouTube Latest",
+    load: (fetchImpl) => youtubeSearch("a", fetchImpl, "CAISAggD"),
+  },
+  "vimeo-staff-picks": {
+    label: "Vimeo Staff Picks",
+    load: vimeoStaffPicks,
+  },
+};
+
+export function vimeoFromChannel(videos) {
+  return (Array.isArray(videos) ? videos : []).flatMap((video) => {
+    const id = String(video?.id || "");
+    if (!/^\d{5,}$/.test(id)) return [];
+    return [{
+      title: String(video.title || "Untitled video").trim() || "Untitled video",
+      speaker: String(video.user_name || "").trim(),
+      url: `https://vimeo.com/${id}`,
+      thumbnail: String(video.thumbnail_large || video.thumbnail_medium || ""),
+      duration: clock(video.duration),
+      source: "vimeo",
+    }];
+  }).slice(0, RESULT_LIMIT);
+}
+
+function clock(seconds) {
+  const total = Math.round(Number(seconds) || 0);
+  if (total <= 0) return "";
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remain = total % 60;
+  const clocked = `${minutes}:${String(remain).padStart(2, "0")}`;
+  return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remain).padStart(2, "0")}` : clocked;
+}
+
+async function vimeoStaffPicks(fetchImpl) {
+  const response = await fetchImpl("https://vimeo.com/api/v2/channel/staffpicks/videos.json", {
+    headers: { "user-agent": USER_AGENT, accept: "application/json" },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) {
+    const error = new Error("Vimeo Staff Picks are unavailable right now.");
+    error.status = 502;
+    throw error;
+  }
+  return vimeoFromChannel(await response.json());
+}
+
+export async function videoFeed(feedId, fetchImpl = fetch) {
+  const feed = FEEDS[feedId];
+  if (!feed) {
+    const error = new Error("Unknown feed.");
+    error.status = 400;
+    throw error;
+  }
+  return feed.load(fetchImpl);
 }
 
 function walk(node, visit) {
