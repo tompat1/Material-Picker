@@ -3768,6 +3768,9 @@ function syncEmbedPlaybackState(event) {
   }
   if (update.state === 3) return;
   embedPlaying = update.state === 1;
+  if (update.state === 0 || update.state === 1 || update.state === 2 || update.state === 5) {
+    setPlaybackFallback(false);
+  }
   syncPlayButton();
 }
 
@@ -4198,8 +4201,18 @@ function hidePlayerLoading() {
   els.playerLoadingOverlay.hidden = true;
 }
 
+function playbackConnected(message) {
+  return /loaded successfully|\bready\b/i.test(message);
+}
+
+function setPlaybackFallback(visible) {
+  const fallback = document.querySelector("#playbackFallback");
+  if (fallback) fallback.hidden = !visible;
+}
+
 function setPlayerStatus(message) {
   if (els.playerStatus) els.playerStatus.textContent = message;
+  setPlaybackFallback(!playbackConnected(message));
   const isConnectingOrLoading = /(?:Loading|Connecting|Recovering|Preparing)/i.test(message);
   const isDarkOrReadyOrBlocked = /(?:Screen is dark|screen is clear|ready|blocked|could not|cannot play|expired|error)/i.test(message);
   if (isConnectingOrLoading && !isDarkOrReadyOrBlocked) {

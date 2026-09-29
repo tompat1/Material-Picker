@@ -2970,6 +2970,10 @@ button.is-busy .amber-throbber {
   margin-right: 0.45rem;
 }
 
+.playback-fallback[hidden] {
+  display: none;
+}
+
 .playback-fallback {
   display: flex;
   align-items: center;
