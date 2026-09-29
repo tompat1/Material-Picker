@@ -2073,6 +2073,7 @@ progress::-moz-progress-bar {
 }
 
 .card-thumb {
+  position: relative;
   grid-column: 1;
   display: grid;
   place-items: center;
@@ -2184,7 +2185,15 @@ progress::-moz-progress-bar {
 }
 
 .card-duration {
-  display: none;
+  position: absolute;
+  left: 0.35rem;
+  bottom: 0.35rem;
+  z-index: 1;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(20, 14, 12, 0.72);
+  color: #f4ebdd;
+  font: 600 0.68rem/1.2 var(--sans);
 }
 
 .add-to-list,

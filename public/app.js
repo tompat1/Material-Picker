@@ -2337,7 +2337,7 @@ function renderLibrary() {
 
     const speaker = String(video.speaker || video.language || "").trim();
     const runtime = cardDurationLabel(video);
-    const extra = runtime || String(video.tags || "").trim();
+    const extra = String(video.tags || "").trim();
 
     const main = card.querySelector(".card-main");
     const knownThumb = thumbnailUrls.get(thumbnailJobId(video.id));
