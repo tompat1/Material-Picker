@@ -95,17 +95,46 @@
     return [...found.values()];
   }
 
+  function youtubeStartSeconds(parsed) {
+    const raw = parsed.searchParams.get("start") || parsed.searchParams.get("t") || "";
+    const text = String(raw).trim();
+    if (!text) return "";
+    if (/^\d+$/.test(text)) return text;
+    const match = text.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
+    if (!match || (!match[1] && !match[2] && !match[3])) return "";
+    return String(Number(match[1] || 0) * 3600 + Number(match[2] || 0) * 60 + Number(match[3] || 0));
+  }
+
+  function youtubeEmbedUrl(id, parsed) {
+    const params = new URLSearchParams({
+      playsinline: "1",
+      rel: "0",
+      enablejsapi: "1",
+      fs: "1",
+    });
+    const start = parsed ? youtubeStartSeconds(parsed) : "";
+    if (start && start !== "0") params.set("start", start);
+    try {
+      if (typeof location !== "undefined" && location.origin && location.origin !== "null") {
+        params.set("origin", location.origin);
+      }
+    } catch {
+      // Node tests have no page origin. The embed still plays inline without it.
+    }
+    return `https://www.youtube.com/embed/${id}?${params}`;
+  }
+
   function toEmbedUrl(url) {
     try {
       const parsed = new URL(url);
       if (parsed.hostname.includes("youtube.com")) {
         const parts = parsed.pathname.split("/").filter(Boolean);
-        const id = parsed.searchParams.get("v") || (parts[0] === "embed" ? parts[1] : parts.at(-1));
-        return id ? `https://www.youtube.com/embed/${id}` : "";
+        const id = parsed.searchParams.get("v") || (parts[0] === "embed" || parts[0] === "shorts" || parts[0] === "live" ? parts[1] : parts.at(-1));
+        return id && id !== "watch" ? youtubeEmbedUrl(id, parsed) : "";
       }
       if (parsed.hostname === "youtu.be") {
         const id = parsed.pathname.split("/").filter(Boolean)[0];
-        return id ? `https://www.youtube.com/embed/${id}` : "";
+        return id ? youtubeEmbedUrl(id, parsed) : "";
       }
       if (parsed.hostname.includes("vimeo.com")) {
         const id = parsed.pathname.split("/").filter(Boolean).find((part) => /^\d+$/.test(part));

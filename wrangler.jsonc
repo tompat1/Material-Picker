@@ -12,6 +12,14 @@
   "ai": {
     "binding": "AI"
   },
+  "previews": {
+    "browser": {
+      "binding": "BROWSER"
+    },
+    "ai": {
+      "binding": "AI"
+    }
+  },
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

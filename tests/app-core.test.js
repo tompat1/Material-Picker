@@ -21,6 +21,21 @@ test("extracts all 10 videos and their titles from the summit playlist", () => {
   assert.ok(videos.every((video) => video.sourceUrl === summitUrl));
 });
 
+test("builds a YouTube embed that plays inside the page", () => {
+  const watch = new URL(core.toEmbedUrl("https://www.youtube.com/watch?v=abcdefghijk"));
+  assert.equal(`${watch.origin}${watch.pathname}`, "https://www.youtube.com/embed/abcdefghijk");
+  assert.equal(watch.searchParams.get("playsinline"), "1");
+  assert.equal(watch.searchParams.get("enablejsapi"), "1");
+
+  const shortLink = new URL(core.toEmbedUrl("https://youtu.be/abcdefghijk?t=90"));
+  assert.equal(shortLink.pathname, "/embed/abcdefghijk");
+  assert.equal(shortLink.searchParams.get("playsinline"), "1");
+  assert.equal(shortLink.searchParams.get("start"), "90");
+
+  const shorts = new URL(core.toEmbedUrl("https://www.youtube.com/shorts/abcdefghijk"));
+  assert.equal(shorts.pathname, "/embed/abcdefghijk");
+});
+
 test("turns every summit Vimeo URL into a built-in player embed", () => {
   const videos = core.extractVideos(fixture, summitUrl);
   const playback = videos.map((video) => core.playbackKind(video.url));

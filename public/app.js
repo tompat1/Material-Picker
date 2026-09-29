@@ -430,6 +430,7 @@ function bindEvents() {
     document.querySelector("#addVideoDialog")?.showModal();
   });
   document.querySelector("#playVideoButton")?.addEventListener("click", togglePlayback);
+  window.addEventListener("message", syncEmbedPlaybackState);
   ["play", "pause", "ended"].forEach((eventName) => {
     els.videoPlayer?.addEventListener(eventName, syncPlayButton);
   });
@@ -3492,6 +3493,67 @@ function syncPlayButton() {
   button.setAttribute("aria-pressed", playing ? "true" : "false");
 }
 
+function embedCommandTarget() {
+  const src = els.embedPlayer?.getAttribute("src") || "";
+  try {
+    return src ? new URL(src, location.href).origin : "*";
+  } catch {
+    return "*";
+  }
+}
+
+function postEmbedCommand(command) {
+  const frame = els.embedPlayer;
+  const win = frame?.contentWindow;
+  if (!win) return;
+  const target = embedCommandTarget();
+  const youtube = /(^|\.)youtube\.com$/i.test(target.replace(/^https?:\/\//, "")) || /youtube\.com|youtu\.be/i.test(frame.getAttribute("src") || "");
+  try {
+    if (youtube) {
+      win.postMessage(JSON.stringify({ event: "listening", id: "embedPlayer", channel: "widget" }), target);
+      if (command !== "listening") {
+        win.postMessage(JSON.stringify({ event: "command", func: command, args: "" }), target);
+      }
+      return;
+    }
+    const method = command === "playVideo" ? "play" : command === "pauseVideo" ? "pause" : command;
+    win.postMessage(JSON.stringify({ method }), target);
+  } catch (error) {
+    console.warn("Embedded player command failed:", error);
+  }
+}
+
+function syncEmbedPlaybackState(event) {
+  const host = String(event.origin || "").replace(/^https?:\/\//, "");
+  if (!/(^|\.)youtube\.com$|(^|\.)youtube-nocookie\.com$|(^|\.)vimeo\.com$/i.test(host)) return;
+  let data = event.data;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return;
+    }
+  }
+  if (!data || typeof data !== "object") return;
+  if (data.event === "onError") {
+    const code = Number(data.info);
+    embedPlaying = false;
+    syncPlayButton();
+    if (code === 101 || code === 150) {
+      setPlayerStatus("This video cannot play inside Picker. Use Open original.");
+    } else if (code === 153) {
+      setPlayerStatus("YouTube blocked the in-app player. Use Open original.");
+    }
+    return;
+  }
+  const info = data.info ?? data.data;
+  const playerState = typeof info === "number" ? info : info?.playerState;
+  if (playerState === 1 || data.event === "play") embedPlaying = true;
+  else if (playerState === 0 || playerState === 2 || playerState === 5 || data.event === "pause" || data.event === "ended") embedPlaying = false;
+  else return;
+  syncPlayButton();
+}
+
 function togglePlayback() {
   if (!selectedVideo()) return;
   const mode = els.playerShell?.dataset.mode;
@@ -3501,14 +3563,8 @@ function togglePlayback() {
     return;
   }
   if (mode !== "embed" || !els.embedPlayer) return;
-  const method = embedPlaying ? "pause" : "play";
   const command = embedPlaying ? "pauseVideo" : "playVideo";
-  try {
-    els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ method }), "*");
-    els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ event: "command", func: command }), "*");
-  } catch (error) {
-    console.warn("Embedded player command failed:", error);
-  }
+  postEmbedCommand(command);
   embedPlaying = !embedPlaying;
   syncPlayButton();
 }
@@ -3523,14 +3579,9 @@ async function ensurePlayerPlaying() {
       console.warn("Automatic video playback could not be started:", error);
     }
   } else if (els.playerShell.dataset.mode === "embed") {
-    try {
-      els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ method: "play" }), "*");
-      els.embedPlayer.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "playVideo" }), "*");
-      embedPlaying = true;
-      syncPlayButton();
-    } catch (error) {
-      console.warn("Automatic embed playback could not be started:", error);
-    }
+    postEmbedCommand("playVideo");
+    embedPlaying = true;
+    syncPlayButton();
   }
 }
 
@@ -3754,7 +3805,10 @@ function renderPlayer(options = {}) {
         loadHlsVideo(streamUrl, false);
       } else if (embedUrl) {
         embedPlaybackKey = `${videoId}|${embedUrl}`;
-        els.embedPlayer.onload = () => markSelectedPlaybackReady(videoId, "The provider player loaded successfully.");
+        els.embedPlayer.onload = () => {
+          postEmbedCommand("listening");
+          markSelectedPlaybackReady(videoId, "The provider player loaded successfully.");
+        };
         armPlaylistAutoplay();
         els.embedPlayer.src = embedUrl;
         els.playerShell.dataset.mode = "embed";
@@ -3767,7 +3821,10 @@ function renderPlayer(options = {}) {
   const embedUrl = toEmbedUrl(video.url);
   if (embedUrl) {
     embedPlaybackKey = `${video.id}|${embedUrl}`;
-    els.embedPlayer.onload = () => markSelectedPlaybackReady(video.id, "The provider player loaded successfully.");
+    els.embedPlayer.onload = () => {
+      postEmbedCommand("listening");
+      markSelectedPlaybackReady(video.id, "The provider player loaded successfully.");
+    };
     armPlaylistAutoplay();
     els.embedPlayer.src = embedUrl;
     els.playerShell.dataset.mode = "embed";
