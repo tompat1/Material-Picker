@@ -1412,6 +1412,9 @@ function thumbnailPrompt(video, style = thumbnailStyle()) {
 
 function syncThumbnailStyleControl() {
   const style = thumbnailStyle();
+  document.documentElement.dataset.pickerTheme = style === "new-age" ? "new-age" : "cinematic";
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  if (themeColor) themeColor.setAttribute("content", style === "new-age" ? "#f6efe8" : "#281E19");
   const cinematic = document.querySelector("#thumbStyleCinematic");
   const newer = document.querySelector("#thumbStyleNewAge");
   if (cinematic) cinematic.setAttribute("aria-pressed", style === "cinematic" ? "true" : "false");
@@ -1428,6 +1431,7 @@ function setThumbnailStyle(style) {
   saveState();
   syncThumbnailStyleControl();
   renderLibrary();
+  renderPlayer();
   queueMissingThumbnails();
 }
 
@@ -3467,7 +3471,7 @@ function renderPlayer(options = {}) {
       if (emptyCopy) emptyCopy.textContent = "Add a video URL to put this reel on the screen.";
       setPlayerStatus("This reel has no video URL yet.");
     } else {
-      if (emptyTitle) emptyTitle.textContent = "Screen is dark";
+      if (emptyTitle) emptyTitle.textContent = thumbnailStyle() === "new-age" ? "The screen is clear" : "Screen is dark";
       if (emptyCopy) emptyCopy.textContent = "Select a reel, or scan a folder to load one.";
       setPlayerStatus("Select a saved video to begin.");
     }
@@ -3683,7 +3687,7 @@ function hidePlayerLoading() {
 function setPlayerStatus(message) {
   if (els.playerStatus) els.playerStatus.textContent = message;
   const isConnectingOrLoading = /(?:Loading|Connecting|Recovering|Preparing)/i.test(message);
-  const isDarkOrReadyOrBlocked = /(?:Screen is dark|ready|blocked|could not|cannot play|expired|error)/i.test(message);
+  const isDarkOrReadyOrBlocked = /(?:Screen is dark|screen is clear|ready|blocked|could not|cannot play|expired|error)/i.test(message);
   if (isConnectingOrLoading && !isDarkOrReadyOrBlocked) {
     showPlayerLoading(message);
   } else {
