@@ -2492,7 +2492,8 @@ function renderLibrary() {
     else if (mobileLibraryFilter === "favourites") message = "No favourites yet.";
     else if (activeCollectionId === "all") message = "The library is empty. Scan a folder or a page to add videos.";
     else if (activeCollectionId === "unfiled") message = "No unfiled videos.";
-    els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p></div>`;
+    const topicResultsShowing = searching && libraryTopicResults.length > 0;
+    if (!topicResultsShowing) els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p></div>`;
     renderVideoCount();
     renderLibraryTotals();
     void measureLibraryMedia();
