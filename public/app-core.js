@@ -124,6 +124,30 @@
     return `https://www.youtube.com/embed/${id}?${params}`;
   }
 
+  const YOUTUBE_PLAYER_STATES = new Set([-1, 0, 1, 2, 3, 5]);
+
+  function readEmbedPlaybackMessage(data) {
+    if (!data || typeof data !== "object") return null;
+    if (data.id && data.id !== "embedPlayer") return null;
+    if (data.event === "onReady") return { kind: "ready" };
+    if (data.event === "onError") {
+      const code = Number(data.info);
+      return Number.isInteger(code) ? { kind: "error", code } : null;
+    }
+    if (data.event === "onStateChange") {
+      const state = Number(data.info);
+      return YOUTUBE_PLAYER_STATES.has(state) ? { kind: "state", state } : null;
+    }
+    if (data.event === "infoDelivery") {
+      const state = Number(data.info?.playerState);
+      return YOUTUBE_PLAYER_STATES.has(state) ? { kind: "state", state } : null;
+    }
+    if (data.event === "play") return { kind: "state", state: 1 };
+    if (data.event === "pause") return { kind: "state", state: 2 };
+    if (data.event === "ended") return { kind: "state", state: 0 };
+    return null;
+  }
+
   function toEmbedUrl(url) {
     try {
       const parsed = new URL(url);
@@ -943,6 +967,7 @@
     saveState,
     sanitizeOfflineHlsManifest,
     toAbsoluteUrl,
+    readEmbedPlaybackMessage,
     toEmbedUrl,
     verifyArchive,
   };

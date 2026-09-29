@@ -36,6 +36,16 @@ test("builds a YouTube embed that plays inside the page", () => {
   assert.equal(shorts.pathname, "/embed/abcdefghijk");
 });
 
+test("reads confirmed YouTube player messages and ignores the rest", () => {
+  assert.deepEqual(core.readEmbedPlaybackMessage({ event: "onStateChange", info: 1, id: "embedPlayer" }), { kind: "state", state: 1 });
+  assert.deepEqual(core.readEmbedPlaybackMessage({ event: "infoDelivery", info: { playerState: 2 }, id: "embedPlayer" }), { kind: "state", state: 2 });
+  assert.deepEqual(core.readEmbedPlaybackMessage({ event: "onError", info: 150, id: "embedPlayer" }), { kind: "error", code: 150 });
+  assert.deepEqual(core.readEmbedPlaybackMessage({ event: "onReady", id: "embedPlayer" }), { kind: "ready" });
+  assert.equal(core.readEmbedPlaybackMessage({ event: "onStateChange", info: 1, id: "other-player" }), null);
+  assert.equal(core.readEmbedPlaybackMessage({ event: "onStateChange", info: "playing", id: "embedPlayer" }), null);
+  assert.equal(core.readEmbedPlaybackMessage({ event: "infoDelivery", info: { currentTime: 4 }, id: "embedPlayer" }), null);
+});
+
 test("turns every summit Vimeo URL into a built-in player embed", () => {
   const videos = core.extractVideos(fixture, summitUrl);
   const playback = videos.map((video) => core.playbackKind(video.url));

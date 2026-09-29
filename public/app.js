@@ -97,6 +97,7 @@ let recognition = null;
 let hlsPlayer = null;
 let embedPlaying = false;
 let embedPlaybackKey = "";
+let embedEventsBound = false;
 let playlistMenuVideoId = "";
 let playlistMenuVideoIds = [];
 let playingPlaylistId = "";
@@ -3502,6 +3503,21 @@ function embedCommandTarget() {
   }
 }
 
+function postYoutubeEmbed(win, target, payload) {
+  win.postMessage(JSON.stringify({ id: "embedPlayer", channel: "widget", ...payload }), target);
+}
+
+function bindYoutubeEmbedEvents(win, target) {
+  postYoutubeEmbed(win, target, { event: "command", func: "addEventListener", args: ["onStateChange"] });
+  postYoutubeEmbed(win, target, { event: "command", func: "addEventListener", args: ["onError"] });
+}
+
+function bindVimeoEmbedEvents(win, target) {
+  for (const value of ["play", "pause", "ended"]) {
+    win.postMessage(JSON.stringify({ method: "addEventListener", value }), target);
+  }
+}
+
 function postEmbedCommand(command) {
   const frame = els.embedPlayer;
   const win = frame?.contentWindow;
@@ -3510,11 +3526,16 @@ function postEmbedCommand(command) {
   const youtube = /(^|\.)youtube\.com$/i.test(target.replace(/^https?:\/\//, "")) || /youtube\.com|youtu\.be/i.test(frame.getAttribute("src") || "");
   try {
     if (youtube) {
-      win.postMessage(JSON.stringify({ event: "listening", id: "embedPlayer", channel: "widget" }), target);
+      postYoutubeEmbed(win, target, { event: "listening" });
+      if (!embedEventsBound) bindYoutubeEmbedEvents(win, target);
       if (command !== "listening") {
-        win.postMessage(JSON.stringify({ event: "command", func: command, args: "" }), target);
+        postYoutubeEmbed(win, target, { event: "command", func: command, args: "" });
       }
       return;
+    }
+    if (!embedEventsBound) {
+      bindVimeoEmbedEvents(win, target);
+      embedEventsBound = true;
     }
     const method = command === "playVideo" ? "play" : command === "pauseVideo" ? "pause" : command;
     win.postMessage(JSON.stringify({ method }), target);
@@ -3534,23 +3555,27 @@ function syncEmbedPlaybackState(event) {
       return;
     }
   }
-  if (!data || typeof data !== "object") return;
-  if (data.event === "onError") {
-    const code = Number(data.info);
-    embedPlaying = false;
-    syncPlayButton();
-    if (code === 101 || code === 150) {
-      setPlayerStatus("This video cannot play inside Picker. Use Open original.");
-    } else if (code === 153) {
-      setPlayerStatus("YouTube blocked the in-app player. Use Open original.");
-    }
+  const update = core.readEmbedPlaybackMessage?.(data);
+  if (!update) return;
+  if (update.kind === "ready") {
+    const win = els.embedPlayer?.contentWindow;
+    if (win && !embedEventsBound) bindYoutubeEmbedEvents(win, event.origin || embedCommandTarget());
+    embedEventsBound = true;
     return;
   }
-  const info = data.info ?? data.data;
-  const playerState = typeof info === "number" ? info : info?.playerState;
-  if (playerState === 1 || data.event === "play") embedPlaying = true;
-  else if (playerState === 0 || playerState === 2 || playerState === 5 || data.event === "pause" || data.event === "ended") embedPlaying = false;
-  else return;
+  if (update.kind === "error") {
+    embedPlaying = false;
+    syncPlayButton();
+    const message = update.code === 101 || update.code === 150
+      ? "This video cannot play inside Picker. Use Open original."
+      : update.code === 153
+        ? "YouTube blocked the in-app player. Use Open original."
+        : "";
+    if (message) markSelectedPlaybackBlocked(state.selectedId, message);
+    return;
+  }
+  if (update.state === 3) return;
+  embedPlaying = update.state === 1;
   syncPlayButton();
 }
 
@@ -3565,8 +3590,6 @@ function togglePlayback() {
   if (mode !== "embed" || !els.embedPlayer) return;
   const command = embedPlaying ? "pauseVideo" : "playVideo";
   postEmbedCommand(command);
-  embedPlaying = !embedPlaying;
-  syncPlayButton();
 }
 
 async function ensurePlayerPlaying() {
@@ -3580,8 +3603,6 @@ async function ensurePlayerPlaying() {
     }
   } else if (els.playerShell.dataset.mode === "embed") {
     postEmbedCommand("playVideo");
-    embedPlaying = true;
-    syncPlayButton();
   }
 }
 
@@ -3729,6 +3750,7 @@ function renderPlayer(options = {}) {
   }
 
   embedPlaying = false;
+  embedEventsBound = false;
   embedPlaybackKey = "";
   setReconnectFolderButton(false);
   if (els.playerShell) {
@@ -3850,6 +3872,17 @@ function markSelectedPlaybackReady(videoId, message) {
   const video = state.videos.find((item) => item.id === videoId);
   if (!video || state.selectedId !== videoId) return;
   video.playbackStatus = "ready";
+  video.playbackMessage = message;
+  video.checkedAt = new Date().toISOString();
+  saveState();
+  renderLibrary();
+  setPlayerStatus(message);
+}
+
+function markSelectedPlaybackBlocked(videoId, message) {
+  const video = state.videos.find((item) => item.id === videoId);
+  if (!video || state.selectedId !== videoId) return;
+  video.playbackStatus = "blocked";
   video.playbackMessage = message;
   video.checkedAt = new Date().toISOString();
   saveState();
