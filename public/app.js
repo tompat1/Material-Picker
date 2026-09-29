@@ -120,6 +120,7 @@ let libraryMeasureRunning = false;
 let verificationRunning = false;
 let state = loadState();
 let activeCollectionId = "all";
+let mobileLibraryFilter = "all";
 let folderBrowseRunning = false;
 const selectedVideoIds = new Set();
 const offlinePackageFiles = new Map();
@@ -348,6 +349,32 @@ function bindEvents() {
   els.clearAllButton.addEventListener("click", clearAll);
   document.querySelector("#thumbStyleCinematic")?.addEventListener("click", () => setThumbnailStyle("cinematic"));
   document.querySelector("#thumbStyleNewAge")?.addEventListener("click", () => setThumbnailStyle("new-age"));
+  document.querySelector("#mobileBack")?.addEventListener("click", () => closeMobilePlayer());
+  document.querySelector("#navMore")?.addEventListener("click", () => {
+    const open = document.body.classList.toggle("is-more-open");
+    document.querySelector("#navMore")?.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  document.querySelectorAll(".nav-sub label, #desk-library, #desk-downloads, #desk-transcripts").forEach((control) => {
+    control.addEventListener("change", closeMobileMenus);
+    control.addEventListener("click", closeMobileMenus);
+  });
+  document.querySelector("#moreCheckPlayback")?.addEventListener("click", () => {
+    closeMobileMenus();
+    document.querySelector("#checkLibraryButton")?.click();
+  });
+  document.querySelector("#moreClearLibrary")?.addEventListener("click", () => {
+    closeMobileMenus();
+    document.querySelector("#clearAllButton")?.click();
+  });
+  document.querySelectorAll("[data-library-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      mobileLibraryFilter = button.dataset.libraryFilter || "all";
+      document.querySelectorAll("[data-library-filter]").forEach((item) => {
+        item.setAttribute("aria-pressed", item === button ? "true" : "false");
+      });
+      renderLibrary();
+    });
+  });
   els.checkLibraryButton.addEventListener("click", checkLibraryPlayback);
   els.chooseLibraryFolderButton.addEventListener("click", chooseOfflineFolder);
   els.collectionForm?.addEventListener("submit", createCollection);
@@ -1976,7 +2003,21 @@ function selectVideo(id, options = {}) {
   saveState();
   render();
   showDesk("screen");
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    document.body.classList.remove("is-more-open");
+    document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
+    document.body.classList.add("is-mobile-player");
+  }
   void loadFolderScript(selectedVideo());
+}
+
+function closeMobilePlayer() {
+  document.body.classList.remove("is-mobile-player");
+}
+
+function closeMobileMenus() {
+  document.body.classList.remove("is-more-open", "is-mobile-player");
+  document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
 }
 
 function showDesk(name) {
@@ -2273,6 +2314,8 @@ function renderLibrary() {
     const searching = Boolean(els.searchLibrary.value.trim());
     let message = "This folder has no matching videos.";
     if (searching) message = "No videos match this search.";
+    else if (mobileLibraryFilter === "offline") message = "No offline videos yet.";
+    else if (mobileLibraryFilter === "favourites") message = "No favourites yet.";
     else if (activeCollectionId === "all") message = "The library is empty. Scan a folder or a page to add videos.";
     else if (activeCollectionId === "unfiled") message = "No unfiled videos.";
     els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p></div>`;
@@ -2299,7 +2342,7 @@ function renderLibrary() {
     const main = card.querySelector(".card-main");
     const knownThumb = thumbnailUrls.get(thumbnailJobId(video.id));
     main.innerHTML = `
-      <span class="card-thumb" data-video-id="${escapeHtml(video.id)}">${knownThumb ? `<img alt="" src="${escapeHtml(knownThumb)}">` : ""}</span>
+      <span class="card-thumb" data-video-id="${escapeHtml(video.id)}">${knownThumb ? `<img alt="" src="${escapeHtml(knownThumb)}">` : ""}${runtime ? `<span class="card-duration">${escapeHtml(runtime)}</span>` : ""}</span>
       <span class="card-copy">
         <strong>${escapeHtml(video.title || "Untitled video")}</strong>
         ${speaker ? `<span class="card-speaker">${escapeHtml(speaker)}</span>` : ""}
@@ -2859,7 +2902,13 @@ function visibleVideos() {
     const matchesCollection =
       activeCollectionId === "all" ||
       (activeCollectionId === "unfiled" ? !video.collectionId : video.collectionId === activeCollectionId);
-    return matchesSearch && matchesCollection;
+    const matchesPhone =
+      mobileLibraryFilter === "offline"
+        ? hasDiskCopy(video)
+        : mobileLibraryFilter === "favourites"
+          ? isFavourite(video.id)
+          : true;
+    return matchesSearch && matchesCollection && matchesPhone;
   });
 }
 
@@ -3259,7 +3308,10 @@ function syncPlayButton() {
   const playing = els.playerShell?.dataset.mode === "embed"
     ? embedPlaying
     : Boolean(els.playerShell?.dataset.mode === "video" && els.videoPlayer && !els.videoPlayer.paused && !els.videoPlayer.ended);
-  button.textContent = playing ? "Pause" : "Play";
+  const label = button.querySelector(".play-label");
+  if (label) label.textContent = playing ? "Pause" : "Play";
+  else button.textContent = playing ? "Pause" : "Play";
+  button.classList.toggle("is-playing", playing);
   button.setAttribute("aria-pressed", playing ? "true" : "false");
 }
 

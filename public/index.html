@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-37" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-39" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -51,6 +51,10 @@
           <span class="status-throbber amber-throbber amber-throbber--xs" aria-hidden="true"></span>
           <span class="status-text">Ready to add a video.</span>
         </p>
+        <button class="mobile-back" id="mobileBack" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg>
+          <span class="sr-only">Back to library</span>
+        </button>
         <div class="thumb-style" role="group" aria-label="Theme">
           <button type="button" id="thumbStyleCinematic" aria-pressed="true">
             <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.1 3.1a8.4 8.4 0 1 0 5.8 14.2A7.5 7.5 0 0 1 15.1 3.1Z"/></svg>
@@ -61,7 +65,10 @@
             New Age
           </button>
         </div>
-        <button class="primary-button" id="addVideoButton" type="button">Add video</button>
+        <button class="primary-button" id="addVideoButton" type="button">
+          <svg class="phone-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="add-video-label">Add video</span>
+        </button>
       </header>
 
       <nav class="rail workspace-nav" aria-label="Workspace">
@@ -72,20 +79,30 @@
         </a>
         <div class="nav-group">
           <input class="sr-only" type="radio" name="desk" id="desk-library" checked />
-          <label for="desk-library"><span class="nav-icon nav-icon--library" aria-hidden="true"></span>Library</label>
+          <label for="desk-library"><span class="nav-icon nav-icon--library" aria-hidden="true"></span><svg class="nav-glyph nav-glyph--fill" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7.2" height="7.2" rx="1.6"/><rect x="13.8" y="3" width="7.2" height="7.2" rx="1.6"/><rect x="3" y="13.8" width="7.2" height="7.2" rx="1.6"/><rect x="13.8" y="13.8" width="7.2" height="7.2" rx="1.6"/></svg><span>Library</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-downloads" />
-          <label for="desk-downloads"><span class="nav-icon nav-icon--downloads" aria-hidden="true"></span>Downloads</label>
+          <label for="desk-downloads"><span class="nav-icon nav-icon--downloads" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg><span>Downloads</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-transcripts" />
-          <label for="desk-transcripts"><span class="nav-icon nav-icon--transcripts" aria-hidden="true"></span>Transcripts</label>
+          <label for="desk-transcripts"><span class="nav-icon nav-icon--transcripts" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7.5A1.5 1.5 0 0 0 6 4.5v15A1.5 1.5 0 0 0 7.5 21h9a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3v5h5"/><path d="M8.5 13h7M8.5 17h4.5"/></svg><span>Transcripts</span></label>
+          <button class="nav-more" id="navMore" type="button" aria-expanded="false" aria-controls="moreSheet">
+            <svg class="nav-glyph nav-glyph--fill" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>
+            <span>More</span>
+          </button>
         </div>
         <div class="nav-rule" aria-hidden="true"></div>
-        <div class="nav-group nav-sub">
+        <div class="nav-group nav-sub" id="moreSheet">
           <input class="sr-only" type="radio" name="desk" id="desk-history" />
-          <label for="desk-history"><span class="nav-icon nav-icon--history" aria-hidden="true"></span>History</label>
+          <label for="desk-history"><span class="nav-icon nav-icon--history" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg><span>History</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-playlists" />
-          <label for="desk-playlists"><span class="nav-icon nav-icon--playlists" aria-hidden="true"></span>Playlists</label>
+          <label for="desk-playlists"><span class="nav-icon nav-icon--playlists" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg><span>Playlists</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-favourites" />
-          <label for="desk-favourites"><span class="nav-icon nav-icon--favourites" aria-hidden="true"></span>Favourites</label>
+          <label for="desk-favourites"><span class="nav-icon nav-icon--favourites" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/></svg><span>Favourites</span></label>
+          <button class="more-action" id="moreCheckPlayback" type="button">Check playback</button>
+          <button class="more-action" id="moreClearLibrary" type="button">Clear library</button>
+        </div>
+        <div class="phone-library-head">
+          <h2 class="phone-library-title">Your library</h2>
+          <p>Keep your curiosity.</p>
         </div>
         <label class="nav-search">
           <span class="nav-search-icon" aria-hidden="true">
@@ -207,6 +224,11 @@
             <div>
               <h2 id="libraryTitle">Up next</h2>
               <p class="library-totals" id="libraryTotals"><span id="videoCount">0</span> <span id="videoCountLabel">videos</span></p>
+            </div>
+            <div class="library-filters" role="group" aria-label="Library filter">
+              <button type="button" data-library-filter="all" aria-pressed="true">All videos</button>
+              <button type="button" data-library-filter="offline" aria-pressed="false">Offline</button>
+              <button type="button" data-library-filter="favourites" aria-pressed="false">Favourites</button>
             </div>
             <div class="filter-row">
               <button class="ghost-button" id="selectAllVideos" type="button" hidden>Select all</button>
@@ -336,8 +358,15 @@
                 </div>
               </div>
               <div class="button-row">
-                <button class="primary-button" id="playVideoButton" type="button" aria-pressed="false">Play</button>
-                <button class="secondary-button" id="downloadCurrentButton" type="button">Download</button>
+                <button class="primary-button" id="playVideoButton" type="button" aria-pressed="false">
+                  <svg class="phone-icon phone-icon--fill play-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.2v13.6L19 12z"/></svg>
+                  <svg class="phone-icon phone-icon--fill pause-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.2v14H7zM13.8 5H17v14h-3.2z"/></svg>
+                  <span class="play-label">Play</span>
+                </button>
+                <button class="secondary-button" id="downloadCurrentButton" type="button">
+                  <svg class="phone-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg>
+                  Download
+                </button>
               </div>
             </div>
 
@@ -412,6 +441,7 @@
             <h2 class="sr-only" id="transcriptTitle">Transcript</h2>
             <div class="button-row tight transcript-actions">
               <button class="secondary-button" id="startTranscriptButton" type="button">
+                <svg class="phone-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><path d="M12 17v4"/></svg>
                 <span class="rec-dot" aria-hidden="true"></span>
                 <span>Transcribe</span>
               </button>
@@ -454,12 +484,14 @@
               </select>
             </label>
             <button class="secondary-button" id="translateButton" type="button">
+              <svg class="phone-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 6 8"/><path d="m4 16 6-8 2 3"/><path d="M14 19h6"/><path d="M17 16v6"/><path d="M2 5h8"/><path d="M6 3v2c0 3-2 5-5 6"/></svg>
               <span>Translate</span>
             </button>
             <button class="ghost-button" id="proofreadButton" type="button">
               <span>Proofread</span>
             </button>
             <button class="ghost-button" id="downloadTranscriptButton" type="button">
+              <svg class="phone-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5"/><path d="m8 9 4-4 4 4"/><path d="M5 19h14"/></svg>
               <span>Export</span>
             </button>
           </div>
@@ -608,6 +640,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-18" defer></script>
-    <script src="./app.js?v=picker-nav-54" defer></script>
+    <script src="./app.js?v=picker-nav-56" defer></script>
   </body>
 </html>
