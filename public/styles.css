@@ -876,6 +876,87 @@ body:has(#chapterList:not(:empty)) .chapter-empty {
   display: none;
 }
 
+.topic-search,
+.library-topic {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 1.15rem;
+}
+
+.library-topic {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0.9rem 1rem 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.library-topic h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.topic-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.topic-sources button {
+  min-height: 2rem;
+  padding: 0.15rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: 560 0.82rem/1 var(--sans);
+}
+
+.topic-sources button[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.topic-results {
+  display: grid;
+}
+
+.topic-result {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.topic-result img,
+.topic-thumb-fallback {
+  width: 4.6rem;
+  height: 3.2rem;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--field);
+}
+
+.topic-result strong,
+.topic-result span span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topic-result span span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.topic-result .secondary-button {
+  min-height: 2rem;
+  padding: 0 0.75rem;
+}
+
 dialog {
   width: min(640px, calc(100vw - 32px));
   max-height: calc(100dvh - 48px);

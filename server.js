@@ -144,6 +144,20 @@ function sendJson(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
+async function handleVideoSearch(response, requestUrl) {
+  try {
+    const { searchVideos } = await import("./video-search.mjs");
+    const results = await searchVideos(
+      requestUrl.searchParams.get("q"),
+      requestUrl.searchParams.get("source"),
+      fetch,
+    );
+    return sendJson(response, 200, { results });
+  } catch (error) {
+    return sendJson(response, error.status || 502, { error: error.message || "The search could not be completed." });
+  }
+}
+
 async function handleScrape(request, response, requestUrl) {
   const target = requestUrl.searchParams.get("url");
   if (!target) return sendJson(response, 400, { error: "A page URL is required." });
@@ -1722,6 +1736,9 @@ function startServer() {
       return response.end();
     }
     const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+    if (request.method === "GET" && requestUrl.pathname === "/api/video-search") {
+      return handleVideoSearch(response, requestUrl);
+    }
     if (request.method === "GET" && requestUrl.pathname === "/api/scrape") {
       return handleScrape(request, response, requestUrl);
     }

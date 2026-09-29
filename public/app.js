@@ -121,6 +121,11 @@ let verificationRunning = false;
 let state = loadState();
 let activeCollectionId = "all";
 let mobileLibraryFilter = "all";
+let topicSource = "youtube";
+let libraryTopicTimer = 0;
+let libraryTopicRequest = 0;
+let libraryTopicResults = [];
+let libraryTopicMessage = "";
 let folderBrowseRunning = false;
 const selectedVideoIds = new Set();
 const offlinePackageFiles = new Map();
@@ -341,6 +346,24 @@ function bindEvents() {
   els.browseFolderButton?.addEventListener("click", handleBrowseFolder);
   els.localFolderInput?.addEventListener("change", handleLocalFolderInput);
   els.importForm.addEventListener("submit", handleImport);
+  document.querySelector("#topicSearchForm")?.addEventListener("submit", searchTopics);
+  document.addEventListener("click", (event) => {
+    const sourceButton = event.target.closest("[data-topic-source]");
+    if (sourceButton) {
+      topicSource = sourceButton.dataset.topicSource || "youtube";
+      document.querySelectorAll("[data-topic-source]").forEach((item) => {
+        item.setAttribute("aria-pressed", item.dataset.topicSource === topicSource ? "true" : "false");
+      });
+      if ((els.searchLibrary?.value.trim() || "").length >= 2) {
+        queueLibraryTopicSearch({ immediate: true });
+        renderLibrary();
+      }
+      return;
+    }
+    const addButton = event.target.closest("[data-add-topic]");
+    if (!addButton) return;
+    addTopicResult(addButton.closest(".topic-results"), addButton.dataset.addTopic);
+  });
   els.parsePasteButton.addEventListener("click", handlePasteExtract);
   els.addBlankButton.addEventListener("click", () => {
     addVideo({ title: "Untitled video" });
@@ -391,6 +414,7 @@ function bindEvents() {
   els.renameCollectionButton?.addEventListener("click", renameActiveCollection);
   els.searchLibrary.addEventListener("input", () => {
     syncNavSearch();
+    queueLibraryTopicSearch();
     renderLibrary();
     renderCollectionManager();
   });
@@ -1362,6 +1386,156 @@ function presentImportedVideos(ids) {
   document.querySelector(".library-offline-bar")?.scrollIntoView({ block: "nearest" });
 }
 
+function topicSourceLabel() {
+  if (topicSource === "vimeo") return "Vimeo";
+  if (topicSource === "web") return "Web";
+  return "YouTube";
+}
+
+function topicResultMarkup(results) {
+  return results.map((item, index) => {
+    const saved = state.videos.some((video) => video.url === item.url);
+    const thumb = item.thumbnail
+      ? `<img alt="" src="${escapeHtml(item.thumbnail)}" />`
+      : `<span class="topic-thumb-fallback" aria-hidden="true"></span>`;
+    return `<article class="topic-result">
+      ${thumb}
+      <span>
+        <strong>${escapeHtml(item.title || "Untitled video")}</strong>
+        <span>${escapeHtml([item.speaker, item.duration, item.source].filter(Boolean).join(" · "))}</span>
+      </span>
+      <button class="secondary-button" type="button" data-add-topic="${index}" ${saved ? "disabled" : ""}>${saved ? "In library" : "Add"}</button>
+    </article>`;
+  }).join("");
+}
+
+function paintLibraryTopics() {
+  const topic = els.searchLibrary?.value.trim() || "";
+  if (topic.length < 2 || !libraryTopicMessage) return;
+  const section = document.createElement("section");
+  section.className = "library-topic";
+  section.innerHTML = `
+    <h3>Find videos</h3>
+    <div class="topic-sources" role="group" aria-label="Where to search">
+      <button type="button" data-topic-source="youtube" aria-pressed="${topicSource === "youtube"}">YouTube</button>
+      <button type="button" data-topic-source="vimeo" aria-pressed="${topicSource === "vimeo"}">Vimeo</button>
+      <button type="button" data-topic-source="web" aria-pressed="${topicSource === "web"}">Web</button>
+    </div>
+    <p class="hint">${escapeHtml(libraryTopicMessage)}</p>
+    <div class="topic-results"></div>
+  `;
+  const list = section.querySelector(".topic-results");
+  if (libraryTopicResults.length && list) {
+    list.innerHTML = topicResultMarkup(libraryTopicResults);
+    list.dataset.results = JSON.stringify(libraryTopicResults);
+  }
+  els.videoList.append(section);
+}
+
+function queueLibraryTopicSearch({ immediate = false } = {}) {
+  window.clearTimeout(libraryTopicTimer);
+  const topic = els.searchLibrary?.value.trim() || "";
+  if (topic.length < 2) {
+    libraryTopicRequest += 1;
+    libraryTopicResults = [];
+    libraryTopicMessage = "";
+    return;
+  }
+  libraryTopicResults = [];
+  libraryTopicMessage = `Searching ${topicSourceLabel()}…`;
+  const start = () => {
+    const requestId = ++libraryTopicRequest;
+    void loadLibraryTopics(topic, requestId);
+  };
+  if (immediate) start();
+  else libraryTopicTimer = window.setTimeout(start, 400);
+}
+
+async function loadLibraryTopics(topic, requestId) {
+  let response;
+  try {
+    response = await fetch(`/api/video-search?q=${encodeURIComponent(topic)}&source=${encodeURIComponent(topicSource)}`);
+  } catch {
+    if (requestId !== libraryTopicRequest) return;
+    libraryTopicResults = [];
+    libraryTopicMessage = "Search could not reach the server.";
+    renderLibrary();
+    return;
+  }
+  const data = await response.json().catch(() => ({}));
+  if (requestId !== libraryTopicRequest) return;
+  if (!response.ok) {
+    libraryTopicResults = [];
+    libraryTopicMessage = data.error || "Search failed.";
+    renderLibrary();
+    return;
+  }
+  libraryTopicResults = Array.isArray(data.results) ? data.results : [];
+  libraryTopicMessage = libraryTopicResults.length
+    ? `${libraryTopicResults.length} ${topicSourceLabel()} videos for “${topic}”.`
+    : `No ${topicSourceLabel()} videos for “${topic}”.`;
+  renderLibrary();
+}
+
+async function searchTopics(event) {
+  event.preventDefault();
+  const input = document.querySelector("#topicSearch");
+  const status = document.querySelector("#topicSearchStatus");
+  const list = document.querySelector("#topicSearchResults");
+  const topic = input?.value.trim() || "";
+  if (topic.length < 2) {
+    if (status) status.textContent = "Enter a topic, like gardening or ceramics.";
+    return;
+  }
+  if (status) status.textContent = `Searching ${topicSourceLabel()}…`;
+  if (list) list.innerHTML = "";
+  let response;
+  try {
+    response = await fetch(`/api/video-search?q=${encodeURIComponent(topic)}&source=${encodeURIComponent(topicSource)}`);
+  } catch {
+    if (status) status.textContent = "Search could not reach the server.";
+    return;
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (status) status.textContent = data.error || "Search failed.";
+    return;
+  }
+  const results = Array.isArray(data.results) ? data.results : [];
+  if (!results.length) {
+    if (status) status.textContent = `No videos found for “${topic}”.`;
+    return;
+  }
+  if (status) status.textContent = `${results.length} videos for “${topic}”.`;
+  if (!list) return;
+  list.innerHTML = topicResultMarkup(results);
+  list.dataset.results = JSON.stringify(results);
+}
+
+function addTopicResult(list, index) {
+  const results = JSON.parse(list?.dataset.results || "[]");
+  const item = results[Number(index)];
+  if (!item?.url) return;
+  if (state.videos.some((video) => video.url === item.url)) return;
+  addVideo({
+    title: item.title,
+    speaker: item.speaker || "",
+    url: item.url,
+    sourceUrl: item.url,
+    tags: item.source || topicSource,
+  }, { reveal: false });
+  document.querySelectorAll(".topic-results").forEach((resultsList) => {
+    JSON.parse(resultsList.dataset.results || "[]").forEach((entry, entryIndex) => {
+      if (entry.url !== item.url) return;
+      const button = resultsList.querySelector(`[data-add-topic="${entryIndex}"]`);
+      if (!button) return;
+      button.disabled = true;
+      button.textContent = "In library";
+    });
+  });
+  setStatus(`Added “${item.title || "video"}”.`);
+}
+
 function addVideo(video, options = {}) {
   const next = {
     id: crypto.randomUUID(),
@@ -2325,6 +2499,7 @@ function renderLibrary() {
     syncSelectionPlaylistButton();
     syncSelectionNoteButton();
     syncSelectAllButton();
+    paintLibraryTopics();
     return;
   }
 
@@ -2427,6 +2602,7 @@ function renderLibrary() {
   syncSelectionPlaylistButton();
   syncSelectionNoteButton();
   syncSelectAllButton();
+  paintLibraryTopics();
 }
 
 function playlists() {

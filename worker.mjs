@@ -1,3 +1,5 @@
+import { searchVideos } from "./video-search.mjs";
+
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
 const BROWSER_USER_AGENT =
@@ -702,6 +704,14 @@ async function renderThumbnail(request, ai) {
 export async function handleApiRequest(request, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch;
   const url = new URL(request.url);
+  if (request.method === "GET" && url.pathname === "/api/video-search") {
+    try {
+      const results = await searchVideos(url.searchParams.get("q"), url.searchParams.get("source"), fetchImpl);
+      return json(200, { results });
+    } catch (error) {
+      return json(error.status || 502, { error: error.message || "The search could not be completed." });
+    }
+  }
   if (request.method === "GET" && url.pathname === "/api/offline/library") {
     return json(200, { videos: [], storagePath: "" });
   }

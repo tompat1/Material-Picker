@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-40" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-42" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -109,7 +109,7 @@
             <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16.5 16.5 21 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           </span>
           <span class="sr-only">Search videos</span>
-          <input id="searchLibrary" type="search" placeholder="Search videos..." />
+          <input id="searchLibrary" type="search" placeholder="Search your library or a topic…" />
         </label>
       </nav>
 
@@ -121,6 +121,21 @@
               <h2 id="importTitle">Intake</h2>
             </div>
           </div>
+
+          <form id="topicSearchForm" class="topic-search">
+            <label for="topicSearch">Find videos</label>
+            <div class="input-row">
+              <input id="topicSearch" type="search" placeholder="Gardening, ceramics, a speaker…" maxlength="120" />
+              <button class="primary-button" type="submit">Search</button>
+            </div>
+            <div class="topic-sources" role="group" aria-label="Where to search">
+              <button type="button" data-topic-source="youtube" aria-pressed="true">YouTube</button>
+              <button type="button" data-topic-source="vimeo" aria-pressed="false">Vimeo</button>
+              <button type="button" data-topic-source="web" aria-pressed="false">Web</button>
+            </div>
+            <p class="hint" id="topicSearchStatus">Search YouTube, Vimeo, or video pages from the public web.</p>
+            <div id="topicSearchResults" class="topic-results"></div>
+          </form>
 
           <div class="folder-scan-card">
             <div class="folder-scan-header">
@@ -640,6 +655,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-18" defer></script>
-    <script src="./app.js?v=picker-nav-57" defer></script>
+    <script src="./app.js?v=picker-nav-59" defer></script>
   </body>
 </html>
