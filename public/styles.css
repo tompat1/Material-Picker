@@ -570,8 +570,33 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
   text-transform: none;
 }
 
-.nav-search input:focus {
-  outline: none;
+.nav-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+.nav-search-clear {
+  display: none;
+  place-items: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.nav-search.has-value .nav-search-clear {
+  display: grid;
+}
+
+.nav-search-clear:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
 }
 
 .nav-search:focus-within {
@@ -3506,8 +3531,25 @@ html[data-picker-theme="new-age"] .history-list {
   }
 
   .thumb-style button {
-    padding: 0.12rem 0.5rem;
-    font-size: 0.7rem;
+    position: relative;
+    justify-content: center;
+    width: 2rem;
+    min-height: 2rem;
+    padding: 0;
+    gap: 0;
+  }
+
+  .thumb-style .theme-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .theme-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
   }
 
   #addVideoButton {

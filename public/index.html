@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-43" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-45" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -58,11 +58,11 @@
         <div class="thumb-style" role="group" aria-label="Theme">
           <button type="button" id="thumbStyleCinematic" aria-pressed="true">
             <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.1 3.1a8.4 8.4 0 1 0 5.8 14.2A7.5 7.5 0 0 1 15.1 3.1Z"/></svg>
-            Cinematic
+            <span class="theme-label">Cinematic</span>
           </button>
           <button type="button" id="thumbStyleNewAge" aria-pressed="false">
             <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.15" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M12 3.1v2.15M12 18.75v2.15M3.1 12h2.15M18.75 12h2.15M5.9 5.9l1.5 1.5M16.6 16.6l1.5 1.5M18.1 5.9l-1.5 1.5M7.4 16.6l-1.5 1.5"/></svg>
-            New Age
+            <span class="theme-label">New Age</span>
           </button>
         </div>
         <button class="primary-button" id="addVideoButton" type="button">
@@ -110,6 +110,9 @@
           </span>
           <span class="sr-only">Search videos</span>
           <input id="searchLibrary" type="search" placeholder="Search your library or a topic…" />
+          <button class="nav-search-clear" id="clearLibrarySearch" type="button" aria-label="Clear search">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6 18 18M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
         </label>
       </nav>
 
@@ -655,6 +658,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-20" defer></script>
-    <script src="./app.js?v=picker-nav-62" defer></script>
+    <script src="./app.js?v=picker-nav-63" defer></script>
   </body>
 </html>

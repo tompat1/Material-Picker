@@ -419,6 +419,12 @@ function bindEvents() {
     renderLibrary();
     renderCollectionManager();
   });
+  document.querySelector("#clearLibrarySearch")?.addEventListener("click", () => {
+    if (!els.searchLibrary) return;
+    els.searchLibrary.value = "";
+    els.searchLibrary.dispatchEvent(new Event("input", { bubbles: true }));
+    els.searchLibrary.focus();
+  });
   els.selectVisibleButton?.addEventListener("click", selectVisibleVideos);
   els.markAllOfflineButton.addEventListener("click", toggleMarkAllOffline);
   els.verifyOfflineButton?.addEventListener("click", handleVerifyOfflineButtonClick);
@@ -2428,7 +2434,9 @@ function videoSizeLabel(video) {
 }
 
 function syncNavSearch() {
-  document.body.classList.toggle("is-nav-searching", Boolean(els.searchLibrary?.value.trim()));
+  const value = els.searchLibrary?.value || "";
+  document.body.classList.toggle("is-nav-searching", Boolean(value.trim()));
+  els.searchLibrary?.closest(".nav-search")?.classList.toggle("has-value", value.length > 0);
 }
 
 function renderLibraryTotals() {
