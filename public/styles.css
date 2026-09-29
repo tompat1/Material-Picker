@@ -1994,7 +1994,7 @@ progress::-moz-progress-bar {
   column-gap: 0.9rem;
   align-items: center;
   width: 100%;
-  min-height: 4.75rem;
+  min-height: 6rem;
   padding: 0.1rem 0.15rem;
   border: 0;
   background: transparent;
@@ -2010,8 +2010,8 @@ progress::-moz-progress-bar {
   grid-column: 1;
   display: grid;
   place-items: center;
-  width: 4.75rem;
-  height: 4.75rem;
+  width: 6rem;
+  height: 6rem;
   overflow: hidden;
   border-radius: 8px;
   background:
