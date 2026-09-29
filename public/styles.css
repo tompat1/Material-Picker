@@ -980,6 +980,40 @@ dialog::backdrop {
   padding: 0.95rem 1rem 0.75rem;
 }
 
+.thumb-style {
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 0.55rem;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(244, 235, 221, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(244, 235, 221, 0.1);
+}
+
+.thumb-style button {
+  min-height: 1.75rem;
+  padding: 0.15rem 0.72rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: 560 0.75rem/1 var(--sans);
+  letter-spacing: 0.01em;
+}
+
+.thumb-style button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.thumb-style button:hover {
+  color: var(--ink);
+}
+
+.thumb-style button[aria-pressed="true"]:hover {
+  color: var(--accent-ink);
+}
+
 h1,
 h2,
 h3 {

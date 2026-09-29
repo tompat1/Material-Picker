@@ -346,6 +346,8 @@ function bindEvents() {
     setStatus("Created a blank video record.");
   });
   els.clearAllButton.addEventListener("click", clearAll);
+  document.querySelector("#thumbStyleCinematic")?.addEventListener("click", () => setThumbnailStyle("cinematic"));
+  document.querySelector("#thumbStyleNewAge")?.addEventListener("click", () => setThumbnailStyle("new-age"));
   els.checkLibraryButton.addEventListener("click", checkLibraryPlayback);
   els.chooseLibraryFolderButton.addEventListener("click", chooseOfflineFolder);
   els.collectionForm?.addEventListener("submit", createCollection);
@@ -1366,20 +1368,67 @@ function addVideo(video, options = {}) {
   return next.id;
 }
 
-function thumbnailPrompt(video) {
+function thumbnailStyle() {
+  return state.thumbnailStyle === "new-age" ? "new-age" : "cinematic";
+}
+
+function thumbnailJobId(videoId, style = thumbnailStyle()) {
+  return style === "new-age" ? `${videoId}::new-age` : videoId;
+}
+
+function videoIdFromThumbnailKey(key) {
+  return String(key || "").replace(/::new-age$/, "");
+}
+
+function styleFromThumbnailKey(key) {
+  return String(key || "").endsWith("::new-age") ? "new-age" : "cinematic";
+}
+
+function thumbnailPrompt(video, style = thumbnailStyle()) {
   const clip = (value, max) => String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
   const title = clip(video.title, 140) || "untitled session";
   const speaker = clip(video.speaker, 80);
   const tags = clip(video.tags, 160);
   const notes = clip(video.notes, 280);
-  return [
-    "A single cinematic photograph, no text, no letters, no watermark, no logo.",
+  const subject = [
     `Inspired by a video titled “${title}”.`,
     speaker ? `The speaker is ${speaker}.` : "",
     tags ? `Themes and tags: ${tags}.` : "",
     notes ? `Notes: ${notes}.` : "",
+  ].filter(Boolean);
+  if (style === "new-age") {
+    return [
+      "A single square photograph, no text, no letters, no watermark, no logo, no collage.",
+      ...subject,
+      "New-age contemplative still. Warm terracotta, clay, and sand. Quiet architecture with arches or stairs and an open sky, or a wide natural landscape with one small distant figure. Soft daylight, spacious and calm, photorealistic, no close-up portrait.",
+    ].join(" ");
+  }
+  return [
+    "A single cinematic photograph, no text, no letters, no watermark, no logo.",
+    ...subject,
     "Warm amber light, dark wood tones, intimate documentary framing, shallow depth of field, photorealistic.",
-  ].filter(Boolean).join(" ");
+  ].join(" ");
+}
+
+function syncThumbnailStyleControl() {
+  const style = thumbnailStyle();
+  const cinematic = document.querySelector("#thumbStyleCinematic");
+  const newer = document.querySelector("#thumbStyleNewAge");
+  if (cinematic) cinematic.setAttribute("aria-pressed", style === "cinematic" ? "true" : "false");
+  if (newer) newer.setAttribute("aria-pressed", style === "new-age" ? "true" : "false");
+}
+
+function setThumbnailStyle(style) {
+  const next = style === "new-age" ? "new-age" : "cinematic";
+  if (thumbnailStyle() === next && state.thumbnailStyle === next) {
+    syncThumbnailStyleControl();
+    return;
+  }
+  state.thumbnailStyle = next;
+  saveState();
+  syncThumbnailStyleControl();
+  renderLibrary();
+  queueMissingThumbnails();
 }
 
 function openThumbnailDb() {
@@ -1425,18 +1474,31 @@ function thumbnailDataUrl(value) {
   return text.startsWith("data:image/") ? text : "";
 }
 
+function metadataThumbnails(meta) {
+  const stored = meta?.thumbnails && typeof meta.thumbnails === "object" ? meta.thumbnails : {};
+  return {
+    cinematic: thumbnailDataUrl(stored.cinematic) || thumbnailDataUrl(meta?.thumbnail),
+    "new-age": thumbnailDataUrl(stored.newAge) || thumbnailDataUrl(stored["new-age"]),
+  };
+}
+
 async function keepMetadataThumbnail(videoId, meta) {
-  const dataUrl = thumbnailDataUrl(meta?.thumbnail);
-  if (!videoId || !dataUrl || thumbnailUrls.has(videoId)) return;
-  const existing = await readThumbnail(videoId).catch(() => null);
-  if (existing) return;
-  const blob = await fetch(dataUrl).then((response) => response.blob()).catch(() => null);
-  if (!blob) return;
-  await writeThumbnail(videoId, blob).catch(() => {});
-  const url = URL.createObjectURL(blob);
-  thumbnailUrls.set(videoId, url);
-  thumbnailAttempts.set(videoId, 1);
-  showThumbnail(videoId, url);
+  if (!videoId) return;
+  const images = metadataThumbnails(meta);
+  for (const style of ["cinematic", "new-age"]) {
+    const dataUrl = images[style];
+    const key = thumbnailJobId(videoId, style);
+    if (!dataUrl || thumbnailUrls.has(key)) continue;
+    const existing = await readThumbnail(key).catch(() => null);
+    if (existing) continue;
+    const blob = await fetch(dataUrl).then((response) => response.blob()).catch(() => null);
+    if (!blob) continue;
+    await writeThumbnail(key, blob).catch(() => {});
+    const url = URL.createObjectURL(blob);
+    thumbnailUrls.set(key, url);
+    thumbnailAttempts.set(key, 1);
+    showThumbnail(videoId, url, style);
+  }
 }
 
 function packageDirectoryHandle(video) {
@@ -1478,7 +1540,19 @@ async function readPackageMetadata(video, roots = []) {
   return readFolderMetadata(video);
 }
 
-async function saveThumbnailInMetadata(video, blob, roots = []) {
+function assignThumbnailMetadata(existing, style, dataUrl) {
+  const record = existing && typeof existing === "object" ? existing : {};
+  const thumbs = record.thumbnails && typeof record.thumbnails === "object" ? { ...record.thumbnails } : {};
+  const field = style === "new-age" ? "newAge" : "cinematic";
+  if (thumbnailDataUrl(thumbs[field]) === dataUrl && (field === "newAge" || thumbnailDataUrl(record.thumbnail) === dataUrl)) return record;
+  thumbs[field] = dataUrl;
+  record.thumbnails = thumbs;
+  if (field === "cinematic") record.thumbnail = dataUrl;
+  record.updatedAt = new Date().toISOString();
+  return record;
+}
+
+async function saveThumbnailInMetadata(video, blob, roots = [], style = thumbnailStyle()) {
   if (!video?.id || !blob) return "unavailable";
   const dataUrl = thumbnailDataUrl(await blobToDataUrl(blob).catch(() => ""));
   if (!dataUrl) return "unavailable";
@@ -1494,9 +1568,9 @@ async function saveThumbnailInMetadata(video, blob, roots = []) {
         fileHandle = await folder.getFileHandle("metadata.json", { create: true });
         existing = offlineMetadataRecord(video);
       }
-      if (thumbnailDataUrl(existing.thumbnail) === dataUrl) return "saved";
-      existing.thumbnail = dataUrl;
-      existing.updatedAt = new Date().toISOString();
+      const before = JSON.stringify(metadataThumbnails(existing));
+      assignThumbnailMetadata(existing, style, dataUrl);
+      if (JSON.stringify(metadataThumbnails(existing)) === before) return "saved";
       const writable = await fileHandle.createWritable();
       await writable.write(`${JSON.stringify(existing, null, 2)}\n`);
       await writable.close();
@@ -1507,8 +1581,7 @@ async function saveThumbnailInMetadata(video, blob, roots = []) {
   }
   const directory = localMediaDirectory(video);
   if (!directory) return folder ? "denied" : "unavailable";
-  const metadata = offlineMetadataRecord(video);
-  metadata.thumbnail = dataUrl;
+  const metadata = assignThumbnailMetadata(offlineMetadataRecord(video), style, dataUrl);
   return (await postFolderMetadata(directory, metadata)) ? "saved" : "unavailable";
 }
 
@@ -1538,14 +1611,17 @@ async function armThumbnailMetadataSave() {
 async function persistStoredThumbnails(roots = []) {
   let denied = false;
   for (const video of state.videos) {
-    const blob = await readThumbnail(video.id).catch(() => null);
-    if (!blob) continue;
     const meta = await readPackageMetadata(video, roots).catch(() => null);
-    if (thumbnailDataUrl(meta?.thumbnail)) continue;
-    const result = await saveThumbnailInMetadata(video, blob, roots);
-    if (result === "denied") denied = true;
+    const saved = metadataThumbnails(meta);
+    for (const style of ["cinematic", "new-age"]) {
+      if (saved[style]) continue;
+      const blob = await readThumbnail(thumbnailJobId(video.id, style)).catch(() => null);
+      if (!blob) continue;
+      const result = await saveThumbnailInMetadata(video, blob, roots, style);
+      if (result === "denied") denied = true;
+    }
   }
-  if (denied) armThumbnailMetadataSave();
+  if (denied) void armThumbnailMetadataSave();
 }
 
 async function clearThumbnails() {
@@ -1568,7 +1644,8 @@ async function clearThumbnails() {
   });
 }
 
-function showThumbnail(videoId, url) {
+function showThumbnail(videoId, url, style = thumbnailStyle()) {
+  if (style !== thumbnailStyle()) return;
   document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(videoId)}"]`).forEach((element) => {
     element.classList.remove("is-rendering", "needs-render");
     const image = document.createElement("img");
@@ -1607,8 +1684,9 @@ function thumbnailRetryControl(videoId) {
   return button;
 }
 
-function markThumbnailRendering(videoId) {
-  thumbnailActiveId = videoId;
+function markThumbnailRendering(videoId, style = thumbnailStyle()) {
+  if (style !== thumbnailStyle()) return;
+  thumbnailActiveId = thumbnailJobId(videoId, style);
   document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(videoId)}"]`).forEach((element) => {
     if (element.querySelector("img")) return;
     element.classList.remove("needs-render");
@@ -1617,8 +1695,9 @@ function markThumbnailRendering(videoId) {
   });
 }
 
-function showThumbnailRetry(videoId) {
-  if (thumbnailActiveId === videoId) thumbnailActiveId = "";
+function showThumbnailRetry(videoId, style = thumbnailStyle()) {
+  if (style !== thumbnailStyle()) return;
+  if (thumbnailActiveId === thumbnailJobId(videoId, style)) thumbnailActiveId = "";
   document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(videoId)}"]`).forEach((element) => {
     if (element.querySelector("img")) return;
     element.classList.remove("is-rendering");
@@ -1629,30 +1708,32 @@ function showThumbnailRetry(videoId) {
 
 async function applyCardThumbnail(element, video) {
   if (!element || !video?.id) return;
-  const known = thumbnailUrls.get(video.id);
+  const key = thumbnailJobId(video.id);
+  const style = thumbnailStyle();
+  const known = thumbnailUrls.get(key);
   if (known) {
-    showThumbnail(video.id, known);
+    showThumbnail(video.id, known, style);
     return;
   }
-  const stored = await readThumbnail(video.id).catch(() => null);
+  const stored = await readThumbnail(key).catch(() => null);
   if (!element.isConnected) return;
-  if (thumbnailUrls.has(video.id)) {
-    showThumbnail(video.id, thumbnailUrls.get(video.id));
+  if (thumbnailUrls.has(key)) {
+    showThumbnail(video.id, thumbnailUrls.get(key), style);
     return;
   }
   if (stored) {
     const url = URL.createObjectURL(stored);
-    thumbnailUrls.set(video.id, url);
-    thumbnailAttempts.set(video.id, Math.max(1, thumbnailAttempts.get(video.id) || 0));
-    showThumbnail(video.id, url);
+    thumbnailUrls.set(key, url);
+    thumbnailAttempts.set(key, Math.max(1, thumbnailAttempts.get(key) || 0));
+    showThumbnail(video.id, url, style);
     return;
   }
-  if (thumbnailInFlight.has(video.id) || thumbnailQueued.has(video.id)) {
-    if (thumbnailActiveId === video.id) markThumbnailRendering(video.id);
+  if (thumbnailInFlight.has(key) || thumbnailQueued.has(key)) {
+    if (thumbnailActiveId === key) markThumbnailRendering(video.id, style);
     return;
   }
-  if ((thumbnailAttempts.get(video.id) || 0) >= 1 || Date.now() < thumbnailPausedUntil) {
-    showThumbnailRetry(video.id);
+  if ((thumbnailAttempts.get(key) || 0) >= 1 || Date.now() < thumbnailPausedUntil) {
+    showThumbnailRetry(video.id, style);
     return;
   }
   queueThumbnail(video);
@@ -1682,21 +1763,23 @@ function queueMissingThumbnails() {
 
 function queueThumbnail(video, options = {}) {
   const manual = Boolean(options.manual);
-  if (!video?.id || thumbnailUrls.has(video.id) || thumbnailInFlight.has(video.id)) return;
+  const style = options.style || thumbnailStyle();
+  const key = thumbnailJobId(video?.id, style);
+  if (!video?.id || thumbnailUrls.has(key) || thumbnailInFlight.has(key)) return;
   if (!manual && !importFoldersRestored) return;
-  if (!manual && thumbnailQueued.has(video.id)) return;
-  if (!manual && (thumbnailAttempts.get(video.id) || 0) >= 1) {
-    showThumbnailRetry(video.id);
+  if (!manual && thumbnailQueued.has(key)) return;
+  if (!manual && (thumbnailAttempts.get(key) || 0) >= 1) {
+    showThumbnailRetry(video.id, style);
     return;
   }
   if (!manual && Date.now() < thumbnailPausedUntil) {
-    showThumbnailRetry(video.id);
+    showThumbnailRetry(video.id, style);
     return;
   }
-  if (manual) thumbnailAttempts.delete(video.id);
-  if (thumbnailQueued.has(video.id)) return;
-  thumbnailQueued.add(video.id);
-  thumbnailJobs.push(video.id);
+  if (manual) thumbnailAttempts.delete(key);
+  if (thumbnailQueued.has(key)) return;
+  thumbnailQueued.add(key);
+  thumbnailJobs.push(key);
   void drainThumbnails();
 }
 
@@ -1705,35 +1788,37 @@ async function drainThumbnails() {
   thumbnailDraining = true;
   try {
     while (thumbnailJobs.length) {
-      const id = thumbnailJobs.shift();
-      thumbnailQueued.delete(id);
-      thumbnailInFlight.add(id);
-      const video = state.videos.find((item) => item.id === id);
-      if (!video || thumbnailUrls.has(id)) {
-        thumbnailInFlight.delete(id);
+      const key = thumbnailJobs.shift();
+      const videoId = videoIdFromThumbnailKey(key);
+      const style = styleFromThumbnailKey(key);
+      thumbnailQueued.delete(key);
+      thumbnailInFlight.add(key);
+      const video = state.videos.find((item) => item.id === videoId);
+      if (!video || thumbnailUrls.has(key)) {
+        thumbnailInFlight.delete(key);
         continue;
       }
-      if ((thumbnailAttempts.get(id) || 0) >= 1) {
-        thumbnailInFlight.delete(id);
-        showThumbnailRetry(id);
+      if ((thumbnailAttempts.get(key) || 0) >= 1) {
+        thumbnailInFlight.delete(key);
+        showThumbnailRetry(videoId, style);
         continue;
       }
-      const stored = await readThumbnail(id).catch(() => null);
-      if (thumbnailUrls.has(id)) {
-        thumbnailInFlight.delete(id);
+      const stored = await readThumbnail(key).catch(() => null);
+      if (thumbnailUrls.has(key)) {
+        thumbnailInFlight.delete(key);
         continue;
       }
       if (stored) {
-        thumbnailInFlight.delete(id);
-        thumbnailAttempts.set(id, 1);
+        thumbnailInFlight.delete(key);
+        thumbnailAttempts.set(key, 1);
         const url = URL.createObjectURL(stored);
-        thumbnailUrls.set(id, url);
-        showThumbnail(id, url);
+        thumbnailUrls.set(key, url);
+        showThumbnail(videoId, url, style);
         continue;
       }
-      thumbnailAttempts.set(id, 1);
-      markThumbnailRendering(id);
-      const continued = await requestThumbnail(video);
+      thumbnailAttempts.set(key, 1);
+      markThumbnailRendering(videoId, style);
+      const continued = await requestThumbnail(video, style);
       if (!continued) break;
     }
   } finally {
@@ -1742,20 +1827,21 @@ async function drainThumbnails() {
   }
 }
 
-async function requestThumbnail(video) {
+async function requestThumbnail(video, style = thumbnailStyle()) {
+  const key = thumbnailJobId(video.id, style);
   let response;
   try {
     response = await fetch("/api/thumbnail", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: thumbnailPrompt(video) }),
+      body: JSON.stringify({ prompt: thumbnailPrompt(video, style) }),
     });
   } catch {
-    finishThumbnailMiss(video.id);
+    finishThumbnailMiss(video.id, style);
     return true;
   }
   if (response.status === 503) {
-    thumbnailAttempts.delete(video.id);
+    thumbnailAttempts.delete(key);
     stopThumbnailQueue("Thumbnails render with the Cloudflare image model. Connect that model to fill the list.", 20000, true);
     return false;
   }
@@ -1766,28 +1852,28 @@ async function requestThumbnail(video) {
       stopThumbnailQueue("The thumbnail model rejected the Cloudflare API token. Check the token and account id, then refresh.", 60 * 60 * 1000, false);
       return false;
     }
-    finishThumbnailMiss(video.id);
+    finishThumbnailMiss(video.id, style);
     return true;
   }
   const blob = await compactThumbnail(await response.blob());
   if (!blob || !state.videos.some((item) => item.id === video.id)) {
-    finishThumbnailMiss(video.id);
+    finishThumbnailMiss(video.id, style);
     return true;
   }
-  thumbnailInFlight.delete(video.id);
-  await writeThumbnail(video.id, blob).catch(() => {});
+  thumbnailInFlight.delete(key);
+  await writeThumbnail(key, blob).catch(() => {});
   const url = URL.createObjectURL(blob);
-  thumbnailUrls.set(video.id, url);
-  showThumbnail(video.id, url);
-  void saveThumbnailInMetadata(video, blob).then((result) => {
+  thumbnailUrls.set(key, url);
+  showThumbnail(video.id, url, style);
+  void saveThumbnailInMetadata(video, blob, [], style).then((result) => {
     if (result === "denied") void armThumbnailMetadataSave();
   });
   return true;
 }
 
-function finishThumbnailMiss(videoId) {
-  thumbnailInFlight.delete(videoId);
-  showThumbnailRetry(videoId);
+function finishThumbnailMiss(videoId, style = thumbnailStyle()) {
+  thumbnailInFlight.delete(thumbnailJobId(videoId, style));
+  showThumbnailRetry(videoId, style);
 }
 
 function scheduleThumbnailPass(delay) {
@@ -1813,7 +1899,7 @@ function stopThumbnailQueue(message, pauseMs, resume) {
   thumbnailInFlight.clear();
   thumbnailQueued.clear();
   state.videos.forEach((video) => {
-    if (!thumbnailUrls.has(video.id)) showThumbnailRetry(video.id);
+    if (!thumbnailUrls.has(thumbnailJobId(video.id))) showThumbnailRetry(video.id);
   });
   if (!thumbnailNoticeSent) {
     thumbnailNoticeSent = true;
@@ -1918,6 +2004,7 @@ function clearAll() {
     lastImportFolderName: state.lastImportFolderName || "",
     lastOfflineFolderName: state.lastOfflineFolderName || "",
     lastScannedFolder: state.lastScannedFolder || "",
+    thumbnailStyle: state.thumbnailStyle === "new-age" ? "new-age" : "cinematic",
   };
   selectedVideoIds.clear();
   saveState();
@@ -1940,6 +2027,7 @@ function render() {
   renderPlaylists();
   renderFavourites();
   syncPlayButton();
+  syncThumbnailStyleControl();
   queueMissingThumbnails();
 }
 
@@ -2202,7 +2290,7 @@ function renderLibrary() {
     const extra = runtime || String(video.tags || "").trim();
 
     const main = card.querySelector(".card-main");
-    const knownThumb = thumbnailUrls.get(video.id);
+    const knownThumb = thumbnailUrls.get(thumbnailJobId(video.id));
     main.innerHTML = `
       <span class="card-thumb" data-video-id="${escapeHtml(video.id)}">${knownThumb ? `<img alt="" src="${escapeHtml(knownThumb)}">` : ""}</span>
       <span class="card-copy">
@@ -4222,21 +4310,32 @@ async function persistFolderMetadata(video, options = {}) {
 }
 
 async function writeOfflineMetadata(destination, video, extra) {
-  let thumbnail = thumbnailDataUrl(extra?.thumbnail);
-  if (!thumbnail && destination?.getFileHandle) {
+  let existing = {};
+  if (destination?.getFileHandle) {
     try {
-      const existing = JSON.parse(await (await (await destination.getFileHandle("metadata.json")).getFile()).text());
-      thumbnail = thumbnailDataUrl(existing.thumbnail);
+      existing = JSON.parse(await (await (await destination.getFileHandle("metadata.json")).getFile()).text());
     } catch {
       // A new folder has no metadata file yet.
     }
   }
-  if (!thumbnail && video?.id) {
-    const blob = await readThumbnail(video.id).catch(() => null);
-    if (blob) thumbnail = thumbnailDataUrl(await blobToDataUrl(blob).catch(() => ""));
+  const images = metadataThumbnails(existing);
+  if (video?.id) {
+    for (const style of ["cinematic", "new-age"]) {
+      if (images[style]) continue;
+      const blob = await readThumbnail(thumbnailJobId(video.id, style)).catch(() => null);
+      if (!blob) continue;
+      images[style] = thumbnailDataUrl(await blobToDataUrl(blob).catch(() => ""));
+    }
   }
   const record = offlineMetadataRecord(video, extra);
-  if (thumbnail) record.thumbnail = thumbnail;
+  if (images.cinematic || images["new-age"]) {
+    record.thumbnails = {};
+    if (images.cinematic) {
+      record.thumbnail = images.cinematic;
+      record.thumbnails.cinematic = images.cinematic;
+    }
+    if (images["new-age"]) record.thumbnails.newAge = images["new-age"];
+  }
   await writePlannedFile(destination, { path: "metadata.json", text: `${JSON.stringify(record, null, 2)}\n` }, () => {});
 }
 

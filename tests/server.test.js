@@ -446,7 +446,12 @@ test("folder metadata writes notes and a transcript into the video folder", asyn
   const request = Readable.from([
     Buffer.from(JSON.stringify({
       directory: root,
-      metadata: { notes: "Remember the opening", transcript: "[00:01] Hello", thumbnail: "data:image/jpeg;base64,abc" },
+      metadata: {
+        notes: "Remember the opening",
+        transcript: "[00:01] Hello",
+        thumbnail: "data:image/jpeg;base64,abc",
+        thumbnails: { cinematic: "data:image/jpeg;base64,abc", newAge: "data:image/jpeg;base64,def" },
+      },
     })),
   ]);
   const response = {
@@ -467,5 +472,7 @@ test("folder metadata writes notes and a transcript into the video folder", asyn
   assert.equal(saved.notes, "Remember the opening");
   assert.equal(saved.transcript, "[00:01] Hello");
   assert.equal(saved.thumbnail, "data:image/jpeg;base64,abc");
+  assert.equal(saved.thumbnails.cinematic, "data:image/jpeg;base64,abc");
+  assert.equal(saved.thumbnails.newAge, "data:image/jpeg;base64,def");
 });
 

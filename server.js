@@ -1589,6 +1589,19 @@ async function handleUpdateFolderMetadata(request, response) {
     if (typeof incoming.thumbnail === "string" && incoming.thumbnail.startsWith("data:image/")) {
       next.thumbnail = clipMetadataText(incoming.thumbnail, 500000);
     }
+    if (incoming.thumbnails && typeof incoming.thumbnails === "object") {
+      const current = next.thumbnails && typeof next.thumbnails === "object" ? { ...next.thumbnails } : {};
+      const cinematic = typeof incoming.thumbnails.cinematic === "string" && incoming.thumbnails.cinematic.startsWith("data:image/")
+        ? clipMetadataText(incoming.thumbnails.cinematic, 500000)
+        : "";
+      const newAge = typeof incoming.thumbnails.newAge === "string" && incoming.thumbnails.newAge.startsWith("data:image/")
+        ? clipMetadataText(incoming.thumbnails.newAge, 500000)
+        : "";
+      if (cinematic) current.cinematic = cinematic;
+      if (newAge) current.newAge = newAge;
+      if (cinematic || newAge) next.thumbnails = current;
+      if (cinematic) next.thumbnail = cinematic;
+    }
     if ("size" in incoming && Number(incoming.size) > 0) next.size = Number(incoming.size);
     next.updatedAt = new Date().toISOString();
     await fsp.writeFile(metaPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
