@@ -1586,6 +1586,9 @@ async function handleUpdateFolderMetadata(request, response) {
       if (field in incoming) next[field] = clipMetadataText(incoming[field], field === "transcript" || field === "translation" || field === "notes" ? 500000 : 4000);
     });
     if ("durationSeconds" in incoming) next.durationSeconds = Number(incoming.durationSeconds) || 0;
+    if (typeof incoming.thumbnail === "string" && incoming.thumbnail.startsWith("data:image/")) {
+      next.thumbnail = clipMetadataText(incoming.thumbnail, 500000);
+    }
     if ("size" in incoming && Number(incoming.size) > 0) next.size = Number(incoming.size);
     next.updatedAt = new Date().toISOString();
     await fsp.writeFile(metaPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");

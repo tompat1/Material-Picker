@@ -736,6 +736,7 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
       existing.playbackStatus = "ready";
       existing.playbackMessage = "Offline HLS package reconnected and ready to play";
       existing.checkedAt = new Date().toISOString();
+      await keepMetadataThumbnail(existing.id, meta);
 
       if (!firstReconnectedId) firstReconnectedId = existing.id;
       reconnectedCount += 1;
@@ -752,6 +753,7 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
     }
 
     state.videos.unshift(nextVideo);
+    await keepMetadataThumbnail(nextVideo.id, meta);
     if (!firstAddedId) firstAddedId = nextVideo.id;
     addedCount += 1;
     if (!options.quiet) {
@@ -913,6 +915,7 @@ async function importFromDirectoryHandle(dirHandle, options = {}) {
 
     await walk(dirHandle, []);
     await processImportedFolderEntries(entries, rootFolderName, "", options);
+    await persistStoredThumbnails([dirHandle]).catch(() => {});
   } catch (error) {
     setStatus(`Folder import error: ${error.message}`, false);
   } finally {
@@ -934,7 +937,7 @@ async function handleBrowseFolder() {
     if (!isLocalServer()) {
       if (typeof window.showDirectoryPicker === "function") {
         try {
-          const dirHandle = await window.showDirectoryPicker();
+          const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
           await importFromDirectoryHandle(dirHandle);
           return;
         } catch (err) {
@@ -973,7 +976,7 @@ async function handleBrowseFolder() {
 
     if (typeof window.showDirectoryPicker === "function") {
       try {
-        const dirHandle = await window.showDirectoryPicker();
+        const dirHandle = await window.showDirectoryPicker({ mode: "readwrite" });
         await importFromDirectoryHandle(dirHandle);
         return;
       } catch (err) {
@@ -1408,6 +1411,143 @@ async function writeThumbnail(videoId, blob) {
   });
 }
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function thumbnailDataUrl(value) {
+  const text = String(value || "");
+  return text.startsWith("data:image/") ? text : "";
+}
+
+async function keepMetadataThumbnail(videoId, meta) {
+  const dataUrl = thumbnailDataUrl(meta?.thumbnail);
+  if (!videoId || !dataUrl || thumbnailUrls.has(videoId)) return;
+  const existing = await readThumbnail(videoId).catch(() => null);
+  if (existing) return;
+  const blob = await fetch(dataUrl).then((response) => response.blob()).catch(() => null);
+  if (!blob) return;
+  await writeThumbnail(videoId, blob).catch(() => {});
+  const url = URL.createObjectURL(blob);
+  thumbnailUrls.set(videoId, url);
+  thumbnailAttempts.set(videoId, 1);
+  showThumbnail(videoId, url);
+}
+
+function packageDirectoryHandle(video) {
+  const id = mountedPackageId(video);
+  if (!id) return null;
+  const fileMap = offlinePackageFiles.get(id);
+  return (fileMap && packageRoots.get(fileMap)) || null;
+}
+
+async function metadataDirectory(video, roots = []) {
+  const stored = await storedFolderHandle("imports").catch(() => []);
+  const handles = [...roots, ...(Array.isArray(stored) ? stored : [])].filter((handle) => handle?.getDirectoryHandle);
+  const rootName = video?.importRoot || folderLabelForVideo(video);
+  const root = handles.find((handle) => handle.name && handle.name === rootName) || null;
+  const relative = String(video?.offlineArchivePath || "");
+  const parts = relative.split("/").filter((part) => part && part !== root?.name);
+  if (root && parts.length) {
+    try {
+      let folder = root;
+      for (const part of parts) folder = await folder.getDirectoryHandle(part);
+      return folder;
+    } catch {
+      // The saved folder handle cannot see this video directory.
+    }
+  }
+  return packageDirectoryHandle(video);
+}
+
+async function readPackageMetadata(video, roots = []) {
+  const folder = await metadataDirectory(video, roots);
+  if (folder?.getFileHandle) {
+    try {
+      const fileHandle = await folder.getFileHandle("metadata.json");
+      return JSON.parse(await (await fileHandle.getFile()).text());
+    } catch {
+      // Fall through to a server-side metadata file.
+    }
+  }
+  return readFolderMetadata(video);
+}
+
+async function saveThumbnailInMetadata(video, blob, roots = []) {
+  if (!video?.id || !blob) return "unavailable";
+  const dataUrl = thumbnailDataUrl(await blobToDataUrl(blob).catch(() => ""));
+  if (!dataUrl) return "unavailable";
+  const folder = await metadataDirectory(video, roots);
+  if (folder?.getFileHandle) {
+    try {
+      let existing = {};
+      let fileHandle;
+      try {
+        fileHandle = await folder.getFileHandle("metadata.json");
+        existing = JSON.parse(await (await fileHandle.getFile()).text());
+      } catch {
+        fileHandle = await folder.getFileHandle("metadata.json", { create: true });
+        existing = offlineMetadataRecord(video);
+      }
+      if (thumbnailDataUrl(existing.thumbnail) === dataUrl) return "saved";
+      existing.thumbnail = dataUrl;
+      existing.updatedAt = new Date().toISOString();
+      const writable = await fileHandle.createWritable();
+      await writable.write(`${JSON.stringify(existing, null, 2)}\n`);
+      await writable.close();
+      return "saved";
+    } catch (error) {
+      if (error?.name === "NotAllowedError") return "denied";
+    }
+  }
+  const directory = localMediaDirectory(video);
+  if (!directory) return folder ? "denied" : "unavailable";
+  const metadata = offlineMetadataRecord(video);
+  metadata.thumbnail = dataUrl;
+  return (await postFolderMetadata(directory, metadata)) ? "saved" : "unavailable";
+}
+
+let thumbnailMetadataPrompted = false;
+
+async function armThumbnailMetadataSave() {
+  if (thumbnailMetadataPrompted) return;
+  thumbnailMetadataPrompted = true;
+  const stored = await storedFolderHandle("imports").catch(() => []);
+  const handles = (Array.isArray(stored) ? stored : []).filter((handle) => handle?.requestPermission);
+  const pending = [];
+  for (const handle of handles) {
+    const current = handle.queryPermission ? await handle.queryPermission({ mode: "readwrite" }).catch(() => "prompt") : "prompt";
+    if (current !== "granted") pending.push(handle);
+  }
+  if (!pending.length) return;
+  const once = () => {
+    document.removeEventListener("pointerdown", once, true);
+    const prompts = pending.map((handle) => Promise.resolve(handle.requestPermission({ mode: "readwrite" })).catch(() => "denied"));
+    void Promise.all(prompts).then((results) => {
+      if (results.includes("granted")) return persistStoredThumbnails();
+    });
+  };
+  document.addEventListener("pointerdown", once, true);
+}
+
+async function persistStoredThumbnails(roots = []) {
+  let denied = false;
+  for (const video of state.videos) {
+    const blob = await readThumbnail(video.id).catch(() => null);
+    if (!blob) continue;
+    const meta = await readPackageMetadata(video, roots).catch(() => null);
+    if (thumbnailDataUrl(meta?.thumbnail)) continue;
+    const result = await saveThumbnailInMetadata(video, blob, roots);
+    if (result === "denied") denied = true;
+  }
+  if (denied) armThumbnailMetadataSave();
+}
+
 async function clearThumbnails() {
   thumbnailJobs.length = 0;
   thumbnailInFlight.clear();
@@ -1543,6 +1683,7 @@ function queueMissingThumbnails() {
 function queueThumbnail(video, options = {}) {
   const manual = Boolean(options.manual);
   if (!video?.id || thumbnailUrls.has(video.id) || thumbnailInFlight.has(video.id)) return;
+  if (!manual && !importFoldersRestored) return;
   if (!manual && thumbnailQueued.has(video.id)) return;
   if (!manual && (thumbnailAttempts.get(video.id) || 0) >= 1) {
     showThumbnailRetry(video.id);
@@ -1638,6 +1779,9 @@ async function requestThumbnail(video) {
   const url = URL.createObjectURL(blob);
   thumbnailUrls.set(video.id, url);
   showThumbnail(video.id, url);
+  void saveThumbnailInMetadata(video, blob).then((result) => {
+    if (result === "denied") void armThumbnailMetadataSave();
+  });
   return true;
 }
 
@@ -3664,6 +3808,7 @@ async function restoreImportFolders() {
     }
   } finally {
     importFoldersRestored = true;
+    queueMissingThumbnails();
     renderPlayer();
   }
 }
@@ -3719,7 +3864,7 @@ async function reconnectImportFolder() {
     const key = folderLabelForVideo(selectedVideo());
     const target = (key && handles.find((handle) => handle?.name === key && handle.requestPermission && !importedFolderNames.has(handle.name))) || null;
     if (target) {
-      const permission = await target.requestPermission({ mode: "read" });
+      const permission = await target.requestPermission({ mode: "readwrite" });
       if (permission === "granted") {
         await importFromDirectoryHandle(target, { quiet: true });
         return;
@@ -3729,7 +3874,7 @@ async function reconnectImportFolder() {
       setStatus("This browser cannot reopen a folder. Import the videos again from Add video.");
       return;
     }
-    const picked = await window.showDirectoryPicker({ mode: "read" });
+    const picked = await window.showDirectoryPicker({ mode: "readwrite" });
     await importFromDirectoryHandle(picked, { quiet: true });
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -4077,7 +4222,22 @@ async function persistFolderMetadata(video, options = {}) {
 }
 
 async function writeOfflineMetadata(destination, video, extra) {
-  await writePlannedFile(destination, { path: "metadata.json", text: offlineMetadataText(video, extra) }, () => {});
+  let thumbnail = thumbnailDataUrl(extra?.thumbnail);
+  if (!thumbnail && destination?.getFileHandle) {
+    try {
+      const existing = JSON.parse(await (await (await destination.getFileHandle("metadata.json")).getFile()).text());
+      thumbnail = thumbnailDataUrl(existing.thumbnail);
+    } catch {
+      // A new folder has no metadata file yet.
+    }
+  }
+  if (!thumbnail && video?.id) {
+    const blob = await readThumbnail(video.id).catch(() => null);
+    if (blob) thumbnail = thumbnailDataUrl(await blobToDataUrl(blob).catch(() => ""));
+  }
+  const record = offlineMetadataRecord(video, extra);
+  if (thumbnail) record.thumbnail = thumbnail;
+  await writePlannedFile(destination, { path: "metadata.json", text: `${JSON.stringify(record, null, 2)}\n` }, () => {});
 }
 
 async function writeDownloadPlan(video, plan) {

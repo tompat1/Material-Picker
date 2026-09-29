@@ -446,7 +446,7 @@ test("folder metadata writes notes and a transcript into the video folder", asyn
   const request = Readable.from([
     Buffer.from(JSON.stringify({
       directory: root,
-      metadata: { notes: "Remember the opening", transcript: "[00:01] Hello" },
+      metadata: { notes: "Remember the opening", transcript: "[00:01] Hello", thumbnail: "data:image/jpeg;base64,abc" },
     })),
   ]);
   const response = {
@@ -466,5 +466,6 @@ test("folder metadata writes notes and a transcript into the video folder", asyn
   assert.equal(saved.size, 12);
   assert.equal(saved.notes, "Remember the opening");
   assert.equal(saved.transcript, "[00:01] Hello");
+  assert.equal(saved.thumbnail, "data:image/jpeg;base64,abc");
 });
 
