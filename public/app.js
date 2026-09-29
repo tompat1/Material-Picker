@@ -1427,7 +1427,7 @@ function topicResultMarkup(results) {
 
 function paintLibraryTopics() {
   const topic = els.searchLibrary?.value.trim() || "";
-  if (topic.length < 2 || !libraryTopicMessage) return;
+  if (mobileLibraryFilter !== "all" || topic.length < 2 || !libraryTopicMessage) return;
   const section = document.createElement("section");
   section.className = "library-topic";
   section.innerHTML = `
@@ -1536,13 +1536,21 @@ function topicItem(list, index) {
 
 function ensureTopicVideo(item) {
   const existing = state.videos.find((video) => video.url === item.url);
-  if (existing) return existing.id;
+  const thumbnail = /^https?:\/\//.test(item.thumbnail || "") ? item.thumbnail : "";
+  if (existing) {
+    if (thumbnail && !existing.thumbnail) {
+      existing.thumbnail = thumbnail;
+      saveState();
+    }
+    return existing.id;
+  }
   return addVideo({
     title: item.title,
     speaker: item.speaker || "",
     url: item.url,
     sourceUrl: item.url,
     tags: item.source || topicSource,
+    thumbnail,
   }, { reveal: false });
 }
 
@@ -1585,6 +1593,7 @@ function addVideo(video, options = {}) {
     playbackMessage: video.playbackMessage || "Not checked yet",
     checkedAt: video.checkedAt || "",
     createdAt: new Date().toISOString(),
+    thumbnail: /^https?:\/\//.test(video.thumbnail || "") ? video.thumbnail : "",
   };
   state.videos.unshift(next);
   state.selectedId = next.id;
@@ -1602,6 +1611,34 @@ function addVideo(video, options = {}) {
 
 function thumbnailStyle() {
   return state.thumbnailStyle === "new-age" ? "new-age" : "cinematic";
+}
+
+function youtubeThumbnailUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(String(value || ""));
+  } catch {
+    return "";
+  }
+  const host = parsed.hostname.replace(/^www\./, "");
+  let id = "";
+  if (host === "youtu.be") id = parsed.pathname.split("/").filter(Boolean)[0] || "";
+  else if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+    id = parsed.searchParams.get("v") || "";
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (!id && (parts[0] === "embed" || parts[0] === "shorts") && parts[1]) id = parts[1];
+  }
+  return /^[\w-]{11}$/.test(id) ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : "";
+}
+
+function providerThumbnailUrl(video) {
+  const stored = String(video?.thumbnail || "");
+  if (stored.startsWith("data:image/") || /^https?:\/\//.test(stored)) return stored;
+  return youtubeThumbnailUrl(video?.url) || youtubeThumbnailUrl(video?.sourceUrl);
+}
+
+function wantsAiThumbnail(video) {
+  return Boolean(video?.id && hasDiskCopy(video) && !providerThumbnailUrl(video));
 }
 
 function thumbnailJobId(videoId, style = thumbnailStyle()) {
@@ -1883,14 +1920,22 @@ async function clearThumbnails() {
   });
 }
 
+function paintThumb(element, url) {
+  element.classList.remove("is-rendering", "needs-render");
+  let image = element.querySelector("img");
+  if (!image) {
+    image = document.createElement("img");
+    image.alt = "";
+    element.prepend(image);
+  }
+  image.src = url;
+  element.querySelectorAll(".thumb-spinner, .thumb-render").forEach((node) => node.remove());
+}
+
 function showThumbnail(videoId, url, style = thumbnailStyle()) {
   if (style !== thumbnailStyle()) return;
   document.querySelectorAll(`.card-thumb[data-video-id="${CSS.escape(videoId)}"]`).forEach((element) => {
-    element.classList.remove("is-rendering", "needs-render");
-    const image = document.createElement("img");
-    image.alt = "";
-    image.src = url;
-    element.replaceChildren(image);
+    paintThumb(element, url);
   });
 }
 
@@ -1947,6 +1992,12 @@ function showThumbnailRetry(videoId, style = thumbnailStyle()) {
 
 async function applyCardThumbnail(element, video) {
   if (!element || !video?.id) return;
+  const provided = providerThumbnailUrl(video);
+  if (provided) {
+    paintThumb(element, provided);
+    return;
+  }
+  if (!wantsAiThumbnail(video)) return;
   const key = thumbnailJobId(video.id);
   const style = thumbnailStyle();
   const known = thumbnailUrls.get(key);
@@ -1997,14 +2048,16 @@ async function compactThumbnail(blob) {
 
 function queueMissingThumbnails() {
   if (Date.now() < thumbnailPausedUntil) return;
-  state.videos.forEach((video) => queueThumbnail(video));
+  state.videos.forEach((video) => {
+    if (wantsAiThumbnail(video)) queueThumbnail(video);
+  });
 }
 
 function queueThumbnail(video, options = {}) {
   const manual = Boolean(options.manual);
   const style = options.style || thumbnailStyle();
   const key = thumbnailJobId(video?.id, style);
-  if (!video?.id || thumbnailUrls.has(key) || thumbnailInFlight.has(key)) return;
+  if (!wantsAiThumbnail(video) || thumbnailUrls.has(key) || thumbnailInFlight.has(key)) return;
   if (!manual && !importFoldersRestored) return;
   if (!manual && thumbnailQueued.has(key)) return;
   if (!manual && (thumbnailAttempts.get(key) || 0) >= 1) {
@@ -2033,7 +2086,7 @@ async function drainThumbnails() {
       thumbnailQueued.delete(key);
       thumbnailInFlight.add(key);
       const video = state.videos.find((item) => item.id === videoId);
-      if (!video || thumbnailUrls.has(key)) {
+      if (!video || !wantsAiThumbnail(video) || thumbnailUrls.has(key)) {
         thumbnailInFlight.delete(key);
         continue;
       }
@@ -2068,6 +2121,10 @@ async function drainThumbnails() {
 
 async function requestThumbnail(video, style = thumbnailStyle()) {
   const key = thumbnailJobId(video.id, style);
+  if (!wantsAiThumbnail(video)) {
+    thumbnailInFlight.delete(key);
+    return true;
+  }
   let response;
   try {
     response = await fetch("/api/thumbnail", {
@@ -2138,7 +2195,7 @@ function stopThumbnailQueue(message, pauseMs, resume) {
   thumbnailInFlight.clear();
   thumbnailQueued.clear();
   state.videos.forEach((video) => {
-    if (!thumbnailUrls.has(thumbnailJobId(video.id))) showThumbnailRetry(video.id);
+    if (wantsAiThumbnail(video) && !thumbnailUrls.has(thumbnailJobId(video.id))) showThumbnailRetry(video.id);
   });
   if (!thumbnailNoticeSent) {
     thumbnailNoticeSent = true;
@@ -2521,12 +2578,14 @@ function renderLibrary() {
   if (!filtered.length) {
     const searching = Boolean(els.searchLibrary.value.trim());
     let message = "This folder has no matching videos.";
-    if (searching) message = "No videos match this search.";
+    if (searching && mobileLibraryFilter === "offline") message = "No offline videos match this search.";
+    else if (searching && mobileLibraryFilter === "favourites") message = "No favourites match this search.";
+    else if (searching) message = "No videos match this search.";
     else if (mobileLibraryFilter === "offline") message = "No offline videos yet.";
     else if (mobileLibraryFilter === "favourites") message = "No favourites yet.";
     else if (activeCollectionId === "all") message = "The library is empty. Scan a folder or a page to add videos.";
     else if (activeCollectionId === "unfiled") message = "No unfiled videos.";
-    const topicResultsShowing = searching && libraryTopicResults.length > 0;
+    const topicResultsShowing = searching && mobileLibraryFilter === "all" && libraryTopicResults.length > 0;
     if (!topicResultsShowing) els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p></div>`;
     renderVideoCount();
     renderLibraryTotals();
@@ -2551,7 +2610,7 @@ function renderLibrary() {
     const extra = String(video.tags || "").trim();
 
     const main = card.querySelector(".card-main");
-    const knownThumb = thumbnailUrls.get(thumbnailJobId(video.id));
+    const knownThumb = providerThumbnailUrl(video) || thumbnailUrls.get(thumbnailJobId(video.id));
     main.innerHTML = `
       <span class="card-thumb" data-video-id="${escapeHtml(video.id)}">${knownThumb ? `<img alt="" src="${escapeHtml(knownThumb)}">` : ""}${runtime ? `<span class="card-duration">${escapeHtml(runtime)}</span>` : ""}</span>
       <span class="card-copy">
