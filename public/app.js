@@ -437,6 +437,7 @@ function bindEvents() {
       const item = topicItem(list, index);
       if (item) {
         core.recordFeedVote(state, item, voteUpButton ? 1 : -1);
+        if (core.feedVoteForUrl(state, item.url) === -1) removeLibraryVideoForUrl(item.url);
         saveState();
         refreshTopicResultsList(list);
         if (list?.closest("#libraryLatestBody")) {
@@ -1720,7 +1721,30 @@ function topicItem(list, index) {
   return item?.url ? item : null;
 }
 
+function removeLibraryVideoForUrl(url) {
+  const target = String(url || "").trim();
+  if (!target) return;
+  const removedIds = state.videos.filter((video) => video.url === target).map((video) => video.id);
+  if (!removedIds.length) return false;
+  const removed = new Set(removedIds);
+  state.videos = state.videos.filter((video) => !removed.has(video.id));
+  removed.forEach((id) => {
+    selectedVideoIds.delete(id);
+    if (Array.isArray(state.favourites)) state.favourites = state.favourites.filter((entry) => entry !== id);
+    playlists().forEach((playlist) => {
+      playlist.videoIds = (playlist.videoIds || []).filter((videoId) => videoId !== id);
+    });
+  });
+  if (removed.has(state.selectedId)) {
+    state.selectedId = state.videos[0]?.id || null;
+  }
+  render();
+  return true;
+}
+
+
 function ensureTopicVideo(item) {
+  if (core.feedVoteForUrl(state, item.url) === -1) return null;
   const existing = state.videos.find((video) => video.url === item.url);
   const thumbnail = /^https?:\/\//.test(item.thumbnail || "") ? item.thumbnail : "";
   if (existing) {
@@ -1744,7 +1768,9 @@ function openTopicResult(list, index) {
   const item = topicItem(list, index);
   if (!item) return;
   document.querySelector("#addVideoDialog")?.close();
-  selectVideo(ensureTopicVideo(item));
+  const id = ensureTopicVideo(item);
+  if (!id) return;
+  selectVideo(id);
 }
 
 function queueTopicDownload(list, index) {
@@ -1752,6 +1778,7 @@ function queueTopicDownload(list, index) {
   if (!item) return;
   document.querySelector("#addVideoDialog")?.close();
   const id = ensureTopicVideo(item);
+  if (!id) return;
   selectedVideoIds.add(id);
   saveState();
   render();
@@ -3384,6 +3411,7 @@ function syncLibraryFilters() {
 function visibleVideos() {
   const query = els.searchLibrary.value.trim().toLowerCase();
   return state.videos.filter((video) => {
+    if (core.feedVoteForUrl(state, video.url) === -1) return false;
     const matchesSearch = [video.title, video.speaker, video.tags, video.notes, video.url]
       .join(" ")
       .toLowerCase()
