@@ -15,6 +15,8 @@ const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_TRANSLATION_BYTES = 300 * 1024;
 const MAX_REDIRECTS = 5;
 const PORT = Number(process.env.PORT || 4173);
+const IS_DEV = process.env.NODE_ENV !== "production";
+const STATIC_CACHE_CONTROL = IS_DEV ? "no-store, must-revalidate" : "no-cache";
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36";
 const offlineJobs = new Map();
@@ -1257,7 +1259,8 @@ function serveStatic(response, pathname) {
     if (error || !stats.isFile()) return sendJson(response, 404, { error: "Not found." });
     response.writeHead(200, {
       "Content-Type": CONTENT_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream",
-      "Cache-Control": "no-cache",
+      "Cache-Control": STATIC_CACHE_CONTROL,
+      ...(IS_DEV ? { Pragma: "no-cache" } : {}),
     });
     fs.createReadStream(filePath).pipe(response);
   });
@@ -1821,8 +1824,21 @@ function startServer() {
     }
     return serveStatic(response, requestUrl.pathname);
   });
+  server.on("error", (error) => {
+    if (error.code === "EADDRINUSE") {
+      console.error(
+        `Port ${PORT} is already in use. Stop the other Material Picker process (lsof -i :${PORT}) or set PORT to another value.`
+      );
+      process.exit(1);
+    }
+    throw error;
+  });
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Material Picker running at http://localhost:${PORT}`);
+    const mode = IS_DEV ? "development" : "production";
+    console.log(`Material Picker running at http://localhost:${PORT} (${mode}, serving ${PUBLIC_ROOT})`);
+    if (IS_DEV) {
+      console.log("Local UI changes in public/ apply on refresh. picker.rynell.org is a separate deploy (npm run deploy).");
+    }
   });
   return server;
 }

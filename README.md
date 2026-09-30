@@ -8,10 +8,14 @@ Install dependencies and start the included server:
 
 ```sh
 npm install
-npm start
+npm run dev
 ```
 
-Then open `http://localhost:4173`.
+Then open `http://localhost:4173`. Use `npm run dev` while editing so `public/` assets are served with `no-store` caching and the server restarts when `server.js` or shared modules change.
+
+`npm start` runs the same server in production cache mode. `npm run build` runs tests and a Wrangler dry-run (compile check before deploy). `npm run deploy` runs the build, then publishes to Cloudflare.
+
+**Note:** `https://picker.rynell.org` only updates after `npm run deploy`. Local changes are not visible there until you deploy.
 
 For another phone or tablet on the same network, open `http://YOUR-COMPUTER-IP:4173` while the server is running.
 
