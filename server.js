@@ -256,6 +256,18 @@ async function getVimeoTranscript(videoUrl, language) {
   return { cues, language: track.lang || language || "auto", label: track.label || "Captions" };
 }
 
+async function handleChapters(response, requestUrl) {
+  const videoUrl = requestUrl.searchParams.get("url");
+  if (!videoUrl) return sendJson(response, 400, { error: "A video URL is required." });
+  try {
+    const { fetchVideoChapters } = await import("./video-chapters.mjs");
+    const result = await fetchVideoChapters(videoUrl, fetch);
+    return sendJson(response, 200, result);
+  } catch (error) {
+    return sendJson(response, error.status || 502, { error: error.message || "Chapters could not be loaded." });
+  }
+}
+
 async function handleTranscript(response, requestUrl) {
   const videoUrl = requestUrl.searchParams.get("url");
   const language = requestUrl.searchParams.get("language") || "auto";
@@ -1740,6 +1752,9 @@ function startServer() {
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/scrape") {
       return handleScrape(request, response, requestUrl);
+    }
+    if (request.method === "GET" && requestUrl.pathname === "/api/chapters") {
+      return handleChapters(response, requestUrl);
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/transcript") {
       return handleTranscript(response, requestUrl);

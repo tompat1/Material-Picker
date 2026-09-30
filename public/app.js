@@ -98,6 +98,7 @@ let hlsPlayer = null;
 let embedPlaying = false;
 let embedPlaybackKey = "";
 let embedEventsBound = false;
+let chaptersLoadToken = 0;
 let playlistMenuVideoId = "";
 let playlistMenuVideoIds = [];
 let playingPlaylistId = "";
@@ -2326,6 +2327,9 @@ function updateSelectedFromForm() {
     delete video.durationSeconds;
     delete video.estimatedBytes;
     delete video.mediaMeasured;
+    delete video.chapters;
+    delete video.chaptersUrl;
+    delete video.chaptersStatus;
   }
   saveState();
   renderLibrary();
@@ -2342,7 +2346,6 @@ function updateTranscriptFields() {
   video.translation = els.translatedText.value;
   saveState();
   renderLibrary();
-  renderChapters(video);
   scheduleFolderMetadataSave(video);
 }
 
@@ -3600,35 +3603,168 @@ function renderScreenMeta(video) {
     .join("");
 }
 
+function parseChapterClock(value) {
+  const text = String(value || "").trim();
+  if (!text) return 0;
+  const parts = text.split(":").map((part) => Number(part) || 0);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || 0;
+}
+
+function formatChapterClock(totalSeconds) {
+  const total = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const clocked = `${minutes}:${String(seconds).padStart(2, "0")}`;
+  return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` : clocked;
+}
+
+function providerChapterUrl(video) {
+  const url = String(video?.url || "").trim();
+  if (!url) return "";
+  if (/youtube\.com|youtu\.be|vimeo\.com/i.test(url)) return url;
+  return "";
+}
+
+function syncNativeVideoChapters(video) {
+  const player = els.videoPlayer;
+  if (!player?.textTracks || els.playerShell?.dataset.mode !== "video") return false;
+  const chapterTrack =
+    Array.from(player.textTracks).find((track) => track.kind === "chapters") ||
+    Array.from(player.textTracks).find((track) => /chapter/i.test(track.label || ""));
+  if (!chapterTrack?.cues?.length) return false;
+  chapterTrack.mode = "hidden";
+  const chapters = [];
+  for (let index = 0; index < chapterTrack.cues.length; index++) {
+    const cue = chapterTrack.cues[index];
+    const title = String(cue.text || "").trim();
+    if (!title) continue;
+    const startSeconds = Math.round(cue.startTime || 0);
+    chapters.push({ title, startSeconds, time: formatChapterClock(startSeconds) });
+  }
+  if (!chapters.length) return false;
+  video.chapters = chapters;
+  video.chaptersUrl = String(video.url || "").trim();
+  video.chaptersStatus = "ready";
+  saveState();
+  renderChapters(video);
+  return true;
+}
+
+async function ensureVideoChapters(video) {
+  if (!video) return;
+  const urlKey = String(video.url || "").trim();
+  if (!urlKey) {
+    renderChapters(video);
+    return;
+  }
+  if (Array.isArray(video.chapters) && video.chaptersUrl === urlKey && video.chaptersStatus === "ready") {
+    renderChapters(video);
+    return;
+  }
+  if (video.chaptersStatus === "missing" && video.chaptersUrl === urlKey) {
+    renderChapters(video);
+    return;
+  }
+  if (els.playerShell?.dataset.mode === "video") {
+    if (syncNativeVideoChapters(video)) return;
+    const player = els.videoPlayer;
+    if (player && player.readyState < 1) {
+      player.addEventListener(
+        "loadedmetadata",
+        () => {
+          const current = selectedVideo();
+          if (current?.id === video.id) void ensureVideoChapters(current);
+        },
+        { once: true }
+      );
+      video.chaptersStatus = "loading";
+      renderChapters(video);
+      return;
+    }
+  }
+  const providerUrl = providerChapterUrl(video);
+  if (!providerUrl) {
+    video.chapters = [];
+    video.chaptersUrl = urlKey;
+    video.chaptersStatus = "missing";
+    renderChapters(video);
+    return;
+  }
+  const token = ++chaptersLoadToken;
+  video.chaptersStatus = "loading";
+  video.chaptersUrl = urlKey;
+  renderChapters(video);
+  try {
+    const response = await fetch(`/api/chapters?url=${encodeURIComponent(providerUrl)}`, {
+      signal: AbortSignal.timeout(25000),
+    });
+    const data = await response.json();
+    if (selectedVideo()?.id !== video.id || token !== chaptersLoadToken) return;
+    if (!response.ok) throw new Error(data.error || `Chapters request returned ${response.status}.`);
+    video.chapters = Array.isArray(data.chapters) ? data.chapters : [];
+    video.chaptersStatus = video.chapters.length ? "ready" : "missing";
+    saveState();
+    renderChapters(video);
+  } catch {
+    if (selectedVideo()?.id !== video.id || token !== chaptersLoadToken) return;
+    video.chapters = [];
+    video.chaptersStatus = "missing";
+    renderChapters(video);
+  }
+}
+
 function renderChapters(video) {
   const list = document.querySelector("#chapterList");
+  const empty = document.querySelector("#chapterEmpty");
   if (!list) return;
-  const lines = String(video?.transcript || "")
-    .split(/\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const chapters = lines.flatMap((line) => {
-    const match = line.match(/^\[?(\d{1,2}:\d{2}(?::\d{2})?)\]?\s+(.+)$/);
-    return match ? [{ time: match[1], text: match[2] }] : [];
-  });
+  const chapters = Array.isArray(video?.chapters) ? video.chapters : [];
   list.innerHTML = "";
   chapters.forEach((chapter) => {
     const item = document.createElement("li");
     const button = document.createElement("button");
     button.type = "button";
-    button.innerHTML = `<span class="chapter-time">${escapeHtml(chapter.time)}</span><span>${escapeHtml(chapter.text)}</span>`;
-    button.addEventListener("click", () => seekToChapter(chapter.time));
+    const time = chapter.time || formatChapterClock(chapter.startSeconds);
+    button.innerHTML = `<span class="chapter-time">${escapeHtml(time)}</span><span>${escapeHtml(chapter.title || "")}</span>`;
+    button.addEventListener("click", () => seekToChapter(chapter.startSeconds ?? time));
     item.append(button);
     list.append(item);
   });
+  if (empty) {
+    empty.hidden = chapters.length > 0;
+    if (!chapters.length) {
+      if (video?.chaptersStatus === "loading") empty.textContent = "Loading chapters from the provider…";
+      else if (providerChapterUrl(video)) empty.textContent = "This video does not list chapters from the provider.";
+      else empty.textContent = "Chapters appear here when the file or stream includes them.";
+    }
+  }
 }
 
-function seekToChapter(time) {
-  const parts = String(time).split(":").map((part) => Number(part) || 0);
-  const seconds = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts[0] * 60 + parts[1];
-  if (!els.videoPlayer || els.playerShell?.dataset.mode !== "video") return;
-  els.videoPlayer.currentTime = seconds;
-  els.videoPlayer.play()?.catch(() => {});
+function seekToChapter(timeOrSeconds) {
+  const seconds =
+    typeof timeOrSeconds === "number" ? timeOrSeconds : parseChapterClock(timeOrSeconds);
+  const mode = els.playerShell?.dataset.mode;
+  if (mode === "video" && els.videoPlayer) {
+    els.videoPlayer.currentTime = seconds;
+    els.videoPlayer.play()?.catch(() => {});
+    return;
+  }
+  if (mode !== "embed" || !els.embedPlayer) return;
+  const win = els.embedPlayer.contentWindow;
+  if (!win) return;
+  const target = embedCommandTarget();
+  const src = els.embedPlayer.getAttribute("src") || "";
+  if (/youtube/i.test(src)) {
+    postYoutubeEmbed(win, target, { event: "command", func: "seekTo", args: [seconds, true] });
+    postEmbedCommand("playVideo");
+    return;
+  }
+  if (/vimeo/i.test(src)) {
+    win.postMessage(JSON.stringify({ method: "setCurrentTime", value: seconds }), target);
+    postEmbedCommand("playVideo");
+  }
 }
 
 function renderForm() {
@@ -3671,7 +3807,7 @@ function renderForm() {
   syncAddToListButtons();
   syncFavouriteButtons();
   renderScreenMeta(video);
-  renderChapters(video);
+  void ensureVideoChapters(video);
   els.openSourceButton.disabled = !video?.sourceUrl;
   setSourceFrame(video?.sourceUrl || "", false);
 }

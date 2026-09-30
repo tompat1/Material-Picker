@@ -1,3 +1,4 @@
+import { fetchVideoChapters } from "./video-chapters.mjs";
 import { searchVideos, videoFeed } from "./video-search.mjs";
 
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
@@ -823,6 +824,15 @@ export async function handleApiRequest(request, dependencies = {}) {
       return json(200, { html, finalUrl: page.finalUrl });
     } catch (error) {
       return json(error.status || 502, { error: error.message || "The page could not be scanned." });
+    }
+  }
+  if (request.method === "GET" && url.pathname === "/api/chapters") {
+    const target = url.searchParams.get("url");
+    if (!target) return json(400, { error: "A video URL is required." });
+    try {
+      return json(200, await fetchVideoChapters(target, fetchImpl));
+    } catch (error) {
+      return json(error.status || 502, { error: error.message || "Chapters could not be loaded." });
     }
   }
   if (request.method === "GET" && url.pathname === "/api/transcript") {

@@ -153,6 +153,24 @@ test("hosted offline library reports no disk copies", async () => {
   assert.deepEqual(await response.json(), { videos: [], storagePath: "" });
 });
 
+test("chapters API returns YouTube macro marker chapters", async () => {
+  const watchHtml = `<html>macroMarkersListItemRenderer":{"title":{"simpleText":"Welcome"},"timeDescription":{"simpleText":"0:00"}}</html>`;
+  const response = await handleApiRequest(
+    request(`/api/chapters?url=${encodeURIComponent("https://www.youtube.com/watch?v=abcdefghijk")}`),
+    {
+      fetchImpl: async (input) => {
+        const href = input instanceof URL ? input.href : String(input);
+        if (href.includes("youtube.com/watch")) return htmlResponse(watchHtml);
+        throw new Error(`Unexpected fetch: ${href}`);
+      },
+    }
+  );
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.source, "youtube");
+  assert.equal(data.chapters[0].title, "Welcome");
+});
+
 test("transcript API extracts Vimeo WebVTT captions into cue text", async () => {
   const mockVtt = `WEBVTT
 
