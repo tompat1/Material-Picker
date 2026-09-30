@@ -1738,6 +1738,40 @@ async function handleThumbnail(request, response) {
   }
 }
 
+let accountStorePromise;
+
+function accountStore() {
+  accountStorePromise ||= import("./account-file.mjs").then(({ createFileAccountStore }) =>
+    createFileAccountStore(path.join(DATA_ROOT, "accounts.json"))
+  );
+  return accountStorePromise;
+}
+
+async function handleAccount(request, response) {
+  const { handleAuthRequest } = await import("./auth.mjs");
+  const proto = request.headers["x-forwarded-proto"] || "http";
+  const host = request.headers.host || `localhost:${PORT}`;
+  const webRequest = new Request(`${proto}://${host}${request.url}`, {
+    method: request.method,
+    headers: request.headers,
+  });
+  const webResponse = await handleAuthRequest(webRequest, {
+    store: await accountStore(),
+    clientId: process.env.GOOGLE_CLIENT_ID || "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+  });
+  const headers = {};
+  webResponse.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "set-cookie") headers[key] = value;
+  });
+  const cookies = webResponse.headers.getSetCookie?.() || [];
+  response.writeHead(webResponse.status, {
+    ...headers,
+    ...(cookies.length ? { "Set-Cookie": cookies } : {}),
+  });
+  response.end(Buffer.from(await webResponse.arrayBuffer()));
+}
+
 function startServer() {
   fs.mkdirSync(VIDEO_ROOT, { recursive: true });
   const server = http.createServer(async (request, response) => {
@@ -1750,6 +1784,9 @@ function startServer() {
       return response.end();
     }
     const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+    if (requestUrl.pathname.startsWith("/api/auth") || requestUrl.pathname === "/api/youtube/subscriptions") {
+      return handleAccount(request, response);
+    }
     if (request.method === "GET" && requestUrl.pathname === "/api/video-search") {
       return handleVideoSearch(response, requestUrl);
     }

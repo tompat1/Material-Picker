@@ -118,7 +118,7 @@ button:disabled {
 .mast {
   grid-area: mast;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 1.2rem;
   min-height: 4.6rem;
@@ -1699,6 +1699,29 @@ select {
   stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.account-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.account-link,
+.account-sign-out {
+  min-height: 2rem;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: 560 0.82rem/1 var(--sans);
+  text-decoration: none;
+}
+
+.account-link[aria-disabled="true"] {
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 .primary-button,
@@ -3497,7 +3520,7 @@ button.is-busy .amber-throbber {
 
 @media (min-width: 1181px) {
   .mast {
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   }
 
   .nav-brand {

@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-58" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-59" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -64,6 +64,10 @@
             <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.15" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" d="M12 3.1v2.15M12 18.75v2.15M3.1 12h2.15M18.75 12h2.15M5.9 5.9l1.5 1.5M16.6 16.6l1.5 1.5M18.1 5.9l-1.5 1.5M7.4 16.6l-1.5 1.5"/></svg>
             <span class="theme-label">New Age</span>
           </button>
+        </div>
+        <div class="account-chip" id="accountChip">
+          <a class="account-link" id="accountLink" href="/api/auth/google/start">Sign in</a>
+          <button class="account-sign-out" id="accountSignOut" type="button" hidden>Sign out</button>
         </div>
         <button class="primary-button" id="addVideoButton" type="button">
           <svg class="phone-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -717,6 +721,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-76" defer></script>
+    <script src="./app.js?v=picker-nav-77" defer></script>
   </body>
 </html>

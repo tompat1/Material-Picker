@@ -355,6 +355,7 @@ function init() {
   });
   saveState();
   void loadLibraryFeed();
+  void loadAccount();
   void restorePersistedFolders().then(() => loadFolderScript(selectedVideo()));
   void reconcileOfflineLibrary();
   void repairLegacyPageRecords({ automatic: true });
@@ -455,6 +456,10 @@ function bindEvents() {
     setStatus("Created a blank video record.");
   });
   els.clearAllButton.addEventListener("click", clearAll);
+  document.querySelector("#accountSignOut")?.addEventListener("click", async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    await loadAccount();
+  });
   document.querySelector("#thumbStyleCinematic")?.addEventListener("click", () => setThumbnailStyle("cinematic"));
   document.querySelector("#thumbStyleNewAge")?.addEventListener("click", () => setThumbnailStyle("new-age"));
   document.querySelector("#mobileBack")?.addEventListener("click", () => closeMobilePlayer());
@@ -1467,6 +1472,35 @@ function presentImportedVideos(ids) {
       : `Marked ${count} video${count === 1 ? "" : "s"} from this scan. Choose a folder on this computer, confirm permission, then download them. Uncheck any you want to skip.`
   );
   document.querySelector(".library-offline-bar")?.scrollIntoView({ block: "nearest" });
+}
+
+async function loadAccount() {
+  const link = document.querySelector("#accountLink");
+  const signOut = document.querySelector("#accountSignOut");
+  if (!link) return;
+  let data = { configured: false, user: null };
+  try {
+    const response = await fetch("/api/auth/me");
+    data = await response.json();
+  } catch {
+    data = { configured: false, user: null };
+  }
+  if (data.user) {
+    const label = data.user.name || data.user.email || "Signed in";
+    link.textContent = data.user.youtubeConnected ? label : `${label}`;
+    link.removeAttribute("href");
+    link.setAttribute("aria-disabled", "true");
+    link.title = data.user.youtubeConnected ? "YouTube connected" : "Signed in";
+    if (signOut) signOut.hidden = false;
+    return;
+  }
+  link.textContent = data.configured === false ? "Sign in" : "Sign in";
+  link.href = "/api/auth/google/start";
+  link.removeAttribute("aria-disabled");
+  link.title = data.configured === false
+    ? "Google sign-in still needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET"
+    : "Sign in with Google to connect YouTube";
+  if (signOut) signOut.hidden = true;
 }
 
 function topicSourceLabel() {

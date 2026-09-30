@@ -1,3 +1,4 @@
+import { createD1AccountStore, handleAuthRequest } from "./auth.mjs";
 import { fetchVideoChapters } from "./video-chapters.mjs";
 import { searchVideos, videoFeed } from "./video-search.mjs";
 
@@ -772,6 +773,13 @@ async function renderThumbnail(request, ai) {
 
 export async function handleApiRequest(request, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl || fetch;
+  const authResponse = await handleAuthRequest(request, {
+    store: dependencies.accountStore || null,
+    clientId: dependencies.googleClientId || "",
+    clientSecret: dependencies.googleClientSecret || "",
+    fetchImpl,
+  });
+  if (authResponse) return authResponse;
   const url = new URL(request.url);
   if (request.method === "GET" && url.pathname === "/api/video-search") {
     try {
@@ -913,6 +921,9 @@ export default {
     return handleApiRequest(request, {
       renderPage: env?.BROWSER ? (url) => renderPage(env.BROWSER, url) : null,
       ai: env?.AI,
+      accountStore: env?.AUTH ? createD1AccountStore(env.AUTH) : null,
+      googleClientId: env?.GOOGLE_CLIENT_ID || "",
+      googleClientSecret: env?.GOOGLE_CLIENT_SECRET || "",
     });
   },
 };

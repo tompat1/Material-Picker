@@ -19,6 +19,26 @@ Then open `http://localhost:4173`. Use `npm run dev` while editing so `public/` 
 
 For another phone or tablet on the same network, open `http://YOUR-COMPUTER-IP:4173` while the server is running.
 
+## Accounts and YouTube
+
+Sign-in is Google OAuth. The same consent also requests read-only YouTube access so subscriptions can be synced later. Sessions stay in an HttpOnly cookie. Refresh tokens stay on the server (`data/accounts.json` locally, D1 in production), not in the browser library.
+
+1. In Google Cloud, enable the YouTube Data API and create an OAuth client (Web). Add the redirect URIs in `.env.example`.
+2. Put `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env` for `npm run dev`, and as Worker secrets for production (`wrangler secret put`).
+3. Create the account database and apply `migrations/0001_accounts.sql`:
+
+```sh
+npx wrangler d1 create picker-accounts
+```
+
+Add the printed `database_id` to `wrangler.jsonc` as an `AUTH` D1 binding, then:
+
+```sh
+npx wrangler d1 migrations apply picker-accounts --remote
+```
+
+Until those secrets and the database exist, the header still shows **Sign in** and `/api/auth/me` reports that Google is not configured. Favourites, likes, and offline files remain in this browser until a later step copies them onto the account.
+
 ## Cloudflare Deployment
 
 The repository includes `wrangler.jsonc`. It deploys the browser files in `public/` plus a page-scan relay at `/api/scrape`. Run:
