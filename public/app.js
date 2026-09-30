@@ -4682,31 +4682,66 @@ function syncEmbedPlaybackState(event) {
   }
   if (update.state === 3) return;
   embedPlaying = update.state === 1;
-  livePlayback = update.state === 1;
-  if (update.state === 0) dockPlayBubble();
+  if (update.state === 1) livePlayback = true;
+  else if (update.state === 0) {
+    livePlayback = false;
+    dockPlayBubble();
+  } else if (update.state === 2 && document.body.classList.contains("is-player-floating")) {
+    if (livePlayback && !floatResumeSent) {
+      floatResumeSent = true;
+      postEmbedCommand("playVideo");
+    }
+  } else if (update.state === 2) {
+    livePlayback = false;
+  }
   if (update.state === 0 || update.state === 1 || update.state === 2 || update.state === 5) {
     setPlaybackFallback(false);
   }
   syncPlayButton();
 }
 
-function watchColumnHidden() {
+function playerShouldFloat() {
+  if (!window.matchMedia("(min-width: 761px)").matches) return false;
+  const desk = document.querySelector('input[name="desk"]:checked')?.id || "desk-library";
+  if (desk === "desk-library") return false;
+  if (desk === "desk-transcripts" && !document.body.classList.contains("is-nav-searching")) return false;
+  return true;
+}
+
+function restoreFloatedMedia() {
+  const stage = document.querySelector("#playBubbleStage");
+  const shell = els.playerShell;
+  const node = stage?.querySelector("video, iframe");
+  if (!node || !shell || node.parentElement === shell) return;
+  const empty = shell.querySelector("#emptyPlayer");
+  if (empty) shell.insertBefore(node, empty);
+  else shell.prepend(node);
+}
+
+function syncFloatingBox() {
   const column = document.querySelector(".watch-column");
-  return !column || getComputedStyle(column).display === "none";
+  const bubble = document.querySelector("#playBubble");
+  if (!column || !bubble) return;
+  column.style.left = bubble.style.left;
+  column.style.top = bubble.style.top;
+  column.style.right = bubble.style.right;
+  column.style.bottom = bubble.style.bottom;
 }
 
 function dockPlayBubble() {
   const bubble = document.querySelector("#playBubble");
-  const stage = document.querySelector("#playBubbleStage");
-  const shell = els.playerShell;
-  const node = stage?.querySelector("video, iframe");
-  if (node && shell) {
-    const empty = shell.querySelector("#emptyPlayer");
-    if (empty) shell.insertBefore(node, empty);
-    else shell.prepend(node);
+  restoreFloatedMedia();
+  document.body.classList.remove("is-player-floating");
+  const column = document.querySelector(".watch-column");
+  if (column) {
+    column.style.left = "";
+    column.style.top = "";
+    column.style.right = "";
+    column.style.bottom = "";
   }
   bubble?.classList.remove("is-open", "is-dragging");
   if (bubble) bubble.hidden = true;
+  floatResumeSent = false;
 }
 
 function playingMediaNode() {
@@ -4718,27 +4753,28 @@ function playingMediaNode() {
   return hasPicture ? node : null;
 }
 
+let floatResumeSent = false;
+
 function floatPlayBubble() {
   const bubble = document.querySelector("#playBubble");
-  const stage = document.querySelector("#playBubbleStage");
   const node = playingMediaNode();
-  if (!bubble || !stage || !node) return false;
+  if (!bubble || !node) return false;
   if (!window.matchMedia("(min-width: 761px)").matches) return false;
   if (playbackIsRunning()) livePlayback = true;
   if (!livePlayback) return false;
+  document.body.classList.add("is-player-floating");
+  restoreFloatedMedia();
   const title = document.querySelector("#playBubbleTitle");
   if (title) title.textContent = selectedVideo()?.title || "Playing";
   bubble.hidden = false;
-  if (node.parentElement !== stage) stage.append(node);
   bubble.classList.add("is-open");
+  syncFloatingBox();
   return true;
 }
 
 function syncPlayBubble() {
-  const desktop = window.matchMedia("(min-width: 761px)").matches;
-  const away = desktop && watchColumnHidden();
   if (playbackIsRunning()) livePlayback = true;
-  if (!away || !livePlayback) {
+  if (!playerShouldFloat() || !livePlayback) {
     dockPlayBubble();
     return;
   }
@@ -4786,6 +4822,7 @@ function bindPlayBubble() {
     bubble.style.top = `${Math.min(Math.max(8, drag.top + dy), Math.max(8, maxTop))}px`;
     bubble.style.right = "auto";
     bubble.style.bottom = "auto";
+    syncFloatingBox();
   });
   scrim.addEventListener("pointerup", (event) => {
     if (!drag || event.pointerId !== drag.id) return;
@@ -4820,6 +4857,10 @@ function bindPlayBubble() {
     livePlayback = true;
   });
   els.videoPlayer?.addEventListener("pause", () => {
+    if (document.body.classList.contains("is-player-floating") && livePlayback) {
+      els.videoPlayer.play()?.catch(() => {});
+      return;
+    }
     if (!bubble.classList.contains("is-open")) livePlayback = false;
   });
   els.videoPlayer?.addEventListener("ended", () => {
