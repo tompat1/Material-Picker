@@ -1594,14 +1594,11 @@ async function loadYouTubeHome() {
       <div class="topic-results" id="youtubePlaylistVideos"></div>
     </section>
     ${youtubeSection("Liked", "", "youtubeLiked")}
-    ${youtubeSection("History", "Recent likes, uploads, and playlist adds. YouTube does not share watch history with apps.", "youtubeActivity")}
   `;
   paintTopicResults(document.querySelector("#youtubeSubscriptions"), data.subscriptions || []);
   paintTopicResults(document.querySelector("#youtubeLiked"), data.liked || []);
-  paintTopicResults(document.querySelector("#youtubeActivity"), data.activity || []);
   if (!data.subscriptions?.length) document.querySelector("#youtubeSubscriptions").innerHTML = `<p class="hint">No subscription videos yet.</p>`;
   if (!data.liked?.length) document.querySelector("#youtubeLiked").innerHTML = `<p class="hint">No liked videos yet.</p>`;
-  if (!data.activity?.length) document.querySelector("#youtubeActivity").innerHTML = `<p class="hint">No recent activity yet.</p>`;
 }
 
 async function loadYouTubePlaylist(playlistId) {
