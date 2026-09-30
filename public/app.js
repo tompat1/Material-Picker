@@ -387,6 +387,17 @@ function bindEvents() {
   els.importForm.addEventListener("submit", handleImport);
   document.querySelector("#topicSearchForm")?.addEventListener("submit", searchTopics);
   document.addEventListener("click", (event) => {
+    const librarySectionToggle = event.target.closest("[data-library-section-toggle]");
+    if (librarySectionToggle) {
+      const key = librarySectionToggle.dataset.librarySectionToggle;
+      if (key) {
+        const sections = librarySections();
+        sections[key] = !sections[key];
+        saveState();
+        syncLibrarySectionChrome();
+      }
+      return;
+    }
     const filterButton = event.target.closest("[data-library-filter]");
     if (filterButton) {
       mobileLibraryFilter = filterButton.dataset.libraryFilter || "all";
@@ -1496,13 +1507,35 @@ function libraryFeedLabel() {
   return LIBRARY_FEEDS.find((feed) => feed.id === libraryFeed)?.label || "Latest";
 }
 
+function librarySections() {
+  if (!state.librarySections || typeof state.librarySections !== "object") {
+    state.librarySections = { latest: false, queue: false };
+  }
+  return state.librarySections;
+}
+
+function syncLibrarySectionChrome() {
+  const sections = librarySections();
+  const latestBlock = document.querySelector("#libraryLatestBlock");
+  const queueBlock = document.querySelector("#libraryQueueBlock");
+  latestBlock?.classList.toggle("is-collapsed", Boolean(sections.latest));
+  queueBlock?.classList.toggle("is-collapsed", Boolean(sections.queue));
+  document.querySelector("#libraryLatestToggle")?.setAttribute("aria-expanded", sections.latest ? "false" : "true");
+  document.querySelector("#libraryQueueToggle")?.setAttribute("aria-expanded", sections.queue ? "false" : "true");
+}
+
 function paintLibraryFeeds() {
+  const mount = document.querySelector("#libraryLatestBody");
+  const latestBlock = document.querySelector("#libraryLatestBlock");
+  if (!mount) return;
+  mount.innerHTML = "";
   const topic = els.searchLibrary?.value.trim() || "";
-  if (mobileLibraryFilter !== "all" || topic.length >= 2 || !libraryFeedMessage) return;
+  const showFeeds = mobileLibraryFilter === "all" && topic.length < 2 && Boolean(libraryFeedMessage);
+  if (latestBlock) latestBlock.hidden = !showFeeds;
+  if (!showFeeds) return;
   const section = document.createElement("section");
   section.className = "library-topic";
   section.innerHTML = `
-    <h3>Latest</h3>
     <div class="topic-sources" role="group" aria-label="Latest feeds">
       ${LIBRARY_FEEDS.map((feed) => `<button type="button" data-video-feed="${feed.id}" aria-pressed="${feed.id === libraryFeed}">${feed.label}</button>`).join("")}
     </div>
@@ -1514,7 +1547,7 @@ function paintLibraryFeeds() {
     list.innerHTML = topicResultMarkup(libraryFeedResults);
     list.dataset.results = JSON.stringify(libraryFeedResults);
   }
-  els.videoList.append(section);
+  mount.append(section);
 }
 
 async function loadLibraryFeed() {
@@ -2674,6 +2707,7 @@ async function measureLibraryMedia() {
 
 function renderLibrary() {
   syncLibraryFilters();
+  syncLibrarySectionChrome();
   const filtered = visibleVideos();
 
   els.videoList.innerHTML = "";
