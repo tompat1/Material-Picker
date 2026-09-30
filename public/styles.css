@@ -1353,6 +1353,10 @@ dialog::backdrop {
   min-height: 0;
 }
 
+.library-block[hidden] {
+  display: none;
+}
+
 .library-block--latest {
   flex: 0 0 auto;
   border-bottom: 1px solid var(--line);
