@@ -504,6 +504,11 @@ function bindEvents() {
   });
   bindPlayBubble();
   document.querySelector("#youtubeHome")?.addEventListener("click", onYouTubeHomeClick);
+  document.querySelector("#youtubeHome")?.addEventListener("input", (event) => {
+    if (event.target.id !== "youtubeSearch") return;
+    youtubeShelf.query = event.target.value;
+    paintYouTubeGrid();
+  });
   document.querySelectorAll(".nav-sub label, #desk-library, #desk-downloads, #desk-transcripts").forEach((control) => {
     control.addEventListener("change", closeMobileMenus);
     control.addEventListener("click", closeMobileMenus);
@@ -1577,6 +1582,7 @@ let youtubeShelf = {
   channelId: "",
   playlistId: "",
   playlistTitle: "",
+  query: "",
 };
 
 function youtubeWhen(value) {
@@ -1598,13 +1604,19 @@ function youtubeWhen(value) {
   return `${count} ${unit} ago`;
 }
 
+function youtubeTextMatches(item) {
+  const query = String(youtubeShelf.query || "").trim().toLowerCase();
+  if (!query) return true;
+  return [item?.title, item?.speaker, item?.channelTitle].some((part) => String(part || "").toLowerCase().includes(query));
+}
+
 function youtubeShelfVideos() {
-  if (youtubeShelf.view === "liked") return youtubeShelf.liked;
-  if (youtubeShelf.view === "playlist") return youtubeShelf.playlistVideos;
+  if (youtubeShelf.view === "liked") return youtubeShelf.liked.filter(youtubeTextMatches);
+  if (youtubeShelf.view === "playlist") return youtubeShelf.playlistVideos.filter(youtubeTextMatches);
   const videos = youtubeShelf.view === "channel"
     ? youtubeShelf.subscriptions.filter((video) => video.channelId === youtubeShelf.channelId)
     : youtubeShelf.subscriptions;
-  return videos.filter((video) => video?.url && core.feedVoteForUrl(state, video.url) !== -1);
+  return videos.filter((video) => video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
 }
 
 function youtubeChannelMark(thumbnail, title) {
@@ -1631,8 +1643,9 @@ function paintYouTubeGrid(message = "") {
   }
   if (youtubeShelf.view === "playlists") {
     grid.dataset.results = "[]";
-    grid.innerHTML = youtubeShelf.playlists.length
-      ? youtubeShelf.playlists.map((playlist) => `<article class="yt-card">
+    const playlists = youtubeShelf.playlists.filter(youtubeTextMatches);
+    grid.innerHTML = playlists.length
+      ? playlists.map((playlist) => `<article class="yt-card">
           <button class="yt-thumb" type="button" data-youtube-playlist="${escapeHtml(playlist.id)}">
             ${playlist.thumbnail ? `<img alt="" src="${escapeHtml(playlist.thumbnail)}" />` : `<span class="yt-thumb-fallback"></span>`}
           </button>
@@ -1641,13 +1654,15 @@ function paintYouTubeGrid(message = "") {
             <p>${playlist.count ? `${playlist.count} videos` : "Playlist"}</p>
           </div>
         </article>`).join("")
-      : `<p class="hint yt-empty">No playlists on this account.</p>`;
+      : `<p class="hint yt-empty">${youtubeShelf.query.trim() ? "No matches." : "No playlists on this account."}</p>`;
     return;
   }
   const videos = youtubeShelfVideos();
   grid.dataset.results = JSON.stringify(videos);
   if (!videos.length) {
-    const empty = youtubeShelf.view === "liked" ? "No liked videos yet." : youtubeShelf.view === "playlist" ? "This playlist has no videos." : "No subscription videos yet.";
+    const empty = youtubeShelf.query.trim()
+      ? "No matches."
+      : youtubeShelf.view === "liked" ? "No liked videos yet." : youtubeShelf.view === "playlist" ? "This playlist has no videos." : "No subscription videos yet.";
     grid.innerHTML = `<p class="hint yt-empty">${empty}</p>`;
     return;
   }
@@ -1680,6 +1695,7 @@ function renderYouTubeHome(data) {
     channelId: "",
     playlistId: "",
     playlistTitle: "",
+    query: "",
   };
   const channels = youtubeShelf.channels.map((channel) => `<button class="yt-channel" type="button" data-youtube-channel="${escapeHtml(channel.id)}" aria-pressed="false">
     ${youtubeChannelMark(channel.thumbnail, channel.title)}
@@ -1699,6 +1715,10 @@ function renderYouTubeHome(data) {
           <button type="button" data-youtube-view="all" aria-pressed="true">All</button>
           <button type="button" data-youtube-view="playlists" aria-pressed="false">Playlists</button>
           <button type="button" data-youtube-view="liked" aria-pressed="false">Liked videos</button>
+          <label class="yt-search">
+            <span class="sr-only">Search YouTube</span>
+            <input id="youtubeSearch" type="search" placeholder="Search" autocomplete="off" enterkeyhint="search" />
+          </label>
         </div>
         <div class="yt-grid" id="youtubeGrid"></div>
       </div>

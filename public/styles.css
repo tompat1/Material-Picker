@@ -898,6 +898,7 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 
 .yt-chips {
   display: flex;
+  align-items: center;
   gap: 0.55rem;
   overflow-x: auto;
   margin: 0 0 1rem;
@@ -906,6 +907,27 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   top: 0;
   z-index: 2;
   background: var(--stage);
+}
+
+.yt-search {
+  flex: 0 1 14rem;
+  min-width: 8.5rem;
+  margin-left: auto;
+}
+
+.yt-search input {
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.2rem 0.85rem;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink);
+  font: 500 0.88rem/1 var(--sans);
+}
+
+.yt-search input::placeholder {
+  color: var(--muted);
 }
 
 .yt-chips button {
