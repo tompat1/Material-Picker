@@ -96,6 +96,7 @@ const els = {
 let recognition = null;
 let hlsPlayer = null;
 let embedPlaying = false;
+let livePlayback = false;
 let embedPlaybackKey = "";
 let embedEventsBound = false;
 let chaptersLoadToken = 0;
@@ -486,7 +487,10 @@ function bindEvents() {
   });
   document.querySelector("#thumbStyleCinematic")?.addEventListener("click", () => setThumbnailStyle("cinematic"));
   document.querySelector("#thumbStyleNewAge")?.addEventListener("click", () => setThumbnailStyle("new-age"));
-  window.addEventListener("resize", placeThemeThumb);
+  window.addEventListener("resize", () => {
+    placeThemeThumb();
+    syncPlayBubble();
+  });
   document.querySelector("#mobileBack")?.addEventListener("click", () => closeMobilePlayer());
   document.querySelector("#navMore")?.addEventListener("click", () => {
     const open = document.body.classList.toggle("is-more-open");
@@ -495,6 +499,10 @@ function bindEvents() {
   document.querySelector("#desk-youtube")?.addEventListener("change", () => {
     if (document.querySelector("#desk-youtube")?.checked) void loadYouTubeHome();
   });
+  document.querySelectorAll('input[name="desk"]').forEach((desk) => {
+    desk.addEventListener("change", syncPlayBubble);
+  });
+  bindPlayBubble();
   document.querySelector("#youtubeHome")?.addEventListener("click", onYouTubeHomeClick);
   document.querySelectorAll(".nav-sub label, #desk-library, #desk-downloads, #desk-transcripts").forEach((control) => {
     control.addEventListener("change", closeMobileMenus);
@@ -2230,13 +2238,21 @@ function syncThumbnailStyleControl() {
 }
 
 let themeThumbMotion = 0;
+let themeThumbShrug = null;
 
 function placeThemeThumb() {
   const group = document.querySelector(".thumb-style");
   const thumb = group?.querySelector(".theme-thumb");
   const active = group?.querySelector("button[aria-pressed='true']");
   if (!thumb || !active) return;
+  if (
+    themeThumbShrug &&
+    themeThumbShrug.buttonId === active.id &&
+    themeThumbShrug.base === active.offsetLeft &&
+    themeThumbShrug.width === active.offsetWidth
+  ) return;
   themeThumbMotion += 1;
+  themeThumbShrug = null;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (!thumb.dataset.placed || reduce) thumb.style.transition = "none";
   else thumb.style.transition = "";
@@ -2259,6 +2275,7 @@ function shrugThemeThumb() {
   const base = active.offsetLeft;
   const nudge = active.id === "thumbStyleNewAge" ? -8 : 8;
   const motion = ++themeThumbMotion;
+  themeThumbShrug = { motion, buttonId: active.id, base, width: active.offsetWidth };
   thumb.style.transition = "none";
   thumb.style.transform = `translateX(${base}px)`;
   thumb.getBoundingClientRect();
@@ -2271,6 +2288,7 @@ function shrugThemeThumb() {
     window.setTimeout(() => {
       if (motion !== themeThumbMotion) return;
       thumb.style.transition = "";
+      if (themeThumbShrug?.motion === motion) themeThumbShrug = null;
     }, 190);
   }, 120);
 }
@@ -2873,6 +2891,7 @@ function showDesk(name) {
   const tabName = name === "reels" || name === "screen" || name === "folders" ? "library" : name;
   const tab = document.querySelector(`#desk-${tabName}`);
   if (tab) tab.checked = true;
+  syncPlayBubble();
 }
 
 function clearAll() {
@@ -3104,6 +3123,7 @@ function syncNavSearch() {
   const value = els.searchLibrary?.value || "";
   document.body.classList.toggle("is-nav-searching", Boolean(value.trim()));
   els.searchLibrary?.closest(".nav-search")?.classList.toggle("has-value", value.length > 0);
+  syncPlayBubble();
 }
 
 function renderLibraryTotals() {
@@ -4548,10 +4568,133 @@ function syncEmbedPlaybackState(event) {
   }
   if (update.state === 3) return;
   embedPlaying = update.state === 1;
+  livePlayback = update.state === 1;
+  if (update.state === 0) dockPlayBubble();
   if (update.state === 0 || update.state === 1 || update.state === 2 || update.state === 5) {
     setPlaybackFallback(false);
   }
   syncPlayButton();
+}
+
+function watchColumnHidden() {
+  const column = document.querySelector(".watch-column");
+  return !column || getComputedStyle(column).display === "none";
+}
+
+function dockPlayBubble() {
+  const bubble = document.querySelector("#playBubble");
+  const stage = document.querySelector("#playBubbleStage");
+  const shell = els.playerShell;
+  const node = stage?.querySelector("video, iframe");
+  if (node && shell) {
+    const empty = shell.querySelector("#emptyPlayer");
+    if (empty) shell.insertBefore(node, empty);
+    else shell.prepend(node);
+  }
+  bubble?.classList.remove("is-open", "is-dragging");
+  if (bubble) bubble.hidden = true;
+}
+
+function syncPlayBubble() {
+  const bubble = document.querySelector("#playBubble");
+  const desktop = window.matchMedia("(min-width: 761px)").matches;
+  const away = desktop && watchColumnHidden();
+  if (playbackIsRunning()) livePlayback = true;
+  if (!bubble || !away || !livePlayback) {
+    if (!away || !livePlayback) dockPlayBubble();
+    return;
+  }
+  const mode = els.playerShell?.dataset.mode;
+  const node = mode === "video" ? els.videoPlayer : mode === "embed" ? els.embedPlayer : null;
+  const hasPicture = mode === "embed"
+    ? Boolean(node?.getAttribute("src"))
+    : Boolean(node && (node.currentSrc || node.src || node.srcObject || hlsPlayer));
+  if (!node || !hasPicture) {
+    dockPlayBubble();
+    return;
+  }
+  const stage = document.querySelector("#playBubbleStage");
+  if (stage && node.parentElement !== stage) stage.append(node);
+  const title = document.querySelector("#playBubbleTitle");
+  if (title) title.textContent = selectedVideo()?.title || "Playing";
+  bubble.hidden = false;
+  bubble.classList.add("is-open");
+  if (mode === "video" && node.paused) node.play()?.catch(() => {});
+  if (mode === "embed") postEmbedCommand("playVideo");
+}
+
+function closePlayBubble() {
+  livePlayback = false;
+  dockPlayBubble();
+  if (els.playerShell?.dataset.mode === "video") els.videoPlayer?.pause();
+  else if (els.playerShell?.dataset.mode === "embed") postEmbedCommand("pauseVideo");
+  embedPlaying = false;
+  syncPlayButton();
+}
+
+function returnFromPlayBubble() {
+  showDesk("library");
+  dockPlayBubble();
+}
+
+function bindPlayBubble() {
+  const bubble = document.querySelector("#playBubble");
+  const scrim = document.querySelector("#playBubbleScrim");
+  const returnButton = document.querySelector("#playBubbleReturn");
+  if (!bubble || !scrim || !returnButton) return;
+  let drag = null;
+  let dragged = false;
+  scrim.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".play-bubble-close")) return;
+    const rect = bubble.getBoundingClientRect();
+    drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+    dragged = false;
+    try { scrim.setPointerCapture(event.pointerId); } catch { /* pointer already released */ }
+  });
+  scrim.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (Math.hypot(dx, dy) < 5) return;
+    dragged = true;
+    bubble.classList.add("is-dragging");
+    const maxLeft = window.innerWidth - bubble.offsetWidth - 8;
+    const maxTop = window.innerHeight - bubble.offsetHeight - 8;
+    bubble.style.left = `${Math.min(Math.max(8, drag.left + dx), Math.max(8, maxLeft))}px`;
+    bubble.style.top = `${Math.min(Math.max(8, drag.top + dy), Math.max(8, maxTop))}px`;
+    bubble.style.right = "auto";
+    bubble.style.bottom = "auto";
+  });
+  scrim.addEventListener("pointerup", (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    drag = null;
+    bubble.classList.remove("is-dragging");
+  });
+  scrim.addEventListener("pointercancel", () => {
+    drag = null;
+    bubble.classList.remove("is-dragging");
+  });
+  returnButton.addEventListener("click", () => {
+    if (dragged) {
+      dragged = false;
+      return;
+    }
+    returnFromPlayBubble();
+  });
+  document.querySelector("#playBubbleClose")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closePlayBubble();
+  });
+  els.videoPlayer?.addEventListener("play", () => {
+    livePlayback = true;
+  });
+  els.videoPlayer?.addEventListener("pause", () => {
+    if (!bubble.classList.contains("is-open")) livePlayback = false;
+  });
+  els.videoPlayer?.addEventListener("ended", () => {
+    livePlayback = false;
+    dockPlayBubble();
+  });
 }
 
 function togglePlayback() {
@@ -4724,6 +4867,8 @@ function renderPlayer(options = {}) {
     return;
   }
 
+  livePlayback = false;
+  dockPlayBubble();
   embedPlaying = false;
   embedEventsBound = false;
   embedPlaybackKey = "";

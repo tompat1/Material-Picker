@@ -3695,6 +3695,121 @@ progress::-moz-progress-bar {
   display: grid;
 }
 
+.play-bubble {
+  position: fixed;
+  z-index: 70;
+  right: 1.15rem;
+  bottom: 1.15rem;
+  width: min(320px, calc(100vw - 2rem));
+  overflow: hidden;
+  border-radius: 18px;
+  background: #140f0c;
+  box-shadow:
+    0 22px 50px rgba(20, 12, 8, 0.42),
+    inset 0 0 0 1px rgba(244, 235, 221, 0.16);
+  cursor: grab;
+  touch-action: none;
+}
+
+.play-bubble[hidden] {
+  display: none !important;
+}
+
+.play-bubble.is-dragging {
+  cursor: grabbing;
+}
+
+.play-bubble-stage {
+  aspect-ratio: 16 / 9;
+  background: #140f0c;
+}
+
+.play-bubble-stage video,
+.play-bubble-stage iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  background: #140f0c;
+  pointer-events: none;
+}
+
+.play-bubble-scrim {
+  position: absolute;
+  inset: 0;
+}
+
+.play-bubble-title {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0;
+  padding: 1.6rem 0.8rem 0.55rem;
+  background: linear-gradient(transparent, rgba(12, 8, 6, 0.88));
+  color: #f4ebdd;
+  font-size: 0.75rem;
+  font-weight: 560;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.play-bubble-return,
+.play-bubble-close {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: #f4ebdd;
+  background: rgba(20, 12, 8, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(244, 235, 221, 0.2);
+}
+
+.play-bubble-return {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3.35rem;
+  height: 3.35rem;
+  transform: translate(-50%, -62%);
+  cursor: pointer;
+}
+
+.play-bubble-return svg,
+.play-bubble-close svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.play-bubble-close {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  cursor: pointer;
+}
+
+.play-bubble-return:hover,
+.play-bubble-close:hover {
+  background: rgba(20, 12, 8, 0.82);
+}
+
+@media (max-width: 760px) {
+  .play-bubble {
+    display: none !important;
+  }
+}
+
 .empty-player {
   place-items: center;
   align-content: center;
