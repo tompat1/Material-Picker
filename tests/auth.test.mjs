@@ -26,6 +26,28 @@ test("subscription payloads keep channel id and title", () => {
   assert.equal(channels[0].title, "Studio North");
 });
 
+test("email accounts can be created and signed in without Google", async () => {
+  const store = createMemoryAccountStore();
+  const register = await handleAuthRequest(new Request("http://localhost:4173/api/auth/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Ada", email: "ada@example.com", password: "long-enough" }),
+  }), { store });
+  assert.equal(register.status, 200);
+  const session = register.headers.getSetCookie().find((item) => item.startsWith("picker_session="));
+  const sessionId = decodeURIComponent(session.split(";")[0].slice("picker_session=".length));
+  const me = await handleAuthRequest(new Request("http://localhost:4173/api/auth/me", {
+    headers: { cookie: `picker_session=${sessionId}` },
+  }), { store });
+  assert.equal((await me.json()).user.email, "ada@example.com");
+  const again = await handleAuthRequest(new Request("http://localhost:4173/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "ada@example.com", password: "wrong-password" }),
+  }), { store });
+  assert.equal(again.status, 401);
+});
+
 test("google callback creates a session and marks YouTube connected", async () => {
   const store = createMemoryAccountStore();
   const start = await handleAuthRequest(new Request("http://localhost:4173/api/auth/google/start"), {

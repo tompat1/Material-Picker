@@ -4,6 +4,58 @@ const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const STATE_MS = 10 * 60 * 1000;
 const YOUTUBE_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
 
+export async function hashPassword(password, salt = crypto.getRandomValues(new Uint8Array(16))) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" }, key, 256);
+  return `pbkdf2$${bytesToBase64(salt)}$${bytesToBase64(new Uint8Array(bits))}`;
+}
+
+export async function verifyPassword(password, stored) {
+  const [scheme, saltText, hash] = String(stored || "").split("$");
+  if (scheme !== "pbkdf2" || !saltText || !hash) return false;
+  const next = await hashPassword(password, base64ToBytes(saltText));
+  return safeEqual(next.split("$")[2] || "", hash);
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function safeEqual(left, right) {
+  if (left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index += 1) mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return mismatch === 0;
+}
+
+function normalizeAccount(body) {
+  const email = String(body?.email || "").trim().toLowerCase();
+  const password = String(body?.password || "");
+  const name = String(body?.name || "").trim().slice(0, 80);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const error = new Error("Enter a valid email address.");
+    error.status = 400;
+    throw error;
+  }
+  if (password.length < 8) {
+    const error = new Error("Use a password of at least 8 characters.");
+    error.status = 400;
+    throw error;
+  }
+  return { email, password, name };
+}
+
 export function googleAuthUrl({ clientId, redirectUri, state }) {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", clientId);
@@ -48,6 +100,10 @@ export function createMemoryAccountStore() {
       const googleSub = String(profile.sub || "");
       if (!googleSub) throw new Error("Google did not return an account id.");
       let user = [...users.values()].find((item) => item.googleSub === googleSub);
+      if (!user && profile.email) {
+        user = [...users.values()].find((item) => item.email === String(profile.email).toLowerCase());
+        if (user) user.googleSub = googleSub;
+      }
       if (!user) {
         user = {
           id: crypto.randomUUID(),
@@ -70,6 +126,28 @@ export function createMemoryAccountStore() {
         accessExpiresAt: tokenSet.accessExpiresAt || "",
       });
       return publicUser(user, tokens.get(user.id));
+    },
+    async passwordUserByEmail(email) {
+      const user = [...users.values()].find((item) => item.email === email && item.passwordHash);
+      return user ? { ...publicUser(user, tokens.get(user.id)), passwordHash: user.passwordHash } : null;
+    },
+    async createPasswordUser({ email, name, passwordHash }) {
+      if ([...users.values()].some((item) => item.email === email)) {
+        const error = new Error("An account with that email already exists.");
+        error.status = 409;
+        throw error;
+      }
+      const user = {
+        id: crypto.randomUUID(),
+        googleSub: "",
+        email,
+        name,
+        picture: "",
+        passwordHash,
+        createdAt: new Date().toISOString(),
+      };
+      users.set(user.id, user);
+      return publicUser(user, null);
     },
     async createSession(userId) {
       const id = crypto.randomUUID();
@@ -113,7 +191,11 @@ export function createD1AccountStore(db) {
     async upsertGoogleUser(profile, tokenSet) {
       const googleSub = String(profile.sub || "");
       if (!googleSub) throw new Error("Google did not return an account id.");
-      const existing = await db.prepare("SELECT id, email, name, picture, created_at FROM users WHERE google_sub = ?").bind(googleSub).first();
+      let existing = await db.prepare("SELECT id, email, name, picture, created_at FROM users WHERE google_sub = ?").bind(googleSub).first();
+      if (!existing && profile.email) {
+        existing = await db.prepare("SELECT id, email, name, picture, created_at FROM users WHERE email = ?").bind(String(profile.email).toLowerCase()).first();
+        if (existing) await db.prepare("UPDATE users SET google_sub = ? WHERE id = ?").bind(googleSub, existing.id).run();
+      }
       const id = existing?.id || crypto.randomUUID();
       if (!existing) {
         await db.prepare("INSERT INTO users (id, google_sub, email, name, picture, created_at) VALUES (?, ?, ?, ?, ?, ?)")
@@ -136,6 +218,25 @@ export function createD1AccountStore(db) {
         .run();
       const user = await db.prepare("SELECT id, email, name, picture FROM users WHERE id = ?").bind(id).first();
       return publicUser(rowToUser(user), { refreshToken });
+    },
+    async passwordUserByEmail(email) {
+      const row = await db.prepare("SELECT id, email, name, picture, password_hash FROM users WHERE email = ?").bind(email).first();
+      if (!row?.password_hash) return null;
+      const token = await db.prepare("SELECT refresh_token FROM youtube_tokens WHERE user_id = ?").bind(row.id).first();
+      return { ...publicUser(rowToUser(row), token), passwordHash: row.password_hash };
+    },
+    async createPasswordUser({ email, name, passwordHash }) {
+      const existing = await db.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+      if (existing) {
+        const error = new Error("An account with that email already exists.");
+        error.status = 409;
+        throw error;
+      }
+      const id = crypto.randomUUID();
+      await db.prepare("INSERT INTO users (id, google_sub, email, name, picture, password_hash, created_at) VALUES (?, NULL, ?, ?, '', ?, ?)")
+        .bind(id, email, name, passwordHash, new Date().toISOString())
+        .run();
+      return { id, email, name, picture: "", youtubeConnected: false };
     },
     async createSession(userId) {
       const id = crypto.randomUUID();
@@ -197,6 +298,9 @@ export async function handleAuthRequest(request, options) {
   if (request.method === "GET" && url.pathname === "/api/auth/me") {
     return json(200, await mePayload(request, store, options));
   }
+  if (request.method === "POST" && (url.pathname === "/api/auth/register" || url.pathname === "/api/auth/login")) {
+    return handlePasswordAuth(request, url, store, url.pathname.endsWith("/register"));
+  }
   if (request.method === "POST" && url.pathname === "/api/auth/logout") {
     const sessionId = readCookie(request, SESSION_COOKIE);
     if (sessionId) await store.deleteSession(sessionId);
@@ -225,6 +329,31 @@ export async function handleAuthRequest(request, options) {
     }
   }
   return json(404, { error: "Unknown account route." });
+}
+
+async function handlePasswordAuth(request, url, store, creating) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const account = normalizeAccount(body);
+    if (creating) {
+      const passwordHash = await hashPassword(account.password);
+      const user = await store.createPasswordUser({ email: account.email, name: account.name, passwordHash });
+      return sessionResponse(url, store, user);
+    }
+    const record = await store.passwordUserByEmail(account.email);
+    if (!record || !(await verifyPassword(account.password, record.passwordHash))) {
+      return json(401, { error: "That email and password do not match." });
+    }
+    const { passwordHash, ...user } = record;
+    return sessionResponse(url, store, user);
+  } catch (error) {
+    return json(error.status || 400, { error: error.message || "The account could not be saved." });
+  }
+}
+
+async function sessionResponse(url, store, user) {
+  const sessionId = await store.createSession(user.id);
+  return json(200, { user }, [cookie(SESSION_COOKIE, sessionId, url, SESSION_MS)]);
 }
 
 async function mePayload(request, store, options) {

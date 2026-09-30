@@ -1771,13 +1771,24 @@ function accountStore() {
   return accountStorePromise;
 }
 
+function readRequestBody(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    request.on("data", (chunk) => chunks.push(chunk));
+    request.on("end", () => resolve(Buffer.concat(chunks)));
+    request.on("error", reject);
+  });
+}
+
 async function handleAccount(request, response) {
   const { handleAuthRequest } = await import("./auth.mjs");
   const proto = request.headers["x-forwarded-proto"] || "http";
   const host = request.headers.host || `localhost:${PORT}`;
+  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await readRequestBody(request);
   const webRequest = new Request(`${proto}://${host}${request.url}`, {
     method: request.method,
     headers: request.headers,
+    body: body?.length ? body : undefined,
   });
   const webResponse = await handleAuthRequest(webRequest, {
     store: await accountStore(),

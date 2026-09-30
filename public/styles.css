@@ -1724,6 +1724,46 @@ select {
   pointer-events: none;
 }
 
+.account-form {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0 0 1rem;
+}
+
+.account-form h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.account-form label {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.account-form input {
+  min-height: 2.4rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--field);
+  color: var(--ink);
+}
+
+.account-google {
+  color: var(--ink);
+}
+
+#accountDialog {
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 1rem 1.1rem 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--stage);
+  color: var(--ink);
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button,

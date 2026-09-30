@@ -35,6 +35,10 @@ export function createFileAccountStore(filePath) {
         const googleSub = String(profile.sub || "");
         if (!googleSub) throw new Error("Google did not return an account id.");
         let user = data.users.find((item) => item.googleSub === googleSub);
+        if (!user && profile.email) {
+          user = data.users.find((item) => item.email === String(profile.email).toLowerCase());
+          if (user) user.googleSub = googleSub;
+        }
         if (!user) {
           user = {
             id: crypto.randomUUID(),
@@ -66,6 +70,41 @@ export function createFileAccountStore(filePath) {
           picture: user.picture,
           youtubeConnected: Boolean(next.refreshToken),
         };
+      });
+    },
+    async passwordUserByEmail(email) {
+      return update((data) => {
+        const user = data.users.find((item) => item.email === email && item.passwordHash);
+        if (!user) return null;
+        const token = data.tokens.find((item) => item.userId === user.id);
+        return {
+          id: user.id,
+          email: user.email || "",
+          name: user.name || "",
+          picture: user.picture || "",
+          youtubeConnected: Boolean(token?.refreshToken),
+          passwordHash: user.passwordHash,
+        };
+      });
+    },
+    async createPasswordUser({ email, name, passwordHash }) {
+      return update((data) => {
+        if (data.users.some((item) => item.email === email)) {
+          const error = new Error("An account with that email already exists.");
+          error.status = 409;
+          throw error;
+        }
+        const user = {
+          id: crypto.randomUUID(),
+          googleSub: "",
+          email,
+          name,
+          picture: "",
+          passwordHash,
+          createdAt: new Date().toISOString(),
+        };
+        data.users.push(user);
+        return { id: user.id, email, name, picture: "", youtubeConnected: false };
       });
     },
     async createSession(userId) {

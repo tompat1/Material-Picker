@@ -460,6 +460,19 @@ function bindEvents() {
     await fetch("/api/auth/logout", { method: "POST" });
     await loadAccount();
   });
+  document.querySelector("#accountLink")?.addEventListener("click", () => {
+    if (document.querySelector("#accountLink")?.getAttribute("aria-disabled") === "true") return;
+    document.querySelector("#accountFormStatus").textContent = "";
+    document.querySelector("#accountDialog")?.showModal();
+  });
+  document.querySelector("#accountLoginForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitAccountForm("/api/auth/login", event.currentTarget);
+  });
+  document.querySelector("#accountRegisterForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitAccountForm("/api/auth/register", event.currentTarget);
+  });
   document.querySelector("#thumbStyleCinematic")?.addEventListener("click", () => setThumbnailStyle("cinematic"));
   document.querySelector("#thumbStyleNewAge")?.addEventListener("click", () => setThumbnailStyle("new-age"));
   document.querySelector("#mobileBack")?.addEventListener("click", () => closeMobilePlayer());
@@ -1474,9 +1487,30 @@ function presentImportedVideos(ids) {
   document.querySelector(".library-offline-bar")?.scrollIntoView({ block: "nearest" });
 }
 
+async function submitAccountForm(path, form) {
+  const status = document.querySelector("#accountFormStatus");
+  const body = Object.fromEntries(new FormData(form));
+  if (status) status.textContent = "Saving…";
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "The account request failed.");
+    form.reset();
+    document.querySelector("#accountDialog")?.close();
+    await loadAccount();
+  } catch (error) {
+    if (status) status.textContent = error.message;
+  }
+}
+
 async function loadAccount() {
   const link = document.querySelector("#accountLink");
   const signOut = document.querySelector("#accountSignOut");
+  const google = document.querySelector("#accountGoogle");
   if (!link) return;
   let data = { configured: false, user: null };
   try {
@@ -1485,21 +1519,18 @@ async function loadAccount() {
   } catch {
     data = { configured: false, user: null };
   }
+  if (google) google.hidden = data.configured === false;
   if (data.user) {
     const label = data.user.name || data.user.email || "Signed in";
-    link.textContent = data.user.youtubeConnected ? label : `${label}`;
-    link.removeAttribute("href");
+    link.textContent = label;
     link.setAttribute("aria-disabled", "true");
     link.title = data.user.youtubeConnected ? "YouTube connected" : "Signed in";
     if (signOut) signOut.hidden = false;
     return;
   }
-  link.textContent = data.configured === false ? "Sign in" : "Sign in";
-  link.href = "/api/auth/google/start";
+  link.textContent = "Sign in";
   link.removeAttribute("aria-disabled");
-  link.title = data.configured === false
-    ? "Google sign-in still needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET"
-    : "Sign in with Google to connect YouTube";
+  link.title = "Sign in or create a Picker account";
   if (signOut) signOut.hidden = true;
 }
 
