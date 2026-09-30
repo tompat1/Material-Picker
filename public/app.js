@@ -2229,13 +2229,17 @@ function syncThumbnailStyleControl() {
   placeThemeThumb();
 }
 
+let themeThumbMotion = 0;
+
 function placeThemeThumb() {
   const group = document.querySelector(".thumb-style");
   const thumb = group?.querySelector(".theme-thumb");
   const active = group?.querySelector("button[aria-pressed='true']");
   if (!thumb || !active) return;
+  themeThumbMotion += 1;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (!thumb.dataset.placed || reduce) thumb.style.transition = "none";
+  else thumb.style.transition = "";
   thumb.style.width = `${active.offsetWidth}px`;
   thumb.style.transform = `translateX(${active.offsetLeft}px)`;
   if (!thumb.dataset.placed) {
@@ -2246,10 +2250,35 @@ function placeThemeThumb() {
   }
 }
 
+function shrugThemeThumb() {
+  const group = document.querySelector(".thumb-style");
+  const thumb = group?.querySelector(".theme-thumb");
+  const active = group?.querySelector("button[aria-pressed='true']");
+  if (!thumb || !active) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const base = active.offsetLeft;
+  const nudge = active.id === "thumbStyleNewAge" ? -8 : 8;
+  const motion = ++themeThumbMotion;
+  thumb.style.transition = "none";
+  thumb.style.transform = `translateX(${base}px)`;
+  thumb.getBoundingClientRect();
+  thumb.style.transition = "transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1)";
+  thumb.style.transform = `translateX(${base + nudge}px)`;
+  window.setTimeout(() => {
+    if (motion !== themeThumbMotion) return;
+    thumb.style.transition = "transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1)";
+    thumb.style.transform = `translateX(${base}px)`;
+    window.setTimeout(() => {
+      if (motion !== themeThumbMotion) return;
+      thumb.style.transition = "";
+    }, 190);
+  }, 120);
+}
+
 function setThumbnailStyle(style) {
   const next = style === "new-age" ? "new-age" : "cinematic";
   if (thumbnailStyle() === next) {
-    syncThumbnailStyleControl();
+    shrugThemeThumb();
     return;
   }
   state.thumbnailStyle = next;
