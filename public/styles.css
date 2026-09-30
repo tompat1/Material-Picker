@@ -1719,8 +1719,38 @@ select {
   text-decoration: none;
 }
 
+.account-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  min-height: 2.15rem;
+  padding: 0;
+  color: var(--muted);
+}
+
+.account-link:hover {
+  color: var(--ink);
+}
+
+.account-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-link[data-signed-in="true"] {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 .account-link[aria-disabled="true"] {
-  opacity: 0.55;
   pointer-events: none;
 }
 

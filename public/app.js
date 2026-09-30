@@ -1528,14 +1528,16 @@ async function loadAccount() {
   youtubeConnected = Boolean(data.user?.youtubeConnected);
   if (data.user) {
     const label = data.user.name || data.user.email || "Signed in";
-    link.textContent = label;
+    link.setAttribute("aria-label", label);
     link.setAttribute("aria-disabled", "true");
-    link.title = data.user.youtubeConnected ? "YouTube connected" : "Signed in";
+    link.dataset.signedIn = "true";
+    link.title = data.user.youtubeConnected ? `${label} · YouTube connected` : label;
     if (signOut) signOut.hidden = false;
     return;
   }
-  link.textContent = "Sign in";
+  link.setAttribute("aria-label", "Sign in");
   link.removeAttribute("aria-disabled");
+  delete link.dataset.signedIn;
   link.title = "Sign in or create a Picker account";
   if (signOut) signOut.hidden = true;
 }

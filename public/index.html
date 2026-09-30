@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-60" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-61" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -66,7 +66,12 @@
           </button>
         </div>
         <div class="account-chip" id="accountChip">
-          <button class="account-link" id="accountLink" type="button">Sign in</button>
+          <button class="account-link" id="accountLink" type="button" aria-label="Sign in" title="Sign in or create a Picker account">
+            <svg class="account-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="8" r="3.15"/>
+              <path d="M5.2 19.4c1.15-3.05 3.45-4.55 6.8-4.55s5.65 1.5 6.8 4.55"/>
+            </svg>
+          </button>
           <button class="account-sign-out" id="accountSignOut" type="button" hidden>Sign out</button>
         </div>
         <button class="primary-button" id="addVideoButton" type="button">
@@ -743,6 +748,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-79" defer></script>
+    <script src="./app.js?v=picker-nav-80" defer></script>
   </body>
 </html>
