@@ -487,7 +487,6 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
 .nav-more,
 .more-action,
 .phone-library-head,
-.library-filters,
 .mobile-back,
 .phone-icon,
 .nav-glyph {
@@ -1148,8 +1147,48 @@ dialog::backdrop {
 }
 
 .library-panel > .section-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.65rem 0.75rem;
   margin: 0;
   padding: 0.95rem 1rem 0.75rem;
+}
+
+.library-panel > .section-heading > .filter-row {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.library-filters {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.library-filters button {
+  min-height: 2rem;
+  padding: 0.15rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: 560 0.82rem/1 var(--sans);
+}
+
+.library-filters button[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.library-filter-status {
+  flex: 1 0 100%;
+  margin: 0.1rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .thumb-style {
