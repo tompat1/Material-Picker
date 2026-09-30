@@ -4689,7 +4689,10 @@ function syncEmbedPlaybackState(event) {
   }
   if (update.state === 3) return;
   embedPlaying = update.state === 1;
-  if (update.state === 1) livePlayback = true;
+  if (update.state === 1) {
+    livePlayback = true;
+    floatResumeSent = false;
+  }
   else if (update.state === 0) {
     livePlayback = false;
     dockPlayBubble();
