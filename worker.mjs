@@ -681,6 +681,74 @@ async function thumbnailBytes(result) {
   return null;
 }
 
+async function transcribeAudio(request, ai) {
+  if (!ai?.run) return json(503, { error: "Transcription model is not connected." });
+  const body = await request.json().catch(() => ({}));
+  const wav = pcmBase64ToWav(String(body.pcmBase64 || ""));
+  if (!wav) return json(400, { error: "Audio samples are required." });
+  const language = String(body.language || "auto").toLowerCase();
+  const input = {
+    audio: bytesToBase64(wav),
+    task: "transcribe",
+  };
+  if (/^[a-z]{2}$/.test(language)) input.language = language;
+  try {
+    const result = await ai.run("@cf/openai/whisper-large-v3-turbo", input);
+    let text = String(result?.text || "").trim();
+    if (/^\[(?:blank_audio|applause|laughter|noise|\s*)\]$/i.test(text)) text = "";
+    return json(200, {
+      text,
+      language,
+      timestamp: body.currentTime || 0,
+      service: "Whisper",
+    });
+  } catch (error) {
+    return json(502, { error: error.message || "Transcription failed." });
+  }
+}
+
+function pcmBase64ToWav(pcmBase64) {
+  if (!pcmBase64) return null;
+  let binary = "";
+  try {
+    binary = atob(pcmBase64);
+  } catch {
+    return null;
+  }
+  if (binary.length < 2) return null;
+  const pcm = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) pcm[i] = binary.charCodeAt(i);
+  const wav = new Uint8Array(44 + pcm.length);
+  const view = new DataView(wav.buffer);
+  const write = (offset, text) => {
+    for (let i = 0; i < text.length; i += 1) wav[offset + i] = text.charCodeAt(i);
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + pcm.length, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 16000, true);
+  view.setUint32(28, 32000, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, pcm.length, true);
+  wav.set(pcm, 44);
+  return wav;
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + step));
+  }
+  return btoa(binary);
+}
+
 async function renderThumbnail(request, ai) {
   if (!ai?.run) return json(503, { error: "Thumbnail model is not connected." });
   const body = await request.json().catch(() => ({}));
@@ -803,6 +871,9 @@ export async function handleApiRequest(request, dependencies = {}) {
     } catch (error) {
       return json(502, { error: error.message || "Translation failed." });
     }
+  }
+  if (request.method === "POST" && url.pathname === "/api/transcribe") {
+    return transcribeAudio(request, dependencies.ai);
   }
   if (request.method === "POST" && url.pathname === "/api/thumbnail") {
     return renderThumbnail(request, dependencies.ai);

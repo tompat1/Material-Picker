@@ -144,6 +144,50 @@ const sourcePreviewCache = new Map();
 let sourcePreviewUrl = "";
 let sourcePreviewRequestId = 0;
 
+function packageRequestPath(url) {
+  const match = String(url || "").match(/\/hls-package\/([^/]+)\/([^?#]*)/);
+  if (!match) return null;
+  const pathParts = [];
+  decodeURIComponent(match[2]).replace(/^\/+/, "").split("/").forEach((part) => {
+    if (part === "..") pathParts.pop();
+    else if (part && part !== ".") pathParts.push(part);
+  });
+  return { packageId: match[1], path: pathParts.join("/") };
+}
+
+function findPackageEntry(fileMap, requestedPath) {
+  const direct = fileMap.get(requestedPath) || fileMap.get(requestedPath.toLowerCase());
+  if (direct) return direct;
+  const reqBase = requestedPath.split("/").pop().toLowerCase();
+  for (const [key, value] of fileMap.entries()) {
+    if (typeof key !== "string") continue;
+    const stored = key.toLowerCase();
+    const requested = requestedPath.toLowerCase();
+    if (stored === requested || stored.endsWith(`/${requested}`) || requested.endsWith(`/${stored}`) || stored.split("/").pop() === reqBase) {
+      return value;
+    }
+  }
+  return null;
+}
+
+async function resolvePackageFile(found) {
+  if (found instanceof File) return found;
+  if (found?.file instanceof File) return found.file;
+  if (typeof found?.getFile === "function") return found.getFile();
+  if (typeof found?.handle?.getFile === "function") return found.handle.getFile();
+  throw new Error("This saved file could not be read.");
+}
+
+async function readPackagedUrl(url) {
+  const parsed = packageRequestPath(url);
+  if (!parsed) return null;
+  const fileMap = offlinePackageFiles.get(parsed.packageId);
+  if (!fileMap) throw new Error("Reconnect the video folder to transcribe this saved copy.");
+  const found = findPackageEntry(fileMap, parsed.path);
+  if (!found) throw new Error(`The saved copy is missing “${parsed.path}”.`);
+  return resolvePackageFile(found);
+}
+
 class PackageHlsLoader {
   constructor(config) {
     this.config = config;
@@ -172,7 +216,8 @@ class PackageHlsLoader {
 
   load(context, config, callbacks) {
     const url = context?.url || "";
-    const match = url.match(/\/hls-package\/([^/]+)\/(.+)$/);
+    const parsed = packageRequestPath(url);
+    const match = parsed ? [url, parsed.packageId, parsed.path] : null;
     if (!match) {
       if (this.defaultLoader) {
         this.defaultLoader.load(context, config, callbacks);
@@ -183,13 +228,7 @@ class PackageHlsLoader {
     }
 
     const packageId = match[1];
-    let rawPath = decodeURIComponent(match[2]).split("?")[0].split("#")[0].replace(/^\/+/, "");
-    const pathParts = [];
-    rawPath.split("/").forEach((p) => {
-      if (p === "..") pathParts.pop();
-      else if (p && p !== ".") pathParts.push(p);
-    });
-    const requestedPath = pathParts.join("/");
+    const requestedPath = match[2];
     const fileMap = offlinePackageFiles.get(packageId);
 
     if (!fileMap) {
@@ -199,19 +238,7 @@ class PackageHlsLoader {
       return;
     }
 
-    let target = fileMap.get(requestedPath) || fileMap.get(requestedPath.toLowerCase());
-    if (!target) {
-      const reqBase = requestedPath.split("/").pop().toLowerCase();
-      for (const [key, val] of fileMap.entries()) {
-        if (typeof key !== "string") continue;
-        const lKey = key.toLowerCase();
-        const lReq = requestedPath.toLowerCase();
-        if (lKey === lReq || lKey.endsWith("/" + lReq) || lReq.endsWith("/" + lKey) || lKey.split("/").pop() === reqBase) {
-          target = val;
-          break;
-        }
-      }
-    }
+    const target = findPackageEntry(fileMap, requestedPath);
 
     const servePackageFile = (found) => {
       if (!found) {
@@ -6189,6 +6216,13 @@ async function transcribeHlsAudio(playbackUrl) {
     finishHlsTranscription(token);
   } catch (error) {
     if (!stillTranscribingHls(token) || error.name === "AbortError") return;
+    if (/Reconnect the video folder|saved copy is missing/.test(error.message)) {
+      audioTrackTranscribing = false;
+      setTranscriptButtons(false);
+      setTranscriptStatus(error.message, "error");
+      setStatus(error.message);
+      return;
+    }
     console.warn("HLS transcription failed, trying element tap:", error);
     setTranscriptStatus(`Stream audio decoding failed (${error.message}). Tapping video playback instead...`, "working");
     await startElementTapTranscription();
@@ -6231,12 +6265,16 @@ async function loadHlsAudioPlan(playbackUrl, signal) {
 }
 
 async function fetchText(url, signal) {
+  const packaged = await readPackagedUrl(url);
+  if (packaged) return packaged.text();
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`Could not read the stream playlist (${response.status}).`);
   return response.text();
 }
 
 async function fetchArrayBuffer(url, signal) {
+  const packaged = await readPackagedUrl(url);
+  if (packaged) return packaged.arrayBuffer();
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`Could not read an audio segment (${response.status}).`);
   return response.arrayBuffer();

@@ -343,4 +343,40 @@ test("thumbnail rendering accepts a Flux image stream", async () => {
   assert.equal(response.headers.get("content-type"), "image/jpeg");
 });
 
+test("live transcription sends saved audio to Whisper", async () => {
+  const missing = await handleApiRequest(new Request("https://picker.example/api/transcribe", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ pcmBase64: Buffer.from([0, 0, 0, 0]).toString("base64"), language: "en" }),
+  }));
+  assert.equal(missing.status, 503);
+
+  let seen = null;
+  const response = await handleApiRequest(new Request("https://picker.example/api/transcribe", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      pcmBase64: Buffer.from([0, 0, 0, 0]).toString("base64"),
+      language: "en",
+      currentTime: 12,
+    }),
+  }), {
+    ai: {
+      async run(model, input) {
+        seen = { model, input };
+        return { text: "A quiet line of speech." };
+      },
+    },
+  });
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.text, "A quiet line of speech.");
+  assert.equal(data.timestamp, 12);
+  assert.equal(seen.model, "@cf/openai/whisper-large-v3-turbo");
+  assert.equal(seen.input.language, "en");
+  const wav = Buffer.from(seen.input.audio, "base64");
+  assert.equal(wav.subarray(0, 4).toString(), "RIFF");
+  assert.equal(wav.subarray(8, 12).toString(), "WAVE");
+});
+
 
