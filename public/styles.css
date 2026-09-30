@@ -1538,6 +1538,54 @@ html[data-picker-theme="new-age"] .chapter-empty-note {
   color: var(--muted);
 }
 
+.action-notice {
+  position: fixed;
+  z-index: 90;
+  margin: 0;
+  padding: 0.42rem 0.7rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 90%, var(--stage));
+  color: var(--bg);
+  font: 600 0.8rem/1.2 var(--sans);
+  box-shadow: 0 10px 24px rgba(20, 12, 8, 0.28);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.action-notice.is-shown {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.action-notice[hidden] {
+  display: none;
+}
+
+@keyframes action-pop {
+  0% { transform: scale(1); }
+  32% { transform: scale(0.78); }
+  64% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
+.is-action-pop {
+  animation: action-pop 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-notice,
+  .action-notice.is-shown {
+    transition: none;
+    transform: none;
+  }
+
+  .is-action-pop {
+    animation: none;
+  }
+}
+
 .topic-vote svg {
   width: 0.95rem;
   height: 0.95rem;

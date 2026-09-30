@@ -445,17 +445,28 @@ function bindEvents() {
     const voteUpButton = event.target.closest("[data-topic-vote-up]");
     const voteDownButton = event.target.closest("[data-topic-vote-down]");
     if (voteUpButton || voteDownButton) {
-      const list = (voteUpButton || voteDownButton).closest(".topic-results");
+      const button = voteUpButton || voteDownButton;
+      const rect = button.getBoundingClientRect();
+      const list = button.closest(".topic-results");
       const index = voteUpButton?.dataset.topicVoteUp || voteDownButton?.dataset.topicVoteDown;
       const item = topicItem(list, index);
-      if (item) applyFeedVote(item, voteUpButton ? 1 : -1, list);
+      if (item) {
+        applyFeedVote(item, voteUpButton ? 1 : -1, list);
+        const selector = voteUpButton ? `[data-topic-vote-up="${CSS.escape(index)}"]` : `[data-topic-vote-down="${CSS.escape(index)}"]`;
+        acknowledgeAction(list?.querySelector(selector), voteNotice(core.feedVoteForUrl(state, item.url), Boolean(voteUpButton)), rect);
+      }
       return;
     }
     const playerVoteUp = event.target.closest("#playerVoteUp");
     const playerVoteDown = event.target.closest("#playerVoteDown");
     if (playerVoteUp || playerVoteDown) {
+      const button = playerVoteUp || playerVoteDown;
+      const rect = button.getBoundingClientRect();
       const video = selectedVideo();
-      if (video) applyFeedVote(feedItemFromVideo(video), playerVoteUp ? 1 : -1);
+      if (video) {
+        applyFeedVote(feedItemFromVideo(video), playerVoteUp ? 1 : -1);
+        acknowledgeAction(button, voteNotice(core.feedVoteForUrl(state, video.url), Boolean(playerVoteUp)), rect);
+      }
       return;
     }
     const openButton = event.target.closest("[data-open-topic]");
@@ -622,7 +633,9 @@ function bindEvents() {
     input.value = "";
     renderPlaylistMenu();
     const count = playlist.videoIds.length;
-    setStatus(count > 1 ? `Added ${count} videos to “${playlist.name}”.` : count === 1 ? `Added to “${playlist.name}”.` : `Created “${playlist.name}”.`);
+    const message = count > 1 ? `Added ${count} videos to “${playlist.name}”.` : count === 1 ? `Added to “${playlist.name}”.` : `Created “${playlist.name}”.`;
+    setStatus(message);
+    acknowledgeAction(event.submitter, message);
   });
   document.querySelector("#playlistMenuList")?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-playlist-id]");
@@ -631,14 +644,17 @@ function bindEvents() {
     event.stopPropagation();
     const playlist = playlists().find((item) => item.id === button.dataset.playlistId);
     if (!playlist) return;
+    const rect = button.getBoundingClientRect();
     const already = new Set(playlist.videoIds || []);
     const allIn = ids.every((id) => already.has(id));
     const added = ids.filter((id) => !already.has(id)).length;
     setPlaylistVideos(playlist.id, ids, !allIn);
     const countLabel = (count) => (count === 1 ? "1 video" : `${count} videos`);
-    setStatus(allIn
+    const message = allIn
       ? `Removed ${countLabel(ids.length)} from “${playlist.name}”.`
-      : `Added ${countLabel(added)} to “${playlist.name}”.`);
+      : `Added ${countLabel(added)} to “${playlist.name}”.`;
+    setStatus(message);
+    acknowledgeAction(document.querySelector(`#playlistMenuList [data-playlist-id="${CSS.escape(playlist.id)}"]`), message, rect);
   });
   document.querySelector("#playlistList")?.addEventListener("click", (event) => {
     const toggle = event.target.closest("[data-toggle-playlist]");
@@ -651,7 +667,11 @@ function bindEvents() {
       return;
     }
     if (event.target.closest("[data-playlist-add-commit]")) {
+      const commit = event.target.closest("[data-playlist-add-commit]");
+      const rect = commit.getBoundingClientRect();
+      const playlist = playlists().find((item) => item.id === playlistAddOpenId);
       addSelectedVideosToPlaylist();
+      if (playlist) acknowledgeAction(null, `Added to “${playlist.name}”.`, rect);
       return;
     }
     if (toggle) {
@@ -681,7 +701,10 @@ function bindEvents() {
       return;
     }
     if (remove) {
+      const rect = remove.getBoundingClientRect();
+      const playlist = playlists().find((item) => item.id === remove.dataset.removePlaylist);
       togglePlaylistVideo(remove.dataset.removePlaylist, remove.dataset.removeVideo);
+      acknowledgeAction(null, `Removed from “${playlist?.name || "playlist"}”.`, rect);
       return;
     }
     if (removeList) {
@@ -722,7 +745,14 @@ function bindEvents() {
     if (favourite) {
       const videoId = favourite.dataset.videoId || state.selectedId;
       if (!videoId || favourite.disabled) return;
-      toggleFavourite(videoId);
+      const rect = favourite.getBoundingClientRect();
+      const saved = toggleFavourite(videoId);
+      if (saved === null) return;
+      document.querySelectorAll(".favourite-toggle").forEach((button) => {
+        const id = button.dataset.videoId || (button.id === "favouriteCurrent" ? state.selectedId : "");
+        if (id === videoId) pulseAction(button);
+      });
+      showActionNotice(rect, saved ? "Saved to favourites" : "Removed from favourites");
       return;
     }
     const button = event.target.closest(".add-to-list");
@@ -734,6 +764,7 @@ function bindEvents() {
         ? [...selectedVideoIds]
         : [videoId];
       const menuOpenForSame = menu && !menu.hidden && ids.length === playlistMenuVideoIds.length && ids.every((id) => playlistMenuVideoIds.includes(id));
+      pulseAction(button);
       if (menuOpenForSame) closePlaylistMenu();
       else openPlaylistMenu(ids, button);
       return;
@@ -3842,6 +3873,58 @@ function renderPlaylists() {
   renderPlaylistAddCandidates();
 }
 
+let actionNoticeFade = 0;
+let actionNoticeHide = 0;
+
+function showActionNotice(rect, message) {
+  if (!rect || !message) return;
+  let notice = document.querySelector("#actionNotice");
+  if (!notice) {
+    notice = document.createElement("p");
+    notice.id = "actionNotice";
+    notice.className = "action-notice";
+    notice.setAttribute("role", "status");
+    document.body.append(notice);
+  }
+  notice.textContent = message;
+  notice.hidden = false;
+  notice.classList.remove("is-shown");
+  const width = notice.offsetWidth;
+  const height = notice.offsetHeight;
+  const left = Math.min(Math.max(8, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 8);
+  let top = rect.bottom + 8;
+  if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 8);
+  notice.style.left = `${Math.round(left)}px`;
+  notice.style.top = `${Math.round(top)}px`;
+  requestAnimationFrame(() => notice.classList.add("is-shown"));
+  clearTimeout(actionNoticeFade);
+  clearTimeout(actionNoticeHide);
+  actionNoticeFade = setTimeout(() => {
+    notice.classList.remove("is-shown");
+    actionNoticeHide = setTimeout(() => {
+      notice.hidden = true;
+    }, 180);
+  }, 1400);
+}
+
+function pulseAction(button) {
+  if (!button?.isConnected) return;
+  button.classList.remove("is-action-pop");
+  void button.offsetWidth;
+  button.classList.add("is-action-pop");
+}
+
+function acknowledgeAction(button, message, rect) {
+  showActionNotice(rect || button?.getBoundingClientRect(), message);
+  pulseAction(button);
+}
+
+function voteNotice(vote, liked) {
+  if (vote === 1) return "Liked";
+  if (vote === -1) return "Disliked";
+  return liked ? "Like removed" : "Dislike removed";
+}
+
 function favouriteIds() {
   return state.favourites || [];
 }
@@ -3858,13 +3941,15 @@ function favouriteVideos() {
 }
 
 function toggleFavourite(videoId) {
-  if (!videoId || !state.videos.some((video) => video.id === videoId)) return;
-  state.favourites = isFavourite(videoId)
-    ? favouriteIds().filter((id) => id !== videoId)
-    : [videoId, ...favouriteIds()];
+  if (!videoId || !state.videos.some((video) => video.id === videoId)) return null;
+  const saved = !isFavourite(videoId);
+  state.favourites = saved
+    ? [videoId, ...favouriteIds()]
+    : favouriteIds().filter((id) => id !== videoId);
   saveState();
   renderFavourites();
   renderLibrary();
+  return saved;
 }
 
 function syncFavouriteButtons() {
