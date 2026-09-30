@@ -1648,6 +1648,7 @@ function paintYouTubeGrid(message = "") {
     return;
   }
   if (youtubeShelf.view === "playlists") {
+    grid.className = "yt-grid";
     grid.dataset.results = "[]";
     const playlists = youtubeShelf.playlists.filter(youtubeTextMatches);
     grid.innerHTML = playlists.length
@@ -1673,7 +1674,7 @@ function paintYouTubeGrid(message = "") {
     grid.innerHTML = `<p class="hint yt-empty">${empty}</p>`;
     return;
   }
-  const cards = videos.map((video, index) => `<article class="yt-card">
+  const card = (video, index) => `<article class="yt-card">
     <button class="yt-thumb" type="button" data-youtube-open="${index}">
       ${video.thumbnail ? `<img alt="" src="${escapeHtml(video.thumbnail)}" />` : `<span class="yt-thumb-fallback"></span>`}
       ${video.duration ? `<span class="yt-duration">${escapeHtml(video.duration)}</span>` : ""}
@@ -1686,25 +1687,31 @@ function paintYouTubeGrid(message = "") {
         <p>${escapeHtml(youtubeWhen(video.publishedAt))}</p>
       </div>
     </div>
-  </article>`).join("");
+  </article>`;
   if (youtubeShelf.view !== "channel") {
     grid.className = "yt-grid";
-    grid.innerHTML = cards;
+    grid.innerHTML = videos.map(card).join("");
     return;
   }
   const channel = youtubeShelf.channels.find((item) => item.id === youtubeShelf.channelId);
-  grid.className = "yt-carousel";
+  const featured = videos.slice(0, 2).map(card).join("");
+  const rest = videos.slice(2).map((video, index) => card(video, index + 2)).join("");
+  const carousel = rest
+    ? `<div class="yt-carousel-frame">
+        <button class="yt-carousel-arrow yt-carousel-prev" type="button" data-youtube-scroll="prev" aria-label="Previous videos" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5"/></svg>
+        </button>
+        <div class="yt-carousel-track">${rest}</div>
+        <button class="yt-carousel-arrow yt-carousel-next" type="button" data-youtube-scroll="next" aria-label="Next videos">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6.5 5.5 5.5-5.5 5.5"/></svg>
+        </button>
+      </div>`
+    : "";
+  grid.className = "yt-channel-view";
   grid.innerHTML = `
     <h3 class="yt-carousel-title">${escapeHtml(channel?.title || "Channel")}</h3>
-    <div class="yt-carousel-frame">
-      <button class="yt-carousel-arrow yt-carousel-prev" type="button" data-youtube-scroll="prev" aria-label="Previous videos" hidden>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5"/></svg>
-      </button>
-      <div class="yt-carousel-track">${cards}</div>
-      <button class="yt-carousel-arrow yt-carousel-next" type="button" data-youtube-scroll="next" aria-label="Next videos">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6.5 5.5 5.5-5.5 5.5"/></svg>
-      </button>
-    </div>
+    <div class="yt-featured">${featured}</div>
+    ${carousel}
   `;
   syncYouTubeCarousel(grid);
 }

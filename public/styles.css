@@ -795,7 +795,7 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 
 .yt-home {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 0.25rem 1.15rem;
   align-items: start;
 }
@@ -952,8 +952,29 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   gap: 1.45rem 0.85rem;
 }
 
+.yt-channel-view {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.yt-featured {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.15rem 0.9rem;
+}
+
+.yt-featured .yt-card-copy h3 {
+  font-size: 1.08rem;
+}
+
+@media (max-width: 640px) {
+  .yt-featured {
+    grid-template-columns: 1fr;
+  }
+}
+
 .yt-carousel-title {
-  margin: 0 0 0.75rem;
+  margin: 0;
   font-size: 1.15rem;
 }
 
@@ -974,7 +995,7 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   display: none;
 }
 
-.yt-carousel .yt-card {
+.yt-carousel-track .yt-card {
   flex: 0 0 272px;
   scroll-snap-align: start;
 }
