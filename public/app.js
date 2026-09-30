@@ -1765,9 +1765,9 @@ function renderYouTubeHome(data) {
     channelVideosId: "",
     channelCache: {},
   };
-  const channels = youtubeShelf.channels.map((channel) => `<button class="yt-channel" type="button" data-youtube-channel="${escapeHtml(channel.id)}" aria-pressed="false">
+  const channels = youtubeShelf.channels.map((channel) => `<button class="yt-channel" type="button" data-youtube-channel="${escapeHtml(channel.id)}" aria-pressed="false" title="${escapeHtml(channel.title)}">
     ${youtubeChannelMark(channel.thumbnail, channel.title)}
-    <span>${escapeHtml(channel.title)}</span>
+    <span class="yt-channel-name">${escapeHtml(channel.title)}</span>
   </button>`).join("");
   mount.innerHTML = `
     <div class="yt-home">
