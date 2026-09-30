@@ -486,6 +486,7 @@ function bindEvents() {
   });
   document.querySelector("#thumbStyleCinematic")?.addEventListener("click", () => setThumbnailStyle("cinematic"));
   document.querySelector("#thumbStyleNewAge")?.addEventListener("click", () => setThumbnailStyle("new-age"));
+  window.addEventListener("resize", placeThemeThumb);
   document.querySelector("#mobileBack")?.addEventListener("click", () => closeMobilePlayer());
   document.querySelector("#navMore")?.addEventListener("click", () => {
     const open = document.body.classList.toggle("is-more-open");
@@ -2225,6 +2226,24 @@ function syncThumbnailStyleControl() {
   const newer = document.querySelector("#thumbStyleNewAge");
   if (cinematic) cinematic.setAttribute("aria-pressed", style === "cinematic" ? "true" : "false");
   if (newer) newer.setAttribute("aria-pressed", style === "new-age" ? "true" : "false");
+  placeThemeThumb();
+}
+
+function placeThemeThumb() {
+  const group = document.querySelector(".thumb-style");
+  const thumb = group?.querySelector(".theme-thumb");
+  const active = group?.querySelector("button[aria-pressed='true']");
+  if (!thumb || !active) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!thumb.dataset.placed || reduce) thumb.style.transition = "none";
+  thumb.style.width = `${active.offsetWidth}px`;
+  thumb.style.transform = `translateX(${active.offsetLeft}px)`;
+  if (!thumb.dataset.placed) {
+    thumb.dataset.placed = "true";
+    requestAnimationFrame(() => {
+      thumb.style.transition = "";
+    });
+  }
 }
 
 function setThumbnailStyle(style) {
