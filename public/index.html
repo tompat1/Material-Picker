@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-76" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-77" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -421,6 +421,12 @@
             </div>
 
             <div class="now-playing">
+              <button class="player-back" id="playerBack" type="button" hidden>
+                <span class="player-back-mark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M14.5 6.5 9 12l5.5 5.5"/></svg>
+                </span>
+                <span id="playerBackLabel">Back</span>
+              </button>
               <div class="now-playing-heading">
                 <div>
                   <h2 id="playerTitle">Select a video</h2>
@@ -770,6 +776,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-101" defer></script>
+    <script src="./app.js?v=picker-nav-102" defer></script>
   </body>
 </html>

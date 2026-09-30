@@ -502,7 +502,11 @@ function bindEvents() {
     placeThemeThumb();
     syncPlayBubble();
   });
-  document.querySelector("#mobileBack")?.addEventListener("click", () => closeMobilePlayer());
+  document.querySelector("#mobileBack")?.addEventListener("click", () => {
+    if (playerOriginDesk && playerOriginDesk !== "library") returnFromPlayer();
+    else closeMobilePlayer();
+  });
+  document.querySelector("#playerBack")?.addEventListener("click", returnFromPlayer);
   document.querySelector("#navMore")?.addEventListener("click", () => {
     const open = document.body.classList.toggle("is-more-open");
     document.querySelector("#navMore")?.setAttribute("aria-expanded", open ? "true" : "false");
@@ -3000,6 +3004,46 @@ function updateTranscriptFields() {
   scheduleFolderMetadataSave(video);
 }
 
+let playerOriginDesk = "";
+
+const playerDeskLabels = {
+  youtube: "My YouTube",
+  history: "History",
+  playlists: "Playlists",
+  favourites: "Favourites",
+  downloads: "Downloads",
+  transcripts: "Transcripts",
+};
+
+function currentDeskName() {
+  const id = document.querySelector('input[name="desk"]:checked')?.id || "desk-library";
+  return id.replace(/^desk-/, "");
+}
+
+function syncPlayerBack() {
+  const button = document.querySelector("#playerBack");
+  const label = document.querySelector("#playerBackLabel");
+  const name = playerDeskLabels[playerOriginDesk] || "";
+  const onPlayer = currentDeskName() === "library" || document.body.classList.contains("is-mobile-player");
+  const show = Boolean(name) && onPlayer;
+  if (button) button.hidden = !show;
+  if (label && name) label.textContent = name;
+  if (button && name) button.setAttribute("aria-label", `Back to ${name}`);
+}
+
+function returnFromPlayer() {
+  const desk = playerOriginDesk;
+  if (!desk || desk === "library") {
+    closeMobilePlayer();
+    return;
+  }
+  playerOriginDesk = "";
+  document.body.classList.remove("is-mobile-player", "is-more-open");
+  document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
+  showDesk(desk);
+  syncPlayerBack();
+}
+
 function selectVideo(id, options = {}) {
   if (!options.fromPlaylist) {
     const playlist = playlists().find((item) => item.id === playingPlaylistId);
@@ -3007,6 +3051,8 @@ function selectVideo(id, options = {}) {
     pendingPlaylistPlay = false;
   }
   const current = selectedVideo();
+  const fromDesk = currentDeskName();
+  if (fromDesk !== "library") playerOriginDesk = fromDesk;
   if (current && current.id !== id) void flushFolderMetadata(current);
   state.selectedId = id;
   const video = selectedVideo();
@@ -3018,6 +3064,7 @@ function selectVideo(id, options = {}) {
   saveState();
   render();
   showDesk("screen");
+  syncPlayerBack();
   if (window.matchMedia("(max-width: 760px)").matches) {
     document.body.classList.remove("is-more-open");
     document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
@@ -3040,6 +3087,7 @@ function showDesk(name) {
   const tab = document.querySelector(`#desk-${tabName}`);
   if (tab) tab.checked = true;
   syncPlayBubble();
+  syncPlayerBack();
 }
 
 function clearAll() {

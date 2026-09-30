@@ -1270,6 +1270,57 @@ body:has(#desk-transcripts:checked) .app-shell {
   margin: 16px 0 8px;
 }
 
+.player-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: max-content;
+  margin: 0;
+  padding: 0.22rem 0.8rem 0.22rem 0.22rem;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
+  font: 620 0.84rem/1 var(--sans);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.player-back[hidden] {
+  display: none;
+}
+
+.player-back-mark {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  transition: transform 180ms ease;
+}
+
+.player-back svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.player-back:hover .player-back-mark,
+.player-back:focus-visible .player-back-mark {
+  transform: translateX(-3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-back-mark {
+    transition: none;
+  }
+}
+
 .now-playing-heading {
   display: flex;
   align-items: flex-start;
