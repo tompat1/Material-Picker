@@ -149,6 +149,25 @@ function youtubeVideo(snippet, source = "youtube") {
   };
 }
 
+export async function fetchChannelUploads(accessToken, channelId, fetchImpl = fetch) {
+  if (!/^UC[\w-]{2,80}$/.test(channelId)) return [];
+  const playlistId = `UU${channelId.slice(2)}`;
+  const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=30&playlistId=${encodeURIComponent(playlistId)}`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const error = new Error(payload.error?.message || "That channel could not be loaded.");
+    error.status = response.status === 401 ? 401 : 502;
+    throw error;
+  }
+  const payload = await response.json().catch(() => ({}));
+  const videos = (Array.isArray(payload.items) ? payload.items : [])
+    .map((item) => youtubeVideo(item?.snippet))
+    .filter(Boolean);
+  return attachYouTubeDurations(accessToken, videos, fetchImpl);
+}
+
 export async function fetchPlaylistVideos(accessToken, playlistId, fetchImpl = fetch) {
   if (!/^[\w-]{2,80}$/.test(playlistId)) return [];
   const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=12&playlistId=${encodeURIComponent(playlistId)}`, {
@@ -537,6 +556,13 @@ export async function handleAuthRequest(request, options) {
       return json(error.status || 502, { error: error.message || "YouTube could not be loaded." });
     }
   }
+  if (request.method === "GET" && url.pathname === "/api/youtube/channel") {
+    try {
+      return await handleYouTubeChannel(request, url, store, options);
+    } catch (error) {
+      return json(error.status || 502, { error: error.message || "That channel could not be loaded." });
+    }
+  }
   if (request.method === "GET" && url.pathname === "/api/youtube/playlist") {
     try {
       return await handleYouTubePlaylist(request, url, store, options);
@@ -639,6 +665,17 @@ async function handleYouTubeHome(request, store, options) {
     liked: cached.liked || [],
     activity: cached.activity || [],
   });
+}
+
+async function handleYouTubeChannel(request, url, store, options) {
+  const user = await currentUser(request, store);
+  if (!user) return json(401, { error: "Sign in with Google to open this channel." });
+  const channelId = url.searchParams.get("id") || "";
+  if (!/^UC[\w-]{2,80}$/.test(channelId)) return json(400, { error: "That channel is not available." });
+  const fetchImpl = options.fetchImpl || fetch;
+  const accessToken = await freshAccessToken(user.id, store, options, fetchImpl);
+  const videos = await fetchChannelUploads(accessToken, channelId, fetchImpl);
+  return json(200, { videos, results: videos });
 }
 
 async function handleYouTubePlaylist(request, url, store, options) {

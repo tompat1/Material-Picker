@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createMemoryAccountStore, fetchSubscriptionFeed, fetchYouTubeHome, formatYouTubeDuration, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
+import { createMemoryAccountStore, fetchChannelUploads, fetchSubscriptionFeed, fetchYouTubeHome, formatYouTubeDuration, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
 
 test("google sign-in asks for offline YouTube read access", () => {
   const url = new URL(googleAuthUrl({
@@ -49,6 +49,30 @@ test("subscription feed keeps the latest upload from each channel", async () => 
   assert.equal(feed.channels[0].title, "Studio North");
   assert.equal(feed.videos[0].url, "https://www.youtube.com/watch?v=abcdefghijk");
   assert.equal(feed.videos[0].speaker, "Studio North");
+});
+
+test("channel uploads return a longer slider of recent videos", async () => {
+  const videos = await fetchChannelUploads("token", "UCstudio1234", async (url) => {
+    const href = String(url);
+    if (href.includes("playlistId=UUstudio1234") && href.includes("maxResults=30")) {
+      return new Response(JSON.stringify({
+        items: [
+          { snippet: { title: "Latest firing", publishedAt: "2026-09-02T00:00:00Z", resourceId: { videoId: "latestvideo1" }, channelTitle: "Studio North" } },
+          { snippet: { title: "Older bowl", publishedAt: "2026-08-02T00:00:00Z", resourceId: { videoId: "oldervideo01" }, channelTitle: "Studio North" } },
+        ],
+      }));
+    }
+    if (href.includes("/videos?part=contentDetails")) {
+      return new Response(JSON.stringify({
+        items: [{ id: "latestvideo1", contentDetails: { duration: "PT12M28S" } }],
+      }));
+    }
+    throw new Error(`Unexpected fetch ${href}`);
+  });
+  assert.equal(videos.length, 2);
+  assert.equal(videos[0].url, "https://www.youtube.com/watch?v=latestvideo1");
+  assert.equal(videos[0].duration, "12:28");
+  assert.equal(videos[1].duration, "");
 });
 
 test("youtube home keeps subscriptions, playlists, likes, and activity", async () => {

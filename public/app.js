@@ -1583,6 +1583,9 @@ let youtubeShelf = {
   playlistId: "",
   playlistTitle: "",
   query: "",
+  channelVideos: [],
+  channelVideosId: "",
+  channelCache: {},
 };
 
 function youtubeWhen(value) {
@@ -1614,7 +1617,9 @@ function youtubeShelfVideos() {
   if (youtubeShelf.view === "liked") return youtubeShelf.liked.filter(youtubeTextMatches);
   if (youtubeShelf.view === "playlist") return youtubeShelf.playlistVideos.filter(youtubeTextMatches);
   const videos = youtubeShelf.view === "channel"
-    ? youtubeShelf.subscriptions.filter((video) => video.channelId === youtubeShelf.channelId)
+    ? (youtubeShelf.channelVideosId === youtubeShelf.channelId && youtubeShelf.channelVideos.length
+      ? youtubeShelf.channelVideos
+      : youtubeShelf.subscriptions.filter((video) => video.channelId === youtubeShelf.channelId))
     : youtubeShelf.subscriptions;
   return videos.filter((video) => video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
 }
@@ -1637,6 +1642,7 @@ function paintYouTubeGrid(message = "") {
     button.setAttribute("aria-pressed", pressed ? "true" : "false");
   });
   if (message) {
+    grid.className = "yt-grid";
     grid.dataset.results = "[]";
     grid.innerHTML = `<p class="hint yt-empty">${escapeHtml(message)}</p>`;
     return;
@@ -1660,13 +1666,14 @@ function paintYouTubeGrid(message = "") {
   const videos = youtubeShelfVideos();
   grid.dataset.results = JSON.stringify(videos);
   if (!videos.length) {
+    grid.className = "yt-grid";
     const empty = youtubeShelf.query.trim()
       ? "No matches."
       : youtubeShelf.view === "liked" ? "No liked videos yet." : youtubeShelf.view === "playlist" ? "This playlist has no videos." : "No subscription videos yet.";
     grid.innerHTML = `<p class="hint yt-empty">${empty}</p>`;
     return;
   }
-  grid.innerHTML = videos.map((video, index) => `<article class="yt-card">
+  const cards = videos.map((video, index) => `<article class="yt-card">
     <button class="yt-thumb" type="button" data-youtube-open="${index}">
       ${video.thumbnail ? `<img alt="" src="${escapeHtml(video.thumbnail)}" />` : `<span class="yt-thumb-fallback"></span>`}
       ${video.duration ? `<span class="yt-duration">${escapeHtml(video.duration)}</span>` : ""}
@@ -1680,6 +1687,26 @@ function paintYouTubeGrid(message = "") {
       </div>
     </div>
   </article>`).join("");
+  if (youtubeShelf.view !== "channel") {
+    grid.className = "yt-grid";
+    grid.innerHTML = cards;
+    return;
+  }
+  const channel = youtubeShelf.channels.find((item) => item.id === youtubeShelf.channelId);
+  grid.className = "yt-carousel";
+  grid.innerHTML = `
+    <h3 class="yt-carousel-title">${escapeHtml(channel?.title || "Channel")}</h3>
+    <div class="yt-carousel-frame">
+      <button class="yt-carousel-arrow yt-carousel-prev" type="button" data-youtube-scroll="prev" aria-label="Previous videos" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5"/></svg>
+      </button>
+      <div class="yt-carousel-track">${cards}</div>
+      <button class="yt-carousel-arrow yt-carousel-next" type="button" data-youtube-scroll="next" aria-label="Next videos">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6.5 5.5 5.5-5.5 5.5"/></svg>
+      </button>
+    </div>
+  `;
+  syncYouTubeCarousel(grid);
 }
 
 function renderYouTubeHome(data) {
@@ -1696,6 +1723,9 @@ function renderYouTubeHome(data) {
     playlistId: "",
     playlistTitle: "",
     query: "",
+    channelVideos: [],
+    channelVideosId: "",
+    channelCache: {},
   };
   const channels = youtubeShelf.channels.map((channel) => `<button class="yt-channel" type="button" data-youtube-channel="${escapeHtml(channel.id)}" aria-pressed="false">
     ${youtubeChannelMark(channel.thumbnail, channel.title)}
@@ -1738,11 +1768,18 @@ function onYouTubeHomeClick(event) {
     void loadYouTubePlaylist(playlist.dataset.youtubePlaylist);
     return;
   }
+  const scroll = event.target.closest("[data-youtube-scroll]");
+  if (scroll) {
+    const track = scroll.closest(".yt-carousel")?.querySelector(".yt-carousel-track");
+    if (!track) return;
+    const distance = Math.max(track.clientWidth * 0.86, 240);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    track.scrollBy({ left: scroll.dataset.youtubeScroll === "next" ? distance : -distance, behavior: reduce ? "auto" : "smooth" });
+    return;
+  }
   const channel = event.target.closest("[data-youtube-channel]");
   if (channel) {
-    youtubeShelf.view = "channel";
-    youtubeShelf.channelId = channel.dataset.youtubeChannel || "";
-    paintYouTubeGrid();
+    void loadYouTubeChannel(channel.dataset.youtubeChannel || "");
     return;
   }
   const view = event.target.closest("[data-youtube-view]");
@@ -1767,6 +1804,58 @@ async function loadYouTubeHome() {
     return;
   }
   renderYouTubeHome(data);
+}
+
+let youtubeChannelLoad = 0;
+
+function syncYouTubeCarousel(root) {
+  const track = root.querySelector(".yt-carousel-track");
+  const prev = root.querySelector(".yt-carousel-prev");
+  const next = root.querySelector(".yt-carousel-next");
+  if (!track || !prev || !next) return;
+  const update = () => {
+    const max = track.scrollWidth - track.clientWidth - 4;
+    prev.hidden = track.scrollLeft <= 4;
+    next.hidden = max <= 0 || track.scrollLeft >= max;
+  };
+  track.addEventListener("scroll", update, { passive: true });
+  requestAnimationFrame(update);
+}
+
+async function loadYouTubeChannel(channelId) {
+  if (!channelId) return;
+  const load = ++youtubeChannelLoad;
+  youtubeShelf.view = "channel";
+  youtubeShelf.channelId = channelId;
+  youtubeShelf.playlistId = "";
+  const channel = youtubeShelf.channels.find((item) => item.id === channelId);
+  const cached = youtubeShelf.channelCache[channelId];
+  if (cached) {
+    youtubeShelf.channelVideos = cached;
+    youtubeShelf.channelVideosId = channelId;
+    paintYouTubeGrid();
+    return;
+  }
+  paintYouTubeGrid(`Loading ${channel?.title || "this channel"}…`);
+  try {
+    const response = await fetch(`/api/youtube/channel?id=${encodeURIComponent(channelId)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "That channel could not be loaded.");
+    if (load !== youtubeChannelLoad) return;
+    const videos = (data.results || data.videos || []).map((video) => ({
+      ...video,
+      channelId: video.channelId || channelId,
+      speaker: video.speaker || channel?.title || "",
+      channelThumbnail: video.channelThumbnail || channel?.thumbnail || "",
+    }));
+    youtubeShelf.channelCache[channelId] = videos;
+    youtubeShelf.channelVideos = videos;
+    youtubeShelf.channelVideosId = channelId;
+    paintYouTubeGrid();
+  } catch (error) {
+    if (load !== youtubeChannelLoad) return;
+    paintYouTubeGrid(error.message || "That channel could not be loaded.");
+  }
 }
 
 async function loadYouTubePlaylist(playlistId) {

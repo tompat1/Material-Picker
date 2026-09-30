@@ -952,6 +952,74 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   gap: 1.45rem 0.85rem;
 }
 
+.yt-carousel-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+}
+
+.yt-carousel-frame {
+  position: relative;
+}
+
+.yt-carousel-track {
+  display: flex;
+  gap: 0.85rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  padding-bottom: 0.35rem;
+}
+
+.yt-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+.yt-carousel .yt-card {
+  flex: 0 0 272px;
+  scroll-snap-align: start;
+}
+
+.yt-carousel-arrow {
+  position: absolute;
+  top: 62px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(18, 14, 12, 0.82);
+  color: #f4ebdd;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+.yt-carousel-arrow[hidden] {
+  display: none;
+}
+
+.yt-carousel-arrow svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.yt-carousel-prev {
+  left: 0.35rem;
+}
+
+.yt-carousel-next {
+  right: 0.35rem;
+}
+
+.yt-carousel-arrow:hover {
+  background: rgba(18, 14, 12, 0.94);
+}
+
 .yt-card {
   display: grid;
   gap: 0.7rem;
