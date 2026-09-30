@@ -73,8 +73,26 @@ export function googleAuthUrl({ clientId, redirectUri, state }) {
   return url.toString();
 }
 
-export async function fetchSubscriptionFeed(accessToken, fetchImpl = fetch) {
-  const response = await fetchImpl("https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=15", {
+function youtubeThumb(thumbnails, fallback = "") {
+  return String(thumbnails?.high?.url || thumbnails?.medium?.url || thumbnails?.default?.url || fallback || "");
+}
+
+export function formatYouTubeDuration(value) {
+  const match = String(value || "").match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!match) return "";
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const pad = (part) => String(part).padStart(2, "0");
+  if (hours) return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+  return `${minutes}:${pad(seconds)}`;
+}
+
+export async function fetchSubscriptionFeed(accessToken, fetchImpl = fetch, options = {}) {
+  const channelLimit = options.channelLimit || 15;
+  const perChannel = options.perChannel || 1;
+  const videoLimit = options.videoLimit || 12;
+  const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=${channelLimit}`, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
   const payload = await response.json().catch(() => ({}));
@@ -88,26 +106,30 @@ export async function fetchSubscriptionFeed(accessToken, fetchImpl = fetch) {
   await Promise.all(channels.map(async (channel) => {
     if (!channel.id.startsWith("UC")) return;
     const playlistId = `UU${channel.id.slice(2)}`;
-    const latest = await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=1&playlistId=${playlistId}`, {
+    const latest = await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=${perChannel}&playlistId=${playlistId}`, {
       headers: { authorization: `Bearer ${accessToken}` },
     });
     if (!latest.ok) return;
     const data = await latest.json().catch(() => ({}));
-    const snippet = data.items?.[0]?.snippet;
-    const videoId = snippet?.resourceId?.videoId;
-    if (!videoId || !snippet?.title) return;
-    videos.push({
-      title: snippet.title,
-      speaker: channel.title,
-      url: `https://www.youtube.com/watch?v=${videoId}`,
-      thumbnail: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || channel.thumbnail || "",
-      duration: "",
-      source: "youtube",
-      publishedAt: snippet.publishedAt || "",
-    });
+    for (const item of Array.isArray(data.items) ? data.items : []) {
+      const snippet = item?.snippet;
+      const videoId = snippet?.resourceId?.videoId;
+      if (!videoId || !snippet?.title || snippet.title === "Private video" || snippet.title === "Deleted video") continue;
+      videos.push({
+        title: snippet.title,
+        speaker: channel.title,
+        channelId: channel.id,
+        channelThumbnail: channel.thumbnail || "",
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        thumbnail: youtubeThumb(snippet.thumbnails, channel.thumbnail),
+        duration: "",
+        source: "youtube",
+        publishedAt: snippet.publishedAt || "",
+      });
+    }
   }));
   videos.sort((left, right) => String(right.publishedAt).localeCompare(String(left.publishedAt)));
-  return { channels, videos: videos.slice(0, 12) };
+  return { channels, videos: videos.slice(0, videoLimit) };
 }
 
 function youtubeVideo(snippet, source = "youtube") {
@@ -118,7 +140,9 @@ function youtubeVideo(snippet, source = "youtube") {
     title,
     speaker: String(snippet.videoOwnerChannelTitle || snippet.channelTitle || ""),
     url: `https://www.youtube.com/watch?v=${videoId}`,
-    thumbnail: String(snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || ""),
+    channelId: String(snippet.videoOwnerChannelId || snippet.channelId || ""),
+    channelThumbnail: "",
+    thumbnail: youtubeThumb(snippet.thumbnails),
     duration: "",
     source,
     publishedAt: String(snippet.publishedAt || ""),
@@ -150,7 +174,7 @@ async function fetchYouTubePlaylists(accessToken, fetchImpl) {
     return [{
       id,
       title,
-      thumbnail: String(item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || ""),
+      thumbnail: youtubeThumb(item.snippet?.thumbnails),
       count: Number(item.contentDetails?.itemCount || 0),
     }];
   });
@@ -183,14 +207,44 @@ async function fetchYouTubeActivity(accessToken, fetchImpl) {
   });
 }
 
+async function attachYouTubeDurations(accessToken, videos, fetchImpl) {
+  const ids = [...new Set(videos.map((video) => {
+    const match = String(video.url || "").match(/[?&]v=([\w-]{6,})/);
+    return match?.[1] || "";
+  }).filter(Boolean))].slice(0, 50);
+  if (!ids.length) return videos;
+  try {
+    const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids.join(",")}&maxResults=50`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return videos;
+    const payload = await response.json().catch(() => ({}));
+    const durations = new Map((payload.items || []).map((item) => [item.id, formatYouTubeDuration(item.contentDetails?.duration)]));
+    return videos.map((video) => {
+      const match = String(video.url || "").match(/[?&]v=([\w-]{6,})/);
+      const duration = durations.get(match?.[1] || "") || video.duration;
+      return duration ? { ...video, duration } : video;
+    });
+  } catch {
+    return videos;
+  }
+}
+
 export async function fetchYouTubeHome(accessToken, fetchImpl = fetch) {
-  const feed = await fetchSubscriptionFeed(accessToken, fetchImpl);
+  const feed = await fetchSubscriptionFeed(accessToken, fetchImpl, { channelLimit: 20, perChannel: 2, videoLimit: 24 });
   const [playlists, liked, activity] = await Promise.all([
     fetchYouTubePlaylists(accessToken, fetchImpl).catch(() => []),
     fetchPlaylistVideos(accessToken, "LL", fetchImpl).catch(() => []),
     fetchYouTubeActivity(accessToken, fetchImpl).catch(() => []),
   ]);
-  return { ...feed, playlists, liked, activity };
+  const timed = await attachYouTubeDurations(accessToken, [...feed.videos, ...liked], fetchImpl);
+  return {
+    ...feed,
+    videos: timed.slice(0, feed.videos.length),
+    playlists,
+    liked: timed.slice(feed.videos.length),
+    activity,
+  };
 }
 
 export function parseYouTubeSubscriptions(payload) {

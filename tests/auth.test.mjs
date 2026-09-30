@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createMemoryAccountStore, fetchSubscriptionFeed, fetchYouTubeHome, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
+import { createMemoryAccountStore, fetchSubscriptionFeed, fetchYouTubeHome, formatYouTubeDuration, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
 
 test("google sign-in asks for offline YouTube read access", () => {
   const url = new URL(googleAuthUrl({
@@ -24,6 +24,11 @@ test("subscription payloads keep channel id and title", () => {
   assert.equal(channels.length, 1);
   assert.equal(channels[0].id, "UC123");
   assert.equal(channels[0].title, "Studio North");
+});
+
+test("youtube durations use the watch-page clock", () => {
+  assert.equal(formatYouTubeDuration("PT18M44S"), "18:44");
+  assert.equal(formatYouTubeDuration("PT1H7M3S"), "1:07:03");
 });
 
 test("subscription feed keeps the latest upload from each channel", async () => {
