@@ -435,17 +435,14 @@ function bindEvents() {
       const list = (voteUpButton || voteDownButton).closest(".topic-results");
       const index = voteUpButton?.dataset.topicVoteUp || voteDownButton?.dataset.topicVoteDown;
       const item = topicItem(list, index);
-      if (item) {
-        core.recordFeedVote(state, item, voteUpButton ? 1 : -1);
-        if (core.feedVoteForUrl(state, item.url) === -1) removeLibraryVideoForUrl(item.url);
-        saveState();
-        refreshTopicResultsList(list);
-        if (list?.closest("#libraryLatestBody")) {
-          libraryFeedResults = JSON.parse(list.dataset.results || "[]");
-        } else if (list?.closest("#videoList")) {
-          libraryTopicResults = JSON.parse(list.dataset.results || "[]");
-        }
-      }
+      if (item) applyFeedVote(item, voteUpButton ? 1 : -1, list);
+      return;
+    }
+    const playerVoteUp = event.target.closest("#playerVoteUp");
+    const playerVoteDown = event.target.closest("#playerVoteDown");
+    if (playerVoteUp || playerVoteDown) {
+      const video = selectedVideo();
+      if (video) applyFeedVote(feedItemFromVideo(video), playerVoteUp ? 1 : -1);
       return;
     }
     const openButton = event.target.closest("[data-open-topic]");
@@ -1487,9 +1484,9 @@ function topicResultMarkup(results) {
     const thumb = item.thumbnail
       ? `<img alt="" src="${escapeHtml(item.thumbnail)}" />`
       : `<span class="topic-thumb-fallback" aria-hidden="true"></span>`;
-    return `<article class="topic-result">
+    return `<article class="topic-result" data-feed-url="${escapeHtml(item.url)}">
       <button class="topic-open" type="button" data-open-topic="${index}">
-        ${thumb}
+        <span class="topic-thumb-wrap">${thumb}</span>
         <span>
           <strong>${escapeHtml(title)}</strong>
           <span>${escapeHtml([item.speaker, item.duration, item.source].filter(Boolean).join(" · "))}</span>
@@ -1519,6 +1516,7 @@ function paintTopicResults(list, results) {
   const ranked = core.rankFeedResults(raw, state);
   list.dataset.results = JSON.stringify(ranked);
   list.innerHTML = topicResultMarkup(ranked);
+  syncTopicPlayingMarks();
 }
 
 function refreshTopicResultsList(list) {
@@ -1719,6 +1717,34 @@ function topicItem(list, index) {
   const results = JSON.parse(list?.dataset.results || "[]");
   const item = results[Number(index)];
   return item?.url ? item : null;
+}
+
+function feedItemFromVideo(video) {
+  return {
+    url: video?.url || "",
+    title: video?.title || "",
+    speaker: video?.speaker || "",
+    source: video?.tags || "",
+  };
+}
+
+function applyFeedVote(item, vote, list) {
+  if (!item?.url) return;
+  core.recordFeedVote(state, item, vote);
+  if (core.feedVoteForUrl(state, item.url) === -1) removeLibraryVideoForUrl(item.url);
+  saveState();
+  if (list) {
+    refreshTopicResultsList(list);
+    if (list.closest("#libraryLatestBody")) {
+      libraryFeedResults = JSON.parse(list.dataset.results || "[]");
+    } else if (list.closest("#videoList")) {
+      libraryTopicResults = JSON.parse(list.dataset.results || "[]");
+    }
+  } else {
+    document.querySelectorAll(".topic-results").forEach((topicList) => refreshTopicResultsList(topicList));
+  }
+  syncPlayerFeedVotes();
+  syncTopicPlayingMarks();
 }
 
 function removeLibraryVideoForUrl(url) {
@@ -3964,6 +3990,7 @@ function renderForm() {
   syncPlayButton();
   syncAddToListButtons();
   syncFavouriteButtons();
+  syncPlayerFeedVotes();
   renderScreenMeta(video);
   void ensureVideoChapters(video);
   els.openSourceButton.disabled = !video?.sourceUrl;
@@ -4000,6 +4027,55 @@ function playbackIsRunning() {
   return Boolean(els.playerShell?.dataset.mode === "video" && els.videoPlayer && !els.videoPlayer.paused && !els.videoPlayer.ended);
 }
 
+function syncTopicPlayingMarks() {
+  const video = selectedVideo();
+  const currentUrl = String(video?.url || "").trim();
+  const playingUrl = playbackIsRunning() && currentUrl ? currentUrl : "";
+  document.querySelectorAll(".topic-result").forEach((row) => {
+    const url = String(row.dataset.feedUrl || "").trim();
+    const isCurrent = Boolean(currentUrl && url === currentUrl);
+    const isPlaying = Boolean(playingUrl && url === playingUrl);
+    row.classList.toggle("is-current-in-player", isCurrent);
+    row.classList.toggle("is-playing-feed", isPlaying);
+    const wrap = row.querySelector(".topic-thumb-wrap");
+    let mark = wrap?.querySelector(".playing-mark");
+    if (!isPlaying) mark?.remove();
+    else if (wrap && !mark) {
+      mark = document.createElement("span");
+      mark.className = "playing-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5.2v13.6L19 12z"/></svg>`;
+      wrap.append(mark);
+    }
+    const title = row.querySelector(".topic-open strong");
+    let badge = title?.querySelector(".topic-now-badge");
+    if (!isCurrent) badge?.remove();
+    else if (title && !badge) {
+      badge = document.createElement("span");
+      badge.className = "topic-now-badge";
+      badge.setAttribute("aria-hidden", "true");
+      badge.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5.2v13.6L19 12z"/></svg>`;
+      title.prepend(badge);
+    }
+  });
+}
+
+function syncPlayerFeedVotes() {
+  const video = selectedVideo();
+  const up = document.querySelector("#playerVoteUp");
+  const down = document.querySelector("#playerVoteDown");
+  if (!up || !down) return;
+  const vote = video?.url ? core.feedVoteForUrl(state, video.url) : 0;
+  const disabled = !video?.url;
+  up.disabled = disabled;
+  down.disabled = disabled;
+  up.setAttribute("aria-pressed", vote === 1 ? "true" : "false");
+  down.setAttribute("aria-pressed", vote === -1 ? "true" : "false");
+  const title = video?.title || "this video";
+  up.setAttribute("aria-label", vote === 1 ? `You liked ${title}` : `Like ${title}`);
+  down.setAttribute("aria-label", vote === -1 ? `You disliked ${title}` : `Dislike ${title}`);
+}
+
 function syncPlayingCards() {
   const playingId = playbackIsRunning() ? state.selectedId : "";
   document.querySelectorAll(".video-card").forEach((card) => {
@@ -4028,6 +4104,7 @@ function syncPlayingCards() {
       button.append(note);
     }
   });
+  syncTopicPlayingMarks();
 }
 
 function syncPlayButton() {
