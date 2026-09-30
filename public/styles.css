@@ -686,12 +686,51 @@ body:has(#activityList:not(:empty)) .activity-empty {
   }
 }
 
+body:has(#desk-youtube:checked) #youtubePanel,
 body:has(#desk-history:checked) #historyPanel,
 body:has(#desk-playlists:checked) #playlistsPanel,
 body:has(#desk-favourites:checked) #favouritesPanel {
   display: block;
 }
 
+#youtubeNav[hidden] {
+  display: none;
+}
+
+#youtubeNav .nav-icon {
+  display: none;
+}
+
+#youtubeNav .nav-glyph {
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.youtube-section {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0 0 1.4rem;
+}
+
+.youtube-section h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.youtube-playlists {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+body:has(#desk-youtube:checked) .library-panel,
 body:has(#desk-history:checked) .library-panel,
 body:has(#desk-playlists:checked) .library-panel,
 body:has(#desk-favourites:checked) .library-panel,
@@ -710,6 +749,7 @@ body:has(#desk-downloads:checked) .downloads-panel {
 }
 
 body:has(#desk-downloads:checked) .watch-column,
+body:has(#desk-youtube:checked) .watch-column,
 body:has(#desk-history:checked) .watch-column,
 body:has(#desk-playlists:checked) .watch-column,
 body:has(#desk-favourites:checked) .watch-column {
@@ -717,6 +757,7 @@ body:has(#desk-favourites:checked) .watch-column {
 }
 
 body:has(#desk-downloads:checked) .app-shell,
+body:has(#desk-youtube:checked) .app-shell,
 body:has(#desk-history:checked) .app-shell,
 body:has(#desk-playlists:checked) .app-shell,
 body:has(#desk-favourites:checked) .app-shell {
@@ -727,6 +768,7 @@ body:has(#desk-favourites:checked) .app-shell {
 }
 
 body:has(#desk-downloads:checked) .bench,
+body:has(#desk-youtube:checked) .bench,
 body:has(#desk-history:checked) .bench,
 body:has(#desk-playlists:checked) .bench,
 body:has(#desk-favourites:checked) .bench {
@@ -762,6 +804,7 @@ body.is-nav-searching:not(:has(#desk-library:checked)) .library-panel {
   display: flex;
 }
 
+body.is-nav-searching:not(:has(#desk-library:checked)) #youtubePanel,
 body.is-nav-searching:not(:has(#desk-library:checked)) #historyPanel,
 body.is-nav-searching:not(:has(#desk-library:checked)) #playlistsPanel,
 body.is-nav-searching:not(:has(#desk-library:checked)) #favouritesPanel,
@@ -4356,6 +4399,7 @@ html[data-picker-theme="new-age"] .history-list {
   body:has(#desk-library:checked) .workspace-nav label[for="desk-library"],
   body:has(#desk-downloads:checked) .workspace-nav label[for="desk-downloads"],
   body:has(#desk-transcripts:checked) .workspace-nav label[for="desk-transcripts"],
+  body:has(#desk-youtube:checked) .nav-more,
   body:has(#desk-history:checked) .nav-more,
   body:has(#desk-playlists:checked) .nav-more,
   body:has(#desk-favourites:checked) .nav-more {

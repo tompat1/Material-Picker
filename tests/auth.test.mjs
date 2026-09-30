@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createMemoryAccountStore, fetchSubscriptionFeed, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
+import { createMemoryAccountStore, fetchSubscriptionFeed, fetchYouTubeHome, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
 
 test("google sign-in asks for offline YouTube read access", () => {
   const url = new URL(googleAuthUrl({
@@ -44,6 +44,42 @@ test("subscription feed keeps the latest upload from each channel", async () => 
   assert.equal(feed.channels[0].title, "Studio North");
   assert.equal(feed.videos[0].url, "https://www.youtube.com/watch?v=abcdefghijk");
   assert.equal(feed.videos[0].speaker, "Studio North");
+});
+
+test("youtube home keeps subscriptions, playlists, likes, and activity", async () => {
+  const home = await fetchYouTubeHome("token", async (url) => {
+    const href = String(url);
+    if (href.includes("/subscriptions")) {
+      return new Response(JSON.stringify({
+        items: [{ snippet: { title: "Studio North", resourceId: { channelId: "UCstudio1234" } } }],
+      }));
+    }
+    if (href.includes("playlistId=UUstudio1234")) {
+      return new Response(JSON.stringify({
+        items: [{ snippet: { title: "New glaze", publishedAt: "2026-09-01T00:00:00Z", resourceId: { videoId: "abcdefghijk" } } }],
+      }));
+    }
+    if (href.includes("/playlists")) {
+      return new Response(JSON.stringify({
+        items: [{ id: "PLstudio", snippet: { title: "Kiln notes" }, contentDetails: { itemCount: 3 } }],
+      }));
+    }
+    if (href.includes("playlistId=LL")) {
+      return new Response(JSON.stringify({
+        items: [{ snippet: { title: "Liked bowl", resourceId: { videoId: "likedvideoid" }, channelTitle: "Clay" } }],
+      }));
+    }
+    if (href.includes("/activities")) {
+      return new Response(JSON.stringify({
+        items: [{ snippet: { type: "like", title: "Liked bowl", publishedAt: "2026-09-02T00:00:00Z", channelTitle: "Clay" }, contentDetails: { like: { resourceId: { videoId: "likedvideoid" } } } }],
+      }));
+    }
+    throw new Error(`Unexpected fetch ${href}`);
+  });
+  assert.equal(home.videos[0].title, "New glaze");
+  assert.equal(home.playlists[0].title, "Kiln notes");
+  assert.equal(home.liked[0].url, "https://www.youtube.com/watch?v=likedvideoid");
+  assert.equal(home.activity[0].source, "Liked");
 });
 
 test("email accounts can be created and signed in without Google", async () => {

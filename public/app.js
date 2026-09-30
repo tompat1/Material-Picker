@@ -356,8 +356,14 @@ function init() {
   });
   saveState();
   void loadAccount().then(() => {
-    if (youtubeConnected && new URLSearchParams(location.search).get("feed") === "subscriptions") {
+    const params = new URLSearchParams(location.search);
+    if (youtubeConnected && params.get("feed") === "subscriptions") {
       libraryFeed = "youtube-subscriptions";
+    }
+    if (youtubeConnected && params.get("desk") === "youtube") {
+      const desk = document.querySelector("#desk-youtube");
+      if (desk) desk.checked = true;
+      void loadYouTubeHome();
     }
     return loadLibraryFeed();
   });
@@ -484,6 +490,14 @@ function bindEvents() {
   document.querySelector("#navMore")?.addEventListener("click", () => {
     const open = document.body.classList.toggle("is-more-open");
     document.querySelector("#navMore")?.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  document.querySelector("#desk-youtube")?.addEventListener("change", () => {
+    if (document.querySelector("#desk-youtube")?.checked) void loadYouTubeHome();
+  });
+  document.querySelector("#youtubeHome")?.addEventListener("click", (event) => {
+    const playlist = event.target.closest("[data-youtube-playlist]");
+    if (!playlist) return;
+    void loadYouTubePlaylist(playlist.dataset.youtubePlaylist);
   });
   document.querySelectorAll(".nav-sub label, #desk-library, #desk-downloads, #desk-transcripts").forEach((control) => {
     control.addEventListener("change", closeMobileMenus);
@@ -1526,6 +1540,12 @@ async function loadAccount() {
   }
   if (google) google.hidden = data.configured === false;
   youtubeConnected = Boolean(data.user?.youtubeConnected);
+  const youtubeNav = document.querySelector("#youtubeNav");
+  if (youtubeNav) youtubeNav.hidden = !youtubeConnected;
+  if (!youtubeConnected && document.querySelector("#desk-youtube")?.checked) {
+    const library = document.querySelector("#desk-library");
+    if (library) library.checked = true;
+  }
   if (data.user) {
     const label = data.user.name || data.user.email || "Signed in";
     link.setAttribute("aria-label", label);
@@ -1540,6 +1560,70 @@ async function loadAccount() {
   delete link.dataset.signedIn;
   link.title = "Sign in or create a Picker account";
   if (signOut) signOut.hidden = true;
+}
+
+function youtubeSection(title, hint, listId) {
+  return `<section class="youtube-section">
+    <h3>${escapeHtml(title)}</h3>
+    ${hint ? `<p class="hint">${escapeHtml(hint)}</p>` : ""}
+    <div class="topic-results" id="${listId}"></div>
+  </section>`;
+}
+
+async function loadYouTubeHome() {
+  const mount = document.querySelector("#youtubeHome");
+  if (!mount || !youtubeConnected) return;
+  mount.innerHTML = `<p class="hint">Loading your YouTube…</p>`;
+  let data = {};
+  try {
+    const response = await fetch("/api/youtube/home");
+    data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "YouTube could not be loaded.");
+  } catch (error) {
+    mount.innerHTML = `<p class="hint">${escapeHtml(error.message || "YouTube could not be loaded.")}</p>`;
+    return;
+  }
+  const playlists = Array.isArray(data.playlists) ? data.playlists : [];
+  mount.innerHTML = `
+    ${youtubeSection("Subscriptions", data.channels?.length ? `${data.channels.length} channels` : "", "youtubeSubscriptions")}
+    <section class="youtube-section">
+      <h3>Playlists</h3>
+      <div class="youtube-playlists topic-sources" role="group" aria-label="Your YouTube playlists">
+        ${playlists.map((playlist) => `<button type="button" data-youtube-playlist="${escapeHtml(playlist.id)}">${escapeHtml(playlist.title)}${playlist.count ? ` · ${playlist.count}` : ""}</button>`).join("") || `<p class="hint">No playlists on this account.</p>`}
+      </div>
+      <div class="topic-results" id="youtubePlaylistVideos"></div>
+    </section>
+    ${youtubeSection("Liked", "", "youtubeLiked")}
+    ${youtubeSection("History", "Recent likes, uploads, and playlist adds. YouTube does not share watch history with apps.", "youtubeActivity")}
+  `;
+  paintTopicResults(document.querySelector("#youtubeSubscriptions"), data.subscriptions || []);
+  paintTopicResults(document.querySelector("#youtubeLiked"), data.liked || []);
+  paintTopicResults(document.querySelector("#youtubeActivity"), data.activity || []);
+  if (!data.subscriptions?.length) document.querySelector("#youtubeSubscriptions").innerHTML = `<p class="hint">No subscription videos yet.</p>`;
+  if (!data.liked?.length) document.querySelector("#youtubeLiked").innerHTML = `<p class="hint">No liked videos yet.</p>`;
+  if (!data.activity?.length) document.querySelector("#youtubeActivity").innerHTML = `<p class="hint">No recent activity yet.</p>`;
+}
+
+async function loadYouTubePlaylist(playlistId) {
+  const list = document.querySelector("#youtubePlaylistVideos");
+  if (!list || !playlistId) return;
+  document.querySelectorAll("[data-youtube-playlist]").forEach((button) => {
+    button.setAttribute("aria-pressed", button.dataset.youtubePlaylist === playlistId ? "true" : "false");
+  });
+  list.innerHTML = `<p class="hint">Loading playlist…</p>`;
+  try {
+    const response = await fetch(`/api/youtube/playlist?id=${encodeURIComponent(playlistId)}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "That playlist could not be loaded.");
+    const videos = data.results || data.videos || [];
+    if (!videos.length) {
+      list.innerHTML = `<p class="hint">This playlist has no videos.</p>`;
+      return;
+    }
+    paintTopicResults(list, videos);
+  } catch (error) {
+    list.innerHTML = `<p class="hint">${escapeHtml(error.message || "That playlist could not be loaded.")}</p>`;
+  }
 }
 
 function topicSourceLabel() {

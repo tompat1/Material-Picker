@@ -110,6 +110,89 @@ export async function fetchSubscriptionFeed(accessToken, fetchImpl = fetch) {
   return { channels, videos: videos.slice(0, 12) };
 }
 
+function youtubeVideo(snippet, source = "youtube") {
+  const videoId = String(snippet?.resourceId?.videoId || "");
+  const title = String(snippet?.title || "").trim();
+  if (!videoId || !title || title === "Private video" || title === "Deleted video") return null;
+  return {
+    title,
+    speaker: String(snippet.videoOwnerChannelTitle || snippet.channelTitle || ""),
+    url: `https://www.youtube.com/watch?v=${videoId}`,
+    thumbnail: String(snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || ""),
+    duration: "",
+    source,
+    publishedAt: String(snippet.publishedAt || ""),
+  };
+}
+
+export async function fetchPlaylistVideos(accessToken, playlistId, fetchImpl = fetch) {
+  if (!/^[\w-]{2,80}$/.test(playlistId)) return [];
+  const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=12&playlistId=${encodeURIComponent(playlistId)}`, {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) return [];
+  const payload = await response.json().catch(() => ({}));
+  return (Array.isArray(payload.items) ? payload.items : [])
+    .map((item) => youtubeVideo(item?.snippet))
+    .filter(Boolean);
+}
+
+async function fetchYouTubePlaylists(accessToken, fetchImpl) {
+  const response = await fetchImpl("https://www.googleapis.com/youtube/v3/playlists?part=snippet,contentDetails&mine=true&maxResults=25", {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) return [];
+  const payload = await response.json().catch(() => ({}));
+  return (Array.isArray(payload.items) ? payload.items : []).flatMap((item) => {
+    const id = String(item?.id || "");
+    const title = String(item?.snippet?.title || "").trim();
+    if (!id || !title) return [];
+    return [{
+      id,
+      title,
+      thumbnail: String(item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || ""),
+      count: Number(item.contentDetails?.itemCount || 0),
+    }];
+  });
+}
+
+async function fetchYouTubeActivity(accessToken, fetchImpl) {
+  const response = await fetchImpl("https://www.googleapis.com/youtube/v3/activities?part=snippet,contentDetails&mine=true&maxResults=15", {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) return [];
+  const payload = await response.json().catch(() => ({}));
+  return (Array.isArray(payload.items) ? payload.items : []).flatMap((item) => {
+    const details = item?.contentDetails || {};
+    const videoId = details.upload?.videoId
+      || details.like?.resourceId?.videoId
+      || details.playlistItem?.resourceId?.videoId
+      || details.favorite?.resourceId?.videoId
+      || "";
+    if (!videoId) return [];
+    const snippet = item.snippet || {};
+    const kind = snippet.type === "upload" ? "Upload" : snippet.type === "like" ? "Liked" : snippet.type === "playlistItem" ? "Playlist" : "YouTube";
+    const video = youtubeVideo({
+      title: snippet.title,
+      channelTitle: snippet.channelTitle,
+      publishedAt: snippet.publishedAt,
+      thumbnails: snippet.thumbnails,
+      resourceId: { videoId },
+    }, kind);
+    return video ? [video] : [];
+  });
+}
+
+export async function fetchYouTubeHome(accessToken, fetchImpl = fetch) {
+  const feed = await fetchSubscriptionFeed(accessToken, fetchImpl);
+  const [playlists, liked, activity] = await Promise.all([
+    fetchYouTubePlaylists(accessToken, fetchImpl).catch(() => []),
+    fetchPlaylistVideos(accessToken, "LL", fetchImpl).catch(() => []),
+    fetchYouTubeActivity(accessToken, fetchImpl).catch(() => []),
+  ]);
+  return { ...feed, playlists, liked, activity };
+}
+
 export function parseYouTubeSubscriptions(payload) {
   return (Array.isArray(payload?.items) ? payload.items : []).flatMap((item) => {
     const id = String(item?.snippet?.resourceId?.channelId || "");
@@ -351,7 +434,7 @@ export function createD1AccountStore(db) {
 
 export async function handleAuthRequest(request, options) {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/auth") && url.pathname !== "/api/youtube/subscriptions") return null;
+  if (!url.pathname.startsWith("/api/auth") && !url.pathname.startsWith("/api/youtube/")) return null;
   const store = options.store;
   if (!store) {
     return json(503, {
@@ -391,6 +474,20 @@ export async function handleAuthRequest(request, options) {
       return await handleSubscriptions(request, store, options);
     } catch (error) {
       return json(error.status || 502, { error: error.message || "Subscriptions could not be loaded." });
+    }
+  }
+  if (request.method === "GET" && url.pathname === "/api/youtube/home") {
+    try {
+      return await handleYouTubeHome(request, store, options);
+    } catch (error) {
+      return json(error.status || 502, { error: error.message || "YouTube could not be loaded." });
+    }
+  }
+  if (request.method === "GET" && url.pathname === "/api/youtube/playlist") {
+    try {
+      return await handleYouTubePlaylist(request, url, store, options);
+    } catch (error) {
+      return json(error.status || 502, { error: error.message || "That playlist could not be loaded." });
     }
   }
   return json(404, { error: "Unknown account route." });
@@ -441,13 +538,13 @@ async function handleGoogleCallback(request, url, store, options) {
   const profile = await fetchGoogleProfile(tokens.accessToken, fetchImpl);
   const user = await store.upsertGoogleUser(profile, tokens);
   try {
-    const synced = await fetchSubscriptionFeed(tokens.accessToken, fetchImpl);
+    const synced = await fetchYouTubeHome(tokens.accessToken, fetchImpl);
     await store.saveSubscriptions(user.id, { ...synced, syncedAt: new Date().toISOString() });
   } catch {
     // Sign-in still completes. The Subscriptions feed can retry with the saved token.
   }
   const sessionId = await store.createSession(user.id);
-  return redirect("/?feed=subscriptions", [cookie(SESSION_COOKIE, sessionId, url, SESSION_MS), clearCookie(STATE_COOKIE, url)]);
+  return redirect("/?desk=youtube", [cookie(SESSION_COOKIE, sessionId, url, SESSION_MS), clearCookie(STATE_COOKIE, url)]);
 }
 
 async function handleSubscriptions(request, store, options) {
@@ -464,6 +561,41 @@ async function handleSubscriptions(request, store, options) {
   }
   const videos = Array.isArray(cached?.videos) ? cached.videos : [];
   return json(200, { channels: cached?.channels || [], videos, results: videos });
+}
+
+async function cachedYouTubeHome(userId, store, options, fetchImpl) {
+  let cached = await store.subscriptionsForUser(userId);
+  const fresh = cached?.syncedAt && Array.isArray(cached.playlists) && Date.now() - Date.parse(cached.syncedAt) < 15 * 60 * 1000;
+  if (fresh) return cached;
+  const accessToken = await freshAccessToken(userId, store, options, fetchImpl);
+  cached = { ...await fetchYouTubeHome(accessToken, fetchImpl), syncedAt: new Date().toISOString() };
+  await store.saveSubscriptions(userId, cached);
+  return cached;
+}
+
+async function handleYouTubeHome(request, store, options) {
+  const user = await currentUser(request, store);
+  if (!user) return json(401, { error: "Sign in with Google to open My YouTube." });
+  const fetchImpl = options.fetchImpl || fetch;
+  const cached = await cachedYouTubeHome(user.id, store, options, fetchImpl);
+  return json(200, {
+    channels: cached.channels || [],
+    subscriptions: cached.videos || [],
+    playlists: cached.playlists || [],
+    liked: cached.liked || [],
+    activity: cached.activity || [],
+  });
+}
+
+async function handleYouTubePlaylist(request, url, store, options) {
+  const user = await currentUser(request, store);
+  if (!user) return json(401, { error: "Sign in with Google to open this playlist." });
+  const playlistId = url.searchParams.get("id") || "";
+  if (!/^[\w-]{2,80}$/.test(playlistId)) return json(400, { error: "That playlist is not available." });
+  const fetchImpl = options.fetchImpl || fetch;
+  const accessToken = await freshAccessToken(user.id, store, options, fetchImpl);
+  const videos = await fetchPlaylistVideos(accessToken, playlistId, fetchImpl);
+  return json(200, { videos, results: videos });
 }
 
 async function freshAccessToken(userId, store, options, fetchImpl) {

@@ -1819,7 +1819,7 @@ function startServer() {
       return response.end();
     }
     const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
-    if (requestUrl.pathname.startsWith("/api/auth") || requestUrl.pathname === "/api/youtube/subscriptions") {
+    if (requestUrl.pathname.startsWith("/api/auth") || requestUrl.pathname.startsWith("/api/youtube/")) {
       return handleAccount(request, response);
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/video-search") {
