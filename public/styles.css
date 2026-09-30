@@ -1,5 +1,29 @@
 /* Picker identity v1 — warm editorial utility */
 
+@property --bg { syntax: "<color>"; inherits: true; initial-value: #281e19; }
+@property --rail { syntax: "<color>"; inherits: true; initial-value: #281e19; }
+@property --library { syntax: "<color>"; inherits: true; initial-value: #382b24; }
+@property --stage { syntax: "<color>"; inherits: true; initial-value: #281e19; }
+@property --field { syntax: "<color>"; inherits: true; initial-value: #382b24; }
+@property --ink { syntax: "<color>"; inherits: true; initial-value: #f4ebdd; }
+@property --muted { syntax: "<color>"; inherits: true; initial-value: #c6b5a5; }
+@property --faint { syntax: "<color>"; inherits: true; initial-value: #766253; }
+@property --line { syntax: "<color>"; inherits: true; initial-value: rgba(118, 98, 83, 0.55); }
+@property --line-strong { syntax: "<color>"; inherits: true; initial-value: #766253; }
+@property --accent { syntax: "<color>"; inherits: true; initial-value: #ff7a3d; }
+@property --accent-hot { syntax: "<color>"; inherits: true; initial-value: #ff7a3d; }
+@property --accent-ink { syntax: "<color>"; inherits: true; initial-value: #281e19; }
+@property --accent-soft { syntax: "<color>"; inherits: true; initial-value: rgba(255, 122, 61, 0.16); }
+@property --teal { syntax: "<color>"; inherits: true; initial-value: #8fc4be; }
+@property --danger { syntax: "<color>"; inherits: true; initial-value: #e7a092; }
+@property --danger-line { syntax: "<color>"; inherits: true; initial-value: rgba(224, 122, 98, 0.5); }
+@property --good { syntax: "<color>"; inherits: true; initial-value: #b7d7b4; }
+@property --good-bg { syntax: "<color>"; inherits: true; initial-value: #1c2b20; }
+@property --info { syntax: "<color>"; inherits: true; initial-value: #8fc4be; }
+@property --info-bg { syntax: "<color>"; inherits: true; initial-value: #225e58; }
+@property --warn { syntax: "<color>"; inherits: true; initial-value: #f0d7a4; }
+@property --warn-bg { syntax: "<color>"; inherits: true; initial-value: #332818; }
+
 :root {
   color-scheme: dark;
   --bg: #281e19;
@@ -30,6 +54,8 @@
   --display: system-ui, sans-serif;
   --mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --theme-ease: cubic-bezier(0.45, 0.05, 0.2, 1);
+  --theme-duration: 0.9s;
   --radius-control: 8px;
   --radius-panel: 12px;
 }
@@ -40,9 +66,34 @@
 
 html {
   scroll-behavior: smooth;
+  transition:
+    --bg var(--theme-duration) var(--theme-ease),
+    --rail var(--theme-duration) var(--theme-ease),
+    --library var(--theme-duration) var(--theme-ease),
+    --stage var(--theme-duration) var(--theme-ease),
+    --field var(--theme-duration) var(--theme-ease),
+    --ink var(--theme-duration) var(--theme-ease),
+    --muted var(--theme-duration) var(--theme-ease),
+    --faint var(--theme-duration) var(--theme-ease),
+    --line var(--theme-duration) var(--theme-ease),
+    --line-strong var(--theme-duration) var(--theme-ease),
+    --accent var(--theme-duration) var(--theme-ease),
+    --accent-hot var(--theme-duration) var(--theme-ease),
+    --accent-ink var(--theme-duration) var(--theme-ease),
+    --accent-soft var(--theme-duration) var(--theme-ease),
+    --teal var(--theme-duration) var(--theme-ease),
+    --danger var(--theme-duration) var(--theme-ease),
+    --danger-line var(--theme-duration) var(--theme-ease),
+    --good var(--theme-duration) var(--theme-ease),
+    --good-bg var(--theme-duration) var(--theme-ease),
+    --info var(--theme-duration) var(--theme-ease),
+    --info-bg var(--theme-duration) var(--theme-ease),
+    --warn var(--theme-duration) var(--theme-ease),
+    --warn-bg var(--theme-duration) var(--theme-ease);
 }
 
 body {
+  isolation: isolate;
   margin: 0;
   min-height: 100dvh;
   color: var(--ink);
@@ -51,6 +102,23 @@ body {
   font-weight: 400;
   line-height: 1.5;
   background: var(--bg);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(1100px 520px at 8% -8%, rgba(210, 190, 230, 0.45), transparent 58%),
+    radial-gradient(900px 480px at 100% 0%, rgba(244, 214, 196, 0.4), transparent 52%);
+  transition: opacity var(--theme-duration) var(--theme-ease);
+}
+
+html[data-picker-theme="new-age"] body::before {
+  opacity: 1;
 }
 
 ::selection {
@@ -1785,7 +1853,7 @@ dialog::backdrop {
   border-radius: 999px;
   background: var(--accent);
   pointer-events: none;
-  transition: transform 0.34s var(--ease), width 0.34s var(--ease);
+  transition: transform var(--theme-duration) var(--theme-ease), width var(--theme-duration) var(--theme-ease);
 }
 
 .thumb-style button {
@@ -1802,7 +1870,7 @@ dialog::backdrop {
   color: var(--muted);
   font: 560 0.75rem/1 var(--sans);
   letter-spacing: 0.01em;
-  transition: color 0.34s var(--ease);
+  transition: color var(--theme-duration) var(--theme-ease);
 }
 
 .theme-icon {
@@ -4193,10 +4261,7 @@ html[data-picker-theme="new-age"] {
 }
 
 html[data-picker-theme="new-age"] body {
-  background:
-    radial-gradient(1100px 520px at 8% -8%, rgba(210, 190, 230, 0.45), transparent 58%),
-    radial-gradient(900px 480px at 100% 0%, rgba(244, 214, 196, 0.4), transparent 52%),
-    var(--bg);
+  background: var(--bg);
 }
 
 html[data-picker-theme="new-age"] ::selection,

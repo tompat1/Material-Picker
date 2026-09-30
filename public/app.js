@@ -2247,11 +2247,10 @@ function placeThemeThumb() {
 }
 
 function setThumbnailStyle(style) {
-  const next = style === "new-age" ? "new-age" : "cinematic";
-  if (thumbnailStyle() === next && state.thumbnailStyle === next) {
-    syncThumbnailStyleControl();
-    return;
-  }
+  const requested = style === "new-age" ? "new-age" : "cinematic";
+  const next = thumbnailStyle() === requested
+    ? (requested === "new-age" ? "cinematic" : "new-age")
+    : requested;
   state.thumbnailStyle = next;
   saveState();
   syncThumbnailStyleControl();
