@@ -907,7 +907,6 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--stage);
 }
 
 .yt-search {
