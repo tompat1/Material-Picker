@@ -897,13 +897,95 @@ body:has(#desk-transcripts:checked) .transcript-panel {
   font-variant-numeric: tabular-nums;
 }
 
+.chapters-panel {
+  padding: 0.85rem 1rem 1.35rem;
+}
+
 .chapter-empty {
+  display: grid;
+  place-items: center;
+  align-content: start;
+  gap: 0.55rem;
+  min-height: min(42vh, 18rem);
+  margin: 0.35rem 0 0;
+  padding: 1.25rem 1.35rem 2rem;
+  text-align: center;
+}
+
+.chapter-empty-mark {
+  width: min(11rem, 52vw);
+  aspect-ratio: 1;
+  margin: 0 auto 0.35rem;
+  background: url("/brand/logos/picker-mark-dark.svg") center / 72% no-repeat;
+  opacity: 0.14;
+  filter: saturate(0.85);
+  pointer-events: none;
+}
+
+.chapter-empty-title {
   margin: 0;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: clamp(1.2rem, 2.4vw, 1.45rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.chapter-empty-copy {
+  margin: 0;
+  max-width: 34ch;
   color: var(--muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.chapter-empty-note {
+  margin: 0.25rem 0 0;
+  max-width: 38ch;
+  color: var(--faint);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.chapter-empty[data-tone="loading"] .chapter-empty-mark {
+  opacity: 0.1;
+  animation: chapter-empty-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes chapter-empty-pulse {
+  0%,
+  100% {
+    opacity: 0.08;
+    transform: scale(0.98);
+  }
+
+  50% {
+    opacity: 0.16;
+    transform: scale(1);
+  }
 }
 
 body:has(#chapterList:not(:empty)) .chapter-empty {
   display: none;
+}
+
+html[data-picker-theme="new-age"] .chapter-empty-mark {
+  background-image: url("/brand/logos/picker-mark-light.svg");
+  opacity: 0.11;
+  filter: none;
+}
+
+html[data-picker-theme="new-age"] .chapter-empty-title {
+  color: var(--ink);
+}
+
+html[data-picker-theme="new-age"] .chapter-empty-copy {
+  color: var(--muted);
+}
+
+html[data-picker-theme="new-age"] .chapter-empty-note {
+  color: var(--faint);
 }
 
 .topic-search,

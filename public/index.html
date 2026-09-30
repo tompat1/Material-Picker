@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-54" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-55" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -618,7 +618,16 @@
         <section class="chapters-panel" id="chaptersPanel" aria-labelledby="chaptersTitle">
           <h2 class="sr-only" id="chaptersTitle">Chapters</h2>
           <ol class="chapter-list" id="chapterList"></ol>
-          <p class="chapter-empty" id="chapterEmpty">This video does not list chapters from the provider.</p>
+          <div class="chapter-empty" id="chapterEmpty" role="status" aria-live="polite">
+            <div class="chapter-empty-mark" aria-hidden="true"></div>
+            <p class="chapter-empty-title" id="chapterEmptyTitle">No chapters yet</p>
+            <p class="chapter-empty-copy" id="chapterEmptyCopy">
+              Chapters appear when the provider or file includes them.
+            </p>
+            <p class="chapter-empty-note" id="chapterEmptyNote">
+              Picker does not generate chapters with AI yet. Use Transcript to capture the talk as timed text.
+            </p>
+          </div>
         </section>
 
         <section class="source-panel" aria-labelledby="sourceTitle">
@@ -697,6 +706,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-20" defer></script>
-    <script src="./app.js?v=picker-nav-72" defer></script>
+    <script src="./app.js?v=picker-nav-73" defer></script>
   </body>
 </html>

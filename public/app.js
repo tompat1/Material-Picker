@@ -3750,9 +3750,59 @@ async function ensureVideoChapters(video) {
   }
 }
 
+function chapterEmptyCopy(video) {
+  if (!video) {
+    return {
+      title: "No chapters yet",
+      copy: "Select a video to load chapters from the provider or file.",
+      note: "Picker does not generate chapters with AI yet. Use Transcript to capture the talk as timed text.",
+      tone: "",
+    };
+  }
+  if (video.chaptersStatus === "loading") {
+    return {
+      title: "Loading chapters",
+      copy: "Checking what the provider published for this video…",
+      note: "",
+      tone: "loading",
+    };
+  }
+  if (providerChapterUrl(video)) {
+    return {
+      title: "No provider chapters",
+      copy: "YouTube and Vimeo only show chapters when the uploader added them to the video.",
+      note: "There is no AI chapter generator in Picker yet. Transcribe under Transcript if you want searchable timed text.",
+      tone: "",
+    };
+  }
+  return {
+    title: "No embedded chapters",
+    copy: "This file or stream does not include a chapter track in the browser.",
+    note: "Picker does not infer chapters from audio yet. Save a transcript first if you need section markers in text.",
+    tone: "",
+  };
+}
+
+function renderChapterEmptyState(video, hidden) {
+  const empty = document.querySelector("#chapterEmpty");
+  if (!empty) return;
+  empty.hidden = hidden;
+  if (hidden) return;
+  const message = chapterEmptyCopy(video);
+  empty.dataset.tone = message.tone || "";
+  const title = empty.querySelector("#chapterEmptyTitle");
+  const copy = empty.querySelector("#chapterEmptyCopy");
+  const note = empty.querySelector("#chapterEmptyNote");
+  if (title) title.textContent = message.title;
+  if (copy) copy.textContent = message.copy;
+  if (note) {
+    note.textContent = message.note || "";
+    note.hidden = !message.note;
+  }
+}
+
 function renderChapters(video) {
   const list = document.querySelector("#chapterList");
-  const empty = document.querySelector("#chapterEmpty");
   if (!list) return;
   const chapters = Array.isArray(video?.chapters) ? video.chapters : [];
   list.innerHTML = "";
@@ -3766,14 +3816,7 @@ function renderChapters(video) {
     item.append(button);
     list.append(item);
   });
-  if (empty) {
-    empty.hidden = chapters.length > 0;
-    if (!chapters.length) {
-      if (video?.chaptersStatus === "loading") empty.textContent = "Loading chapters from the provider…";
-      else if (providerChapterUrl(video)) empty.textContent = "This video does not list chapters from the provider.";
-      else empty.textContent = "Chapters appear here when the file or stream includes them.";
-    }
-  }
+  renderChapterEmptyState(video, chapters.length > 0);
 }
 
 function seekToChapter(timeOrSeconds) {
