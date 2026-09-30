@@ -1126,11 +1126,17 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 
   .yt-rail {
     position: static;
-    display: flex;
-    gap: 0.35rem;
+    display: block;
     max-height: none;
     overflow-x: auto;
-    padding-bottom: 0.35rem;
+    overflow-y: hidden;
+    margin: 0 -0.15rem 0.35rem;
+    padding: 0.1rem 0 0.45rem;
+    scrollbar-width: none;
+  }
+
+  .yt-rail::-webkit-scrollbar {
+    display: none;
   }
 
   .yt-rail-label,
@@ -1140,17 +1146,49 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 
   .yt-channels {
     display: flex;
-    gap: 0.35rem;
+    align-items: flex-start;
+    gap: 0.15rem;
+    width: max-content;
+    min-width: 100%;
   }
 
   .yt-channel {
-    width: auto;
-    padding-right: 0.7rem;
+    flex: 0 0 4.85rem;
+    width: 4.85rem;
+    min-width: 4.85rem;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.15rem 0.4rem;
+    text-align: center;
+  }
+
+  .yt-channel .yt-avatar {
+    width: 52px;
+    height: 52px;
+  }
+
+  .yt-channel[aria-pressed="true"] {
+    background: transparent;
+  }
+
+  .yt-channel[aria-pressed="true"] .yt-avatar {
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--ink);
   }
 
   .yt-channel-name {
+    display: -webkit-box;
     flex: none;
-    overflow: visible;
+    width: 100%;
+    min-height: 2.4em;
+    overflow: hidden;
+    font-size: 0.7rem;
+    font-weight: 550;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
 }
 
