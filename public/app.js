@@ -1777,7 +1777,7 @@ function onYouTubeHomeClick(event) {
   }
   const scroll = event.target.closest("[data-youtube-scroll]");
   if (scroll) {
-    const track = scroll.closest(".yt-carousel")?.querySelector(".yt-carousel-track");
+    const track = scroll.closest(".yt-carousel-frame")?.querySelector(".yt-carousel-track");
     if (!track) return;
     const distance = Math.max(track.clientWidth * 0.86, 240);
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
