@@ -2798,6 +2798,7 @@ function renderLibrary() {
   syncSelectionNoteButton();
   syncSelectAllButton();
   syncFavouriteButtons();
+  syncPlayingCards();
   paintLibraryTopics();
   paintLibraryFeeds();
 }
@@ -3700,17 +3701,52 @@ async function resolveVideoStream(video) {
   return null;
 }
 
+function playbackIsRunning() {
+  if (els.playerShell?.dataset.mode === "embed") return embedPlaying;
+  return Boolean(els.playerShell?.dataset.mode === "video" && els.videoPlayer && !els.videoPlayer.paused && !els.videoPlayer.ended);
+}
+
+function syncPlayingCards() {
+  const playingId = playbackIsRunning() ? state.selectedId : "";
+  document.querySelectorAll(".video-card").forEach((card) => {
+    const playing = Boolean(playingId && card.dataset.videoId === playingId);
+    card.classList.toggle("is-playing", playing);
+    const thumb = card.querySelector(".card-thumb");
+    const button = card.querySelector(".card-main");
+    let mark = thumb?.querySelector(".playing-mark");
+    let note = button?.querySelector(".playing-note");
+    if (!playing) {
+      mark?.remove();
+      note?.remove();
+      return;
+    }
+    if (thumb && !mark) {
+      mark = document.createElement("span");
+      mark.className = "playing-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5.2v13.6L19 12z"/></svg>`;
+      thumb.append(mark);
+    }
+    if (button && !note) {
+      note = document.createElement("span");
+      note.className = "sr-only playing-note";
+      note.textContent = "Now playing";
+      button.append(note);
+    }
+  });
+}
+
 function syncPlayButton() {
   const button = document.querySelector("#playVideoButton");
-  if (!button) return;
-  const playing = els.playerShell?.dataset.mode === "embed"
-    ? embedPlaying
-    : Boolean(els.playerShell?.dataset.mode === "video" && els.videoPlayer && !els.videoPlayer.paused && !els.videoPlayer.ended);
-  const label = button.querySelector(".play-label");
-  if (label) label.textContent = playing ? "Pause" : "Play";
-  else button.textContent = playing ? "Pause" : "Play";
-  button.classList.toggle("is-playing", playing);
-  button.setAttribute("aria-pressed", playing ? "true" : "false");
+  const playing = playbackIsRunning();
+  if (button) {
+    const label = button.querySelector(".play-label");
+    if (label) label.textContent = playing ? "Pause" : "Play";
+    else button.textContent = playing ? "Pause" : "Play";
+    button.classList.toggle("is-playing", playing);
+    button.setAttribute("aria-pressed", playing ? "true" : "false");
+  }
+  syncPlayingCards();
 }
 
 function embedCommandTarget() {
