@@ -216,6 +216,122 @@
     return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
   }
 
+  function normalizeFeedSpeaker(value) {
+    return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function normalizeFeedSource(value) {
+    const source = String(value || "").toLowerCase();
+    if (source === "youtube" || source === "vimeo" || source === "web") return source;
+    if (/youtube|youtu\.be/.test(source)) return "youtube";
+    if (/vimeo/.test(source)) return "vimeo";
+    return "web";
+  }
+
+  function ensureFeedTaste(state) {
+    if (!state.feedTaste || typeof state.feedTaste !== "object") {
+      state.feedTaste = { votes: {}, speakers: {}, sources: {}, tokens: {} };
+    }
+    if (!state.feedTaste.votes) state.feedTaste.votes = {};
+    if (!state.feedTaste.speakers) state.feedTaste.speakers = {};
+    if (!state.feedTaste.sources) state.feedTaste.sources = {};
+    if (!state.feedTaste.tokens) state.feedTaste.tokens = {};
+    return state.feedTaste;
+  }
+
+  function feedTopicItem(item) {
+    return {
+      url: String(item?.url || "").trim(),
+      title: String(item?.title || "").trim(),
+      speaker: String(item?.speaker || "").trim(),
+      source: normalizeFeedSource(item?.source),
+    };
+  }
+
+  function feedTitleTokens(title) {
+    return String(title || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length >= 4)
+      .slice(0, 12);
+  }
+
+  function adjustFeedTasteSignals(taste, meta, delta) {
+    if (!delta) return;
+    if (meta.speaker) {
+      const key = normalizeFeedSpeaker(meta.speaker);
+      taste.speakers[key] = (taste.speakers[key] || 0) + delta;
+      if (Math.abs(taste.speakers[key]) < 0.01) delete taste.speakers[key];
+    }
+    taste.sources[meta.source] = (taste.sources[meta.source] || 0) + delta * 0.5;
+    if (Math.abs(taste.sources[meta.source]) < 0.01) delete taste.sources[meta.source];
+    feedTitleTokens(meta.title).forEach((token) => {
+      taste.tokens[token] = (taste.tokens[token] || 0) + delta * 0.25;
+      if (Math.abs(taste.tokens[token]) < 0.01) delete taste.tokens[token];
+    });
+  }
+
+  function recordFeedVote(state, item, vote) {
+    const taste = ensureFeedTaste(state);
+    const meta = feedTopicItem(item);
+    if (!meta.url) return taste;
+    const requested = vote === 1 || vote === -1 ? vote : 0;
+    const previous = taste.votes[meta.url]?.vote || 0;
+    const next = requested === previous ? 0 : requested;
+    if (previous === 1) adjustFeedTasteSignals(taste, meta, -1);
+    else if (previous === -1) adjustFeedTasteSignals(taste, meta, 1);
+    if (next === 1) adjustFeedTasteSignals(taste, meta, 1);
+    else if (next === -1) adjustFeedTasteSignals(taste, meta, -1);
+    if (next === 0) delete taste.votes[meta.url];
+    else {
+      taste.votes[meta.url] = {
+        vote: next,
+        at: new Date().toISOString(),
+        speaker: meta.speaker,
+        source: meta.source,
+        title: meta.title,
+      };
+    }
+    const keys = Object.keys(taste.votes);
+    if (keys.length > 500) {
+      keys
+        .sort((a, b) => String(taste.votes[a].at).localeCompare(String(taste.votes[b].at)))
+        .slice(0, keys.length - 500)
+        .forEach((key) => delete taste.votes[key]);
+    }
+    return taste;
+  }
+
+  function feedVoteForUrl(state, url) {
+    const taste = ensureFeedTaste(state);
+    return taste.votes[String(url || "").trim()]?.vote || 0;
+  }
+
+  function scoreFeedItem(item, taste) {
+    const meta = feedTopicItem(item);
+    const direct = taste.votes[meta.url]?.vote || 0;
+    if (direct === -1) return -10000;
+    let score = direct === 1 ? 50 : 0;
+    const speakerKey = normalizeFeedSpeaker(meta.speaker);
+    if (speakerKey && taste.speakers[speakerKey]) score += taste.speakers[speakerKey] * 8;
+    if (taste.sources[meta.source]) score += taste.sources[meta.source] * 4;
+    feedTitleTokens(meta.title).forEach((token) => {
+      if (taste.tokens[token]) score += taste.tokens[token] * 2;
+    });
+    return score;
+  }
+
+  function rankFeedResults(results, state) {
+    const taste = ensureFeedTaste(state);
+    const list = Array.isArray(results) ? results.slice() : [];
+    const scored = list.map((item, index) => ({ item, index, score: scoreFeedItem(item, taste) }));
+    return scored
+      .filter((entry) => entry.score > -1000)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.item);
+  }
+
   function archiveFolderName(title, id) {
     const safeTitle = String(title || "Offline video")
       .replace(/[\u200b-\u200d\uFEFF\u200e\u200f\u202a-\u202e]/g, "")
@@ -946,12 +1062,15 @@
     decodeHtml,
     extractVideos,
     estimateRemainingSeconds,
+    feedVoteForUrl,
     formatBytes,
     formatDuration,
     groupFolderEntries,
     libraryMediaSummary,
     offlineReconnectMatches,
     offlineArchivePath,
+    rankFeedResults,
+    recordFeedVote,
     inferTitleFromUrl,
     splitTitleAndSpeaker,
     isLikelyValidMediaChunk,

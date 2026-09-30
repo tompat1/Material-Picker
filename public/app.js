@@ -131,7 +131,9 @@ let libraryTopicMessage = "";
 let libraryFeed = "youtube-popular";
 let libraryFeedRequest = 0;
 let libraryFeedResults = [];
+let libraryFeedFetched = [];
 let libraryFeedMessage = "";
+let libraryTopicFetched = [];
 const LIBRARY_FEEDS = [
   { id: "youtube-popular", label: "YouTube Popular" },
   { id: "youtube-latest", label: "YouTube Latest" },
@@ -425,6 +427,24 @@ function bindEvents() {
     const downloadButton = event.target.closest("[data-download-topic]");
     if (downloadButton) {
       queueTopicDownload(downloadButton.closest(".topic-results"), downloadButton.dataset.downloadTopic);
+      return;
+    }
+    const voteUpButton = event.target.closest("[data-topic-vote-up]");
+    const voteDownButton = event.target.closest("[data-topic-vote-down]");
+    if (voteUpButton || voteDownButton) {
+      const list = (voteUpButton || voteDownButton).closest(".topic-results");
+      const index = voteUpButton?.dataset.topicVoteUp || voteDownButton?.dataset.topicVoteDown;
+      const item = topicItem(list, index);
+      if (item) {
+        core.recordFeedVote(state, item, voteUpButton ? 1 : -1);
+        saveState();
+        refreshTopicResultsList(list);
+        if (list?.closest("#libraryLatestBody")) {
+          libraryFeedResults = JSON.parse(list.dataset.results || "[]");
+        } else if (list?.closest("#videoList")) {
+          libraryTopicResults = JSON.parse(list.dataset.results || "[]");
+        }
+      }
       return;
     }
     const openButton = event.target.closest("[data-open-topic]");
@@ -1461,6 +1481,7 @@ function topicResultMarkup(results) {
   return results.map((item, index) => {
     const saved = state.videos.find((video) => video.url === item.url);
     const marked = Boolean(saved && selectedVideoIds.has(saved.id));
+    const vote = core.feedVoteForUrl(state, item.url);
     const title = item.title || "Untitled video";
     const thumb = item.thumbnail
       ? `<img alt="" src="${escapeHtml(item.thumbnail)}" />`
@@ -1473,11 +1494,41 @@ function topicResultMarkup(results) {
           <span>${escapeHtml([item.speaker, item.duration, item.source].filter(Boolean).join(" · "))}</span>
         </span>
       </button>
-      <button class="topic-download" type="button" data-download-topic="${index}" aria-pressed="${marked ? "true" : "false"}" aria-label="${escapeHtml(marked ? `${title} is on the download list` : `Add ${title} to downloads`)}">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg>
-      </button>
+      <div class="topic-result-actions">
+        <div class="topic-feedback" role="group" aria-label="Rate this suggestion">
+          <button class="topic-vote topic-vote-up" type="button" data-topic-vote-up="${index}" aria-pressed="${vote === 1 ? "true" : "false"}" aria-label="${escapeHtml(vote === 1 ? `You liked ${title}` : `Like ${title}`)}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11v8"/><path d="M11 11V8.5a1.5 1.5 0 0 1 3 0V11"/><path d="M7 11 4.5 14v5h15v-5L16.5 11"/></svg>
+          </button>
+          <button class="topic-vote topic-vote-down" type="button" data-topic-vote-down="${index}" aria-pressed="${vote === -1 ? "true" : "false"}" aria-label="${escapeHtml(vote === -1 ? `You disliked ${title}` : `Dislike ${title}`)}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 13V5"/><path d="M11 13v3.5a1.5 1.5 0 0 0 3 0V13"/><path d="M7 13 4.5 10V5h15v5L16.5 13"/></svg>
+          </button>
+        </div>
+        <button class="topic-download" type="button" data-download-topic="${index}" aria-pressed="${marked ? "true" : "false"}" aria-label="${escapeHtml(marked ? `${title} is on the download list` : `Add ${title} to downloads`)}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg>
+        </button>
+      </div>
     </article>`;
   }).join("");
+}
+
+function paintTopicResults(list, results) {
+  if (!list) return;
+  const raw = Array.isArray(results) ? results : [];
+  list.dataset.rawResults = JSON.stringify(raw);
+  const ranked = core.rankFeedResults(raw, state);
+  list.dataset.results = JSON.stringify(ranked);
+  list.innerHTML = topicResultMarkup(ranked);
+}
+
+function refreshTopicResultsList(list) {
+  if (!list) return;
+  let raw = [];
+  try {
+    raw = JSON.parse(list.dataset.rawResults || list.dataset.results || "[]");
+  } catch {
+    raw = [];
+  }
+  paintTopicResults(list, raw);
 }
 
 function paintLibraryTopics() {
@@ -1496,10 +1547,7 @@ function paintLibraryTopics() {
     <div class="topic-results"></div>
   `;
   const list = section.querySelector(".topic-results");
-  if (libraryTopicResults.length && list) {
-    list.innerHTML = topicResultMarkup(libraryTopicResults);
-    list.dataset.results = JSON.stringify(libraryTopicResults);
-  }
+  if (libraryTopicFetched.length && list) paintTopicResults(list, libraryTopicFetched);
   els.videoList.append(section);
 }
 
@@ -1543,10 +1591,7 @@ function paintLibraryFeeds() {
     <div class="topic-results"></div>
   `;
   const list = section.querySelector(".topic-results");
-  if (libraryFeedResults.length && list) {
-    list.innerHTML = topicResultMarkup(libraryFeedResults);
-    list.dataset.results = JSON.stringify(libraryFeedResults);
-  }
+  if (libraryFeedFetched.length && list) paintTopicResults(list, libraryFeedFetched);
   mount.append(section);
 }
 
@@ -1554,6 +1599,7 @@ async function loadLibraryFeed() {
   const requestId = ++libraryFeedRequest;
   const feed = libraryFeed;
   libraryFeedResults = [];
+  libraryFeedFetched = [];
   libraryFeedMessage = `Loading ${libraryFeedLabel()}…`;
   renderLibrary();
   let response;
@@ -1562,6 +1608,7 @@ async function loadLibraryFeed() {
   } catch {
     if (requestId !== libraryFeedRequest) return;
     libraryFeedResults = [];
+    libraryFeedFetched = [];
     libraryFeedMessage = "That feed could not reach the server.";
     renderLibrary();
     return;
@@ -1570,13 +1617,15 @@ async function loadLibraryFeed() {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     libraryFeedResults = [];
+    libraryFeedFetched = [];
     libraryFeedMessage = data.error || "That feed is unavailable right now.";
     renderLibrary();
     return;
   }
-  libraryFeedResults = Array.isArray(data.results) ? data.results : [];
-  libraryFeedMessage = libraryFeedResults.length
-    ? `${libraryFeedResults.length} videos · ${libraryFeedLabel()}`
+  libraryFeedFetched = Array.isArray(data.results) ? data.results : [];
+  libraryFeedResults = core.rankFeedResults(libraryFeedFetched, state);
+  libraryFeedMessage = libraryFeedFetched.length
+    ? `${libraryFeedResults.length} videos · ${libraryFeedLabel()}${libraryFeedResults.length < libraryFeedFetched.length ? " · personalized" : ""}`
     : `No videos in ${libraryFeedLabel()} right now.`;
   renderLibrary();
 }
@@ -1587,10 +1636,12 @@ function queueLibraryTopicSearch({ immediate = false } = {}) {
   if (topic.length < 2) {
     libraryTopicRequest += 1;
     libraryTopicResults = [];
+    libraryTopicFetched = [];
     libraryTopicMessage = "";
     return;
   }
   libraryTopicResults = [];
+  libraryTopicFetched = [];
   libraryTopicMessage = `Searching ${topicSourceLabel()}…`;
   const start = () => {
     const requestId = ++libraryTopicRequest;
@@ -1607,6 +1658,7 @@ async function loadLibraryTopics(topic, requestId) {
   } catch {
     if (requestId !== libraryTopicRequest) return;
     libraryTopicResults = [];
+    libraryTopicFetched = [];
     libraryTopicMessage = "Search could not reach the server.";
     renderLibrary();
     return;
@@ -1615,13 +1667,15 @@ async function loadLibraryTopics(topic, requestId) {
   if (requestId !== libraryTopicRequest) return;
   if (!response.ok) {
     libraryTopicResults = [];
+    libraryTopicFetched = [];
     libraryTopicMessage = data.error || "Search failed.";
     renderLibrary();
     return;
   }
-  libraryTopicResults = Array.isArray(data.results) ? data.results : [];
-  libraryTopicMessage = libraryTopicResults.length
-    ? `${libraryTopicResults.length} ${topicSourceLabel()} videos for “${topic}”.`
+  libraryTopicFetched = Array.isArray(data.results) ? data.results : [];
+  libraryTopicResults = core.rankFeedResults(libraryTopicFetched, state);
+  libraryTopicMessage = libraryTopicFetched.length
+    ? `${libraryTopicResults.length} ${topicSourceLabel()} videos for “${topic}”.${libraryTopicResults.length < libraryTopicFetched.length ? " Personalized." : ""}`
     : `No ${topicSourceLabel()} videos for “${topic}”.`;
   renderLibrary();
 }
@@ -1657,8 +1711,7 @@ async function searchTopics(event) {
   }
   if (status) status.textContent = `${results.length} videos for “${topic}”.`;
   if (!list) return;
-  list.innerHTML = topicResultMarkup(results);
-  list.dataset.results = JSON.stringify(results);
+  paintTopicResults(list, results);
 }
 
 function topicItem(list, index) {

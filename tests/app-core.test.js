@@ -451,3 +451,19 @@ test("offlineReconnectMatches can reconnect an older archive by its folder name"
   assert.deepEqual(core.offlineReconnectMatches([video], {}, `day2/${folderName}`), [video]);
 });
 
+test("feed votes hide dislikes and boost similar creators in ranked results", () => {
+  const state = { videos: [] };
+  const results = [
+    { title: "Clay basics", speaker: "Ada Clay", url: "https://vimeo.com/1", source: "vimeo" },
+    { title: "Garden walk", speaker: "Studio North", url: "https://youtube.com/watch?v=aaa", source: "youtube" },
+    { title: "Glazing tips", speaker: "Ada Clay", url: "https://vimeo.com/2", source: "vimeo" },
+  ];
+  core.recordFeedVote(state, results[0], 1);
+  core.recordFeedVote(state, results[1], -1);
+  const ranked = core.rankFeedResults(results, state);
+  assert.deepEqual(ranked.map((item) => item.url), ["https://vimeo.com/1", "https://vimeo.com/2"]);
+  assert.equal(core.feedVoteForUrl(state, results[0].url), 1);
+  core.recordFeedVote(state, results[0], 1);
+  assert.equal(core.feedVoteForUrl(state, results[0].url), 0);
+});
+
