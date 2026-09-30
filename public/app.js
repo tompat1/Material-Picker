@@ -703,8 +703,9 @@ function bindEvents() {
     if (remove) {
       const rect = remove.getBoundingClientRect();
       const playlist = playlists().find((item) => item.id === remove.dataset.removePlaylist);
-      togglePlaylistVideo(remove.dataset.removePlaylist, remove.dataset.removeVideo);
-      acknowledgeAction(null, `Removed from “${playlist?.name || "playlist"}”.`, rect);
+      if (!playlist) return;
+      togglePlaylistVideo(playlist.id, remove.dataset.removeVideo);
+      acknowledgeAction(null, `Removed from “${playlist.name}”.`, rect);
       return;
     }
     if (removeList) {
