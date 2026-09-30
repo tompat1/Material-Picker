@@ -34,23 +34,24 @@ export function createFileAccountStore(filePath) {
       return update((data) => {
         const googleSub = String(profile.sub || "");
         if (!googleSub) throw new Error("Google did not return an account id.");
+        const email = String(profile.email || "").trim().toLowerCase();
         let user = data.users.find((item) => item.googleSub === googleSub);
-        if (!user && profile.email) {
-          user = data.users.find((item) => item.email === String(profile.email).toLowerCase());
+        if (!user && email) {
+          user = data.users.find((item) => item.email === email);
           if (user) user.googleSub = googleSub;
         }
         if (!user) {
           user = {
             id: crypto.randomUUID(),
             googleSub,
-            email: profile.email || "",
+            email,
             name: profile.name || "",
             picture: profile.picture || "",
             createdAt: new Date().toISOString(),
           };
           data.users.push(user);
         } else {
-          user.email = profile.email || user.email;
+          user.email = email || user.email;
           user.name = profile.name || user.name;
           user.picture = profile.picture || user.picture;
         }
@@ -147,8 +148,19 @@ export function createFileAccountStore(filePath) {
           refreshToken: tokenSet.refreshToken || current?.refreshToken || "",
           accessToken: tokenSet.accessToken || "",
           accessExpiresAt: tokenSet.accessExpiresAt || "",
+          subscriptions: current?.subscriptions || null,
         });
       });
+    },
+    async saveSubscriptions(userId, subscriptions) {
+      await update((data) => {
+        const current = data.tokens.find((item) => item.userId === userId) || { userId };
+        data.tokens = data.tokens.filter((item) => item.userId !== userId);
+        data.tokens.push({ ...current, subscriptions });
+      });
+    },
+    async subscriptionsForUser(userId) {
+      return update((data) => data.tokens.find((item) => item.userId === userId)?.subscriptions || null);
     },
   };
 }

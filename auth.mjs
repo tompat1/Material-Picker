@@ -39,8 +39,12 @@ function safeEqual(left, right) {
   return mismatch === 0;
 }
 
+function storedEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function normalizeAccount(body) {
-  const email = String(body?.email || "").trim().toLowerCase();
+  const email = storedEmail(body?.email);
   const password = String(body?.password || "");
   const name = String(body?.name || "").trim().slice(0, 80);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -67,6 +71,43 @@ export function googleAuthUrl({ clientId, redirectUri, state }) {
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("state", state);
   return url.toString();
+}
+
+export async function fetchSubscriptionFeed(accessToken, fetchImpl = fetch) {
+  const response = await fetchImpl("https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=15", {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.error?.message || "YouTube could not load subscriptions.");
+    error.status = response.status === 401 ? 401 : 502;
+    throw error;
+  }
+  const channels = parseYouTubeSubscriptions(payload);
+  const videos = [];
+  await Promise.all(channels.map(async (channel) => {
+    if (!channel.id.startsWith("UC")) return;
+    const playlistId = `UU${channel.id.slice(2)}`;
+    const latest = await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=1&playlistId=${playlistId}`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    if (!latest.ok) return;
+    const data = await latest.json().catch(() => ({}));
+    const snippet = data.items?.[0]?.snippet;
+    const videoId = snippet?.resourceId?.videoId;
+    if (!videoId || !snippet?.title) return;
+    videos.push({
+      title: snippet.title,
+      speaker: channel.title,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      thumbnail: snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || channel.thumbnail || "",
+      duration: "",
+      source: "youtube",
+      publishedAt: snippet.publishedAt || "",
+    });
+  }));
+  videos.sort((left, right) => String(right.publishedAt).localeCompare(String(left.publishedAt)));
+  return { channels, videos: videos.slice(0, 12) };
 }
 
 export function parseYouTubeSubscriptions(payload) {
@@ -99,23 +140,24 @@ export function createMemoryAccountStore() {
     async upsertGoogleUser(profile, tokenSet) {
       const googleSub = String(profile.sub || "");
       if (!googleSub) throw new Error("Google did not return an account id.");
+      const email = storedEmail(profile.email);
       let user = [...users.values()].find((item) => item.googleSub === googleSub);
-      if (!user && profile.email) {
-        user = [...users.values()].find((item) => item.email === String(profile.email).toLowerCase());
+      if (!user && email) {
+        user = [...users.values()].find((item) => item.email === email);
         if (user) user.googleSub = googleSub;
       }
       if (!user) {
         user = {
           id: crypto.randomUUID(),
           googleSub,
-          email: profile.email || "",
+          email,
           name: profile.name || "",
           picture: profile.picture || "",
           createdAt: new Date().toISOString(),
         };
         users.set(user.id, user);
       } else {
-        user.email = profile.email || user.email;
+        user.email = email || user.email;
         user.name = profile.name || user.name;
         user.picture = profile.picture || user.picture;
       }
@@ -173,7 +215,15 @@ export function createMemoryAccountStore() {
         refreshToken: tokenSet.refreshToken || current.refreshToken || "",
         accessToken: tokenSet.accessToken || current.accessToken || "",
         accessExpiresAt: tokenSet.accessExpiresAt || current.accessExpiresAt || "",
+        subscriptions: current.subscriptions || null,
       });
+    },
+    async saveSubscriptions(userId, subscriptions) {
+      const current = tokens.get(userId) || {};
+      tokens.set(userId, { ...current, subscriptions });
+    },
+    async subscriptionsForUser(userId) {
+      return tokens.get(userId)?.subscriptions || null;
     },
   };
 }
@@ -191,19 +241,20 @@ export function createD1AccountStore(db) {
     async upsertGoogleUser(profile, tokenSet) {
       const googleSub = String(profile.sub || "");
       if (!googleSub) throw new Error("Google did not return an account id.");
+      const email = storedEmail(profile.email);
       let existing = await db.prepare("SELECT id, email, name, picture, created_at FROM users WHERE google_sub = ?").bind(googleSub).first();
-      if (!existing && profile.email) {
-        existing = await db.prepare("SELECT id, email, name, picture, created_at FROM users WHERE email = ?").bind(String(profile.email).toLowerCase()).first();
+      if (!existing && email) {
+        existing = await db.prepare("SELECT id, email, name, picture, created_at FROM users WHERE email = ?").bind(email).first();
         if (existing) await db.prepare("UPDATE users SET google_sub = ? WHERE id = ?").bind(googleSub, existing.id).run();
       }
       const id = existing?.id || crypto.randomUUID();
       if (!existing) {
         await db.prepare("INSERT INTO users (id, google_sub, email, name, picture, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-          .bind(id, googleSub, profile.email || "", profile.name || "", profile.picture || "", new Date().toISOString())
+          .bind(id, googleSub, email, profile.name || "", profile.picture || "", new Date().toISOString())
           .run();
       } else {
         await db.prepare("UPDATE users SET email = ?, name = ?, picture = ? WHERE id = ?")
-          .bind(profile.email || existing.email || "", profile.name || existing.name || "", profile.picture || existing.picture || "", id)
+          .bind(email || existing.email || "", profile.name || existing.name || "", profile.picture || existing.picture || "", id)
           .run();
       }
       const current = await db.prepare("SELECT refresh_token FROM youtube_tokens WHERE user_id = ?").bind(id).first();
@@ -280,6 +331,20 @@ export function createD1AccountStore(db) {
           tokenSet.accessExpiresAt || "",
         )
         .run();
+    },
+    async saveSubscriptions(userId, subscriptions) {
+      await db.prepare("UPDATE youtube_tokens SET subscriptions_json = ? WHERE user_id = ?")
+        .bind(JSON.stringify(subscriptions), userId)
+        .run();
+    },
+    async subscriptionsForUser(userId) {
+      const row = await db.prepare("SELECT subscriptions_json FROM youtube_tokens WHERE user_id = ?").bind(userId).first();
+      if (!row?.subscriptions_json) return null;
+      try {
+        return JSON.parse(row.subscriptions_json);
+      } catch {
+        return null;
+      }
     },
   };
 }
@@ -375,23 +440,30 @@ async function handleGoogleCallback(request, url, store, options) {
   const tokens = await exchangeCode({ code, redirectUri, clientId: options.clientId, clientSecret: options.clientSecret, fetchImpl });
   const profile = await fetchGoogleProfile(tokens.accessToken, fetchImpl);
   const user = await store.upsertGoogleUser(profile, tokens);
+  try {
+    const synced = await fetchSubscriptionFeed(tokens.accessToken, fetchImpl);
+    await store.saveSubscriptions(user.id, { ...synced, syncedAt: new Date().toISOString() });
+  } catch {
+    // Sign-in still completes. The Subscriptions feed can retry with the saved token.
+  }
   const sessionId = await store.createSession(user.id);
-  return redirect("/", [cookie(SESSION_COOKIE, sessionId, url, SESSION_MS), clearCookie(STATE_COOKIE, url)]);
+  return redirect("/?feed=subscriptions", [cookie(SESSION_COOKIE, sessionId, url, SESSION_MS), clearCookie(STATE_COOKIE, url)]);
 }
 
 async function handleSubscriptions(request, store, options) {
   const user = await currentUser(request, store);
   if (!user) return json(401, { error: "Sign in with Google to load YouTube subscriptions." });
   const fetchImpl = options.fetchImpl || fetch;
-  const accessToken = await freshAccessToken(user.id, store, options, fetchImpl);
-  const response = await fetchImpl("https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=50", {
-    headers: { authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    return json(502, { error: "YouTube could not load subscriptions. Reconnect Google if this keeps happening." });
+  let cached = await store.subscriptionsForUser(user.id);
+  const fresh = cached?.syncedAt && Date.now() - Date.parse(cached.syncedAt) < 15 * 60 * 1000;
+  if (!fresh) {
+    const accessToken = await freshAccessToken(user.id, store, options, fetchImpl);
+    const synced = await fetchSubscriptionFeed(accessToken, fetchImpl);
+    cached = { ...synced, syncedAt: new Date().toISOString() };
+    await store.saveSubscriptions(user.id, cached);
   }
-  const payload = await response.json();
-  return json(200, { channels: parseYouTubeSubscriptions(payload) });
+  const videos = Array.isArray(cached?.videos) ? cached.videos : [];
+  return json(200, { channels: cached?.channels || [], videos, results: videos });
 }
 
 async function freshAccessToken(userId, store, options, fetchImpl) {

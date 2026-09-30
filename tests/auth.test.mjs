@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createMemoryAccountStore, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
+import { createMemoryAccountStore, fetchSubscriptionFeed, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
 
 test("google sign-in asks for offline YouTube read access", () => {
   const url = new URL(googleAuthUrl({
@@ -26,6 +26,26 @@ test("subscription payloads keep channel id and title", () => {
   assert.equal(channels[0].title, "Studio North");
 });
 
+test("subscription feed keeps the latest upload from each channel", async () => {
+  const feed = await fetchSubscriptionFeed("token", async (url) => {
+    const href = String(url);
+    if (href.includes("/subscriptions")) {
+      return new Response(JSON.stringify({
+        items: [{ snippet: { title: "Studio North", resourceId: { channelId: "UCstudio1234" } } }],
+      }));
+    }
+    if (href.includes("playlistId=UUstudio1234")) {
+      return new Response(JSON.stringify({
+        items: [{ snippet: { title: "New glaze", publishedAt: "2026-09-01T00:00:00Z", resourceId: { videoId: "abcdefghijk" }, thumbnails: { medium: { url: "https://img.example/glaze.jpg" } } } }],
+      }));
+    }
+    throw new Error(`Unexpected fetch ${href}`);
+  });
+  assert.equal(feed.channels[0].title, "Studio North");
+  assert.equal(feed.videos[0].url, "https://www.youtube.com/watch?v=abcdefghijk");
+  assert.equal(feed.videos[0].speaker, "Studio North");
+});
+
 test("email accounts can be created and signed in without Google", async () => {
   const store = createMemoryAccountStore();
   const register = await handleAuthRequest(new Request("http://localhost:4173/api/auth/register", {
@@ -46,6 +66,50 @@ test("email accounts can be created and signed in without Google", async () => {
     body: JSON.stringify({ email: "ada@example.com", password: "wrong-password" }),
   }), { store });
   assert.equal(again.status, 401);
+});
+
+test("linking Google keeps the password email lowercase", async () => {
+  const store = createMemoryAccountStore();
+  const register = await handleAuthRequest(new Request("http://localhost:4173/api/auth/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Ada", email: "ada@example.com", password: "long-enough" }),
+  }), { store });
+  assert.equal(register.status, 200);
+  const start = await handleAuthRequest(new Request("http://localhost:4173/api/auth/google/start"), {
+    store,
+    clientId: "client",
+    clientSecret: "secret",
+  });
+  const stateCookie = start.headers.getSetCookie().find((item) => item.startsWith("picker_oauth_state="));
+  const state = decodeURIComponent(stateCookie.split(";")[0].slice("picker_oauth_state=".length));
+  const callback = await handleAuthRequest(
+    new Request(`http://localhost:4173/api/auth/google/callback?code=abc&state=${state}`, {
+      headers: { cookie: `picker_oauth_state=${state}` },
+    }),
+    {
+      store,
+      clientId: "client",
+      clientSecret: "secret",
+      fetchImpl: async (url) => {
+        if (String(url).includes("oauth2.googleapis.com/token")) {
+          return new Response(JSON.stringify({ access_token: "access", refresh_token: "refresh", expires_in: 3600 }));
+        }
+        if (String(url).includes("userinfo")) {
+          return new Response(JSON.stringify({ sub: "google-ada", email: "Ada@Example.com", name: "Ada Lovelace" }));
+        }
+        throw new Error(`Unexpected fetch ${url}`);
+      },
+    },
+  );
+  assert.equal(callback.status, 302);
+  const login = await handleAuthRequest(new Request("http://localhost:4173/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "ada@example.com", password: "long-enough" }),
+  }), { store });
+  assert.equal(login.status, 200);
+  assert.equal((await login.json()).user.email, "ada@example.com");
 });
 
 test("google callback creates a session and marks YouTube connected", async () => {

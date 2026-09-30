@@ -139,6 +139,7 @@ const LIBRARY_FEEDS = [
   { id: "youtube-latest", label: "YouTube Latest" },
   { id: "vimeo-staff-picks", label: "Vimeo Staff Picks" },
 ];
+let youtubeConnected = false;
 let folderBrowseRunning = false;
 const selectedVideoIds = new Set();
 const offlinePackageFiles = new Map();
@@ -354,8 +355,12 @@ function init() {
     selectedVideoIds.add(video.id);
   });
   saveState();
-  void loadLibraryFeed();
-  void loadAccount();
+  void loadAccount().then(() => {
+    if (youtubeConnected && new URLSearchParams(location.search).get("feed") === "subscriptions") {
+      libraryFeed = "youtube-subscriptions";
+    }
+    return loadLibraryFeed();
+  });
   void restorePersistedFolders().then(() => loadFolderScript(selectedVideo()));
   void reconcileOfflineLibrary();
   void repairLegacyPageRecords({ automatic: true });
@@ -1520,6 +1525,7 @@ async function loadAccount() {
     data = { configured: false, user: null };
   }
   if (google) google.hidden = data.configured === false;
+  youtubeConnected = Boolean(data.user?.youtubeConnected);
   if (data.user) {
     const label = data.user.name || data.user.email || "Signed in";
     link.textContent = label;
@@ -1615,8 +1621,13 @@ function paintLibraryTopics() {
   els.videoList.append(section);
 }
 
+function libraryFeeds() {
+  const feeds = youtubeConnected ? [{ id: "youtube-subscriptions", label: "Subscriptions" }] : [];
+  return feeds.concat(LIBRARY_FEEDS);
+}
+
 function libraryFeedLabel() {
-  return LIBRARY_FEEDS.find((feed) => feed.id === libraryFeed)?.label || "Latest";
+  return libraryFeeds().find((feed) => feed.id === libraryFeed)?.label || "Latest";
 }
 
 function librarySections() {
@@ -1649,7 +1660,7 @@ function paintLibraryFeeds() {
   section.className = "library-topic";
   section.innerHTML = `
     <div class="topic-sources" role="group" aria-label="Latest feeds">
-      ${LIBRARY_FEEDS.map((feed) => `<button type="button" data-video-feed="${feed.id}" aria-pressed="${feed.id === libraryFeed}">${feed.label}</button>`).join("")}
+      ${libraryFeeds().map((feed) => `<button type="button" data-video-feed="${feed.id}" aria-pressed="${feed.id === libraryFeed}">${feed.label}</button>`).join("")}
     </div>
     <p class="hint">${escapeHtml(libraryFeedMessage)}</p>
     <div class="topic-results"></div>
@@ -1668,7 +1679,10 @@ async function loadLibraryFeed() {
   renderLibrary();
   let response;
   try {
-    response = await fetch(`/api/video-search?feed=${encodeURIComponent(feed)}`);
+    const path = feed === "youtube-subscriptions"
+      ? "/api/youtube/subscriptions"
+      : `/api/video-search?feed=${encodeURIComponent(feed)}`;
+    response = await fetch(path);
   } catch {
     if (requestId !== libraryFeedRequest) return;
     libraryFeedResults = [];
@@ -1686,7 +1700,7 @@ async function loadLibraryFeed() {
     renderLibrary();
     return;
   }
-  libraryFeedFetched = Array.isArray(data.results) ? data.results : [];
+  libraryFeedFetched = Array.isArray(data.results) ? data.results : Array.isArray(data.videos) ? data.videos : [];
   libraryFeedResults = core.rankFeedResults(libraryFeedFetched, state);
   libraryFeedMessage = libraryFeedFetched.length
     ? `${libraryFeedResults.length} videos · ${libraryFeedLabel()}${libraryFeedResults.length < libraryFeedFetched.length ? " · personalized" : ""}`
