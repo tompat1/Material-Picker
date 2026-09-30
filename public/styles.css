@@ -1847,9 +1847,9 @@ select {
   margin-top: 0.35rem;
   padding: 0.85rem;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  background: transparent;
+  border: 1px solid var(--line);
+  box-shadow: none;
 }
 
 .transcript-search-bar {
@@ -1875,19 +1875,23 @@ select {
 
 .transcript-search-field input {
   width: 100%;
-  padding: 0.55rem 2.2rem 0.55rem 2.2rem;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: var(--bg-card, rgba(15, 23, 42, 0.6));
-  color: var(--fg, #f8fafc);
+  padding: 0.55rem 2.2rem;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: var(--field);
+  color: var(--ink);
   font-size: 0.84rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.transcript-search-field input::placeholder {
+  color: var(--muted);
+}
+
 .transcript-search-field input:focus {
   outline: none;
-  border-color: var(--accent, #38bdf8);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .clear-search-btn {
@@ -1904,13 +1908,13 @@ select {
 }
 
 .clear-search-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+  background: var(--accent-soft);
 }
 
 .search-match-count {
   font-size: 0.78rem;
-  color: var(--accent, #38bdf8);
+  color: var(--accent);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -1941,8 +1945,8 @@ select {
   font-weight: 500;
   padding: 0.15rem 0.45rem;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--muted, #94a3b8);
+  background: var(--accent-soft);
+  color: var(--muted);
 }
 
 .transcript-pills-list {
