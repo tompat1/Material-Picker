@@ -803,10 +803,16 @@ body:has(#desk-transcripts:checked) .app-shell {
 }
 
 .watch-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 4;
   display: flex;
+  flex-wrap: nowrap;
   gap: 8px;
-  margin: 8px 0 16px;
+  margin: 0;
+  padding: 0 1rem;
   border-bottom: 1px solid var(--line);
+  background: var(--stage);
 }
 
 .watch-tabs label {
@@ -1076,6 +1082,15 @@ dialog::backdrop {
 .source-panel {
   padding: 0.95rem 1rem 1.2rem;
   border-bottom: 1px solid var(--line);
+}
+
+.player-panel {
+  border-bottom: 0;
+  padding-bottom: 0.35rem;
+}
+
+.summary-panel {
+  padding: 0.85rem 1rem 1.2rem;
 }
 
 .transcript-panel .transcript-actions {
@@ -4054,6 +4069,10 @@ html[data-picker-theme="new-age"] .history-list {
 
   body:has(#desk-transcripts:checked) .player-panel {
     display: block;
+  }
+
+  .watch-tabs {
+    top: 3.6rem;
   }
 
   body:has(#desk-transcripts:checked) .player-shell,
