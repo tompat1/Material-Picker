@@ -7,6 +7,30 @@ const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 
+function loadEnvFile(filePath) {
+  let text = "";
+  try {
+    text = fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  text.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return;
+    const separator = trimmed.indexOf("=");
+    if (separator < 1) return;
+    const key = trimmed.slice(0, separator).trim();
+    let value = trimmed.slice(separator + 1).trim();
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (!process.env[key]) process.env[key] = value;
+  });
+}
+
+loadEnvFile(path.join(__dirname, ".env"));
+
 const ROOT = __dirname;
 const PUBLIC_ROOT = path.join(ROOT, "public");
 const DATA_ROOT = path.join(ROOT, "data");
