@@ -31,9 +31,10 @@
 	},
 	"d1_databases": [
 		{
-			"binding": "picker_accounts",
+			"binding": "AUTH",
 			"database_name": "picker-accounts",
-			"database_id": "80db8024-fa41-4b79-ba96-9b4a3558c89c"
+			"database_id": "80db8024-fa41-4b79-ba96-9b4a3558c89c",
+			"migrations_dir": "migrations"
 		}
 	]
 }
