@@ -3720,6 +3720,8 @@ progress::-moz-progress-bar {
 }
 
 .play-bubble-stage {
+  position: relative;
+  z-index: 1;
   aspect-ratio: 16 / 9;
   background: #140f0c;
 }
@@ -3737,7 +3739,9 @@ progress::-moz-progress-bar {
 
 .play-bubble-scrim {
   position: absolute;
+  z-index: 2;
   inset: 0;
+  background: rgba(20, 12, 8, 0.001);
 }
 
 .play-bubble-title {

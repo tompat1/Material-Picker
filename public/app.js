@@ -4496,7 +4496,12 @@ function embedCommandTarget() {
 }
 
 function postYoutubeEmbed(win, target, payload) {
-  win.postMessage(JSON.stringify({ id: "embedPlayer", channel: "widget", ...payload }), target);
+  const message = JSON.stringify({ id: "embedPlayer", channel: "widget", ...payload });
+  try {
+    win.postMessage(message, target);
+  } catch {
+    try { win.postMessage(message, "*"); } catch { /* the embed frame is not ready */ }
+  }
 }
 
 function bindYoutubeEmbedEvents(win, target) {
@@ -4595,32 +4600,40 @@ function dockPlayBubble() {
   if (bubble) bubble.hidden = true;
 }
 
-function syncPlayBubble() {
-  const bubble = document.querySelector("#playBubble");
-  const desktop = window.matchMedia("(min-width: 761px)").matches;
-  const away = desktop && watchColumnHidden();
-  if (playbackIsRunning()) livePlayback = true;
-  if (!bubble || !away || !livePlayback) {
-    if (!away || !livePlayback) dockPlayBubble();
-    return;
-  }
+function playingMediaNode() {
   const mode = els.playerShell?.dataset.mode;
   const node = mode === "video" ? els.videoPlayer : mode === "embed" ? els.embedPlayer : null;
   const hasPicture = mode === "embed"
     ? Boolean(node?.getAttribute("src"))
     : Boolean(node && (node.currentSrc || node.src || node.srcObject || hlsPlayer));
-  if (!node || !hasPicture) {
-    dockPlayBubble();
-    return;
-  }
+  return hasPicture ? node : null;
+}
+
+function floatPlayBubble() {
+  const bubble = document.querySelector("#playBubble");
   const stage = document.querySelector("#playBubbleStage");
-  if (stage && node.parentElement !== stage) stage.append(node);
+  const node = playingMediaNode();
+  if (!bubble || !stage || !node) return false;
+  if (!window.matchMedia("(min-width: 761px)").matches) return false;
+  if (playbackIsRunning()) livePlayback = true;
+  if (!livePlayback) return false;
   const title = document.querySelector("#playBubbleTitle");
   if (title) title.textContent = selectedVideo()?.title || "Playing";
   bubble.hidden = false;
+  if (node.parentElement !== stage) stage.append(node);
   bubble.classList.add("is-open");
-  if (mode === "video" && node.paused) node.play()?.catch(() => {});
-  if (mode === "embed") postEmbedCommand("playVideo");
+  return true;
+}
+
+function syncPlayBubble() {
+  const desktop = window.matchMedia("(min-width: 761px)").matches;
+  const away = desktop && watchColumnHidden();
+  if (playbackIsRunning()) livePlayback = true;
+  if (!away || !livePlayback) {
+    dockPlayBubble();
+    return;
+  }
+  if (!floatPlayBubble()) dockPlayBubble();
 }
 
 function closePlayBubble() {
@@ -4667,20 +4680,29 @@ function bindPlayBubble() {
   });
   scrim.addEventListener("pointerup", (event) => {
     if (!drag || event.pointerId !== drag.id) return;
+    const wasDrag = dragged;
     drag = null;
+    dragged = false;
     bubble.classList.remove("is-dragging");
+    if (!wasDrag && !event.target.closest(".play-bubble-close")) returnFromPlayBubble();
   });
   scrim.addEventListener("pointercancel", () => {
     drag = null;
     bubble.classList.remove("is-dragging");
   });
-  returnButton.addEventListener("click", () => {
-    if (dragged) {
-      dragged = false;
-      return;
-    }
+  returnButton.addEventListener("click", (event) => {
+    if (event.detail !== 0) return;
     returnFromPlayBubble();
   });
+  document.addEventListener("click", (event) => {
+    const label = event.target.closest("label[for]");
+    const deskId = label?.getAttribute("for") || "";
+    if (!deskId.startsWith("desk-")) return;
+    if (deskId === "desk-library" || deskId === "desk-transcripts") return;
+    if (playbackIsRunning()) livePlayback = true;
+    if (!livePlayback) return;
+    floatPlayBubble();
+  }, true);
   document.querySelector("#playBubbleClose")?.addEventListener("click", (event) => {
     event.stopPropagation();
     closePlayBubble();
