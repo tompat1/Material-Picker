@@ -5321,6 +5321,7 @@ html[data-picker-theme="new-age"] .history-list {
 
   .watch-tabs {
     top: 3.6rem;
+    justify-content: center;
   }
 
   body:has(#desk-transcripts:checked) .player-shell,
