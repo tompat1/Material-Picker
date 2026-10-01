@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS cms_documents (
+  id TEXT PRIMARY KEY,
+  body TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cms_media (
+  id TEXT PRIMARY KEY,
+  mime TEXT NOT NULL,
+  bytes BLOB NOT NULL
+);

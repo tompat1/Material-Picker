@@ -2365,7 +2365,8 @@ select {
 }
 
 .account-link,
-.account-sign-out {
+.account-sign-out,
+.cms-edit {
   min-height: 2rem;
   padding: 0.2rem 0.75rem;
   border: 1px solid var(--line);
@@ -5702,6 +5703,48 @@ html[data-picker-theme="new-age"] .history-list {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+body.is-cms [data-cms] {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 65%, transparent);
+  outline-offset: 3px;
+  border-radius: 4px;
+  cursor: text;
+}
+
+.cms-edit[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--stage);
+  border-color: transparent;
+}
+
+.cms-fields {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+
+.cms-fields label {
+  display: grid;
+  gap: 0.2rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.cms-fields input,
+.cms-fields textarea {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--stage);
+  color: var(--ink);
+  font: inherit;
+}
+
+.cms-fields textarea {
+  min-height: 4.5rem;
+  resize: vertical;
 }
 
 .shop-card-top {

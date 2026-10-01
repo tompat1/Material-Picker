@@ -1780,6 +1780,35 @@ function readRequestBody(request) {
   });
 }
 
+let cmsStorePromise;
+
+function cmsStore() {
+  cmsStorePromise ||= import("./cms.mjs").then(({ createFileCmsStore }) => createFileCmsStore(DATA_ROOT));
+  return cmsStorePromise;
+}
+
+async function handleCms(request, response) {
+  const [{ handleCmsRequest }, { sessionUser }] = await Promise.all([
+    import("./cms.mjs"),
+    import("./auth.mjs"),
+  ]);
+  const proto = request.headers["x-forwarded-proto"] || "http";
+  const host = request.headers.host || `localhost:${PORT}`;
+  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await readRequestBody(request);
+  const webRequest = new Request(`${proto}://${host}${request.url}`, {
+    method: request.method,
+    headers: request.headers,
+    body: body?.length ? body : undefined,
+  });
+  const store = await accountStore();
+  const webResponse = await handleCmsRequest(webRequest, {
+    store: await cmsStore(),
+    user: await sessionUser(webRequest, store),
+  });
+  response.writeHead(webResponse.status, Object.fromEntries(webResponse.headers.entries()));
+  response.end(Buffer.from(await webResponse.arrayBuffer()));
+}
+
 async function handleAccount(request, response) {
   const { handleAuthRequest } = await import("./auth.mjs");
   const proto = request.headers["x-forwarded-proto"] || "http";
@@ -1821,6 +1850,9 @@ function startServer() {
     const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
     if (requestUrl.pathname.startsWith("/api/auth") || requestUrl.pathname.startsWith("/api/youtube/")) {
       return handleAccount(request, response);
+    }
+    if (requestUrl.pathname.startsWith("/api/cms")) {
+      return handleCms(request, response);
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/video-search") {
       return handleVideoSearch(response, requestUrl);

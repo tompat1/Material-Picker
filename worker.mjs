@@ -1,4 +1,5 @@
-import { createD1AccountStore, handleAuthRequest } from "./auth.mjs";
+import { createD1AccountStore, handleAuthRequest, sessionUser } from "./auth.mjs";
+import { createD1CmsStore, handleCmsRequest } from "./cms.mjs";
 import { fetchVideoChapters } from "./video-chapters.mjs";
 import { searchVideos, videoFeed } from "./video-search.mjs";
 
@@ -781,6 +782,10 @@ export async function handleApiRequest(request, dependencies = {}) {
   });
   if (authResponse) return authResponse;
   const url = new URL(request.url);
+  if (url.pathname.startsWith("/api/cms")) {
+    const user = await sessionUser(request, dependencies.accountStore);
+    return handleCmsRequest(request, { store: dependencies.cmsStore || null, user });
+  }
   if (request.method === "GET" && url.pathname === "/api/video-search") {
     try {
       const feed = url.searchParams.get("feed");
@@ -922,6 +927,7 @@ export default {
       renderPage: env?.BROWSER ? (url) => renderPage(env.BROWSER, url) : null,
       ai: env?.AI,
       accountStore: env?.AUTH ? createD1AccountStore(env.AUTH) : null,
+      cmsStore: env?.AUTH ? createD1CmsStore(env.AUTH) : null,
       googleClientId: env?.GOOGLE_CLIENT_ID || "",
       googleClientSecret: env?.GOOGLE_CLIENT_SECRET || "",
     });

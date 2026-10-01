@@ -1,3 +1,5 @@
+import { isAdminUser } from "./cms.mjs";
+
 const SESSION_COOKIE = "picker_session";
 const STATE_COOKIE = "picker_oauth_state";
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -602,7 +604,7 @@ async function mePayload(request, store, options) {
   const user = await currentUser(request, store);
   return {
     configured: Boolean(options.clientId && options.clientSecret),
-    user,
+    user: user ? { ...user, admin: isAdminUser(user) } : null,
   };
 }
 
@@ -757,10 +759,14 @@ async function fetchGoogleProfile(accessToken, fetchImpl) {
   return profile;
 }
 
-async function currentUser(request, store) {
+export async function sessionUser(request, store) {
   const sessionId = readCookie(request, SESSION_COOKIE);
-  if (!sessionId) return null;
+  if (!sessionId || !store) return null;
   return store.userForSession(sessionId);
+}
+
+async function currentUser(request, store) {
+  return sessionUser(request, store);
 }
 
 function publicUser(user, tokens) {

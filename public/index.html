@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-85" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-86" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -42,8 +42,8 @@
             <img class="brand-logo brand-logo--new-age" src="/brand/logos/picker-new-age.svg" alt="" width="140" height="40" />
           </a>
           <p class="brand-tagline">
-            <span class="brand-verbs"><span>Watch.</span><span>Save.</span><span>Transcribe.</span></span>
-            <span class="brand-promise">Keep your curiosity.</span>
+            <span class="brand-verbs"><span data-cms="brand.watch">Watch.</span><span data-cms="brand.save">Save.</span><span data-cms="brand.transcribe">Transcribe.</span></span>
+            <span class="brand-promise" data-cms="brand.promise">Keep your curiosity.</span>
           </p>
         </div>
         <p class="status-line" id="statusLine" role="status" aria-live="polite">
@@ -73,6 +73,7 @@
               <path d="M5.2 19.4c1.15-3.05 3.45-4.55 6.8-4.55s5.65 1.5 6.8 4.55"/>
             </svg>
           </button>
+          <button class="account-sign-out cms-edit" id="cmsEdit" type="button" hidden>Edit</button>
           <button class="account-sign-out" id="accountSignOut" type="button" hidden>Sign out</button>
         </div>
         <button class="primary-button" id="addVideoButton" type="button">
@@ -115,8 +116,8 @@
           <button class="more-action" id="moreClearLibrary" type="button">Clear library</button>
         </div>
         <div class="phone-library-head">
-          <h2 class="phone-library-title">Your library</h2>
-          <p>Keep your curiosity.</p>
+          <h2 class="phone-library-title" data-cms="library.title">Your library</h2>
+          <p data-cms="brand.promise">Keep your curiosity.</p>
         </div>
         <label class="nav-search">
           <span class="nav-search-icon" aria-hidden="true">
@@ -135,7 +136,7 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow">02</p>
-              <h2 id="importTitle">Intake</h2>
+              <h2 id="importTitle" data-cms="intake.title">Intake</h2>
             </div>
           </div>
 
@@ -328,14 +329,14 @@
         </section>
         <section class="nav-panel" id="historyPanel" aria-labelledby="historyTitle">
           <div class="section-heading">
-            <h2 id="historyTitle">History</h2>
+            <h2 id="historyTitle" data-cms="history.title">History</h2>
           </div>
           <ol class="activity-list" id="activityList"></ol>
-          <p class="activity-empty" id="activityEmpty">Imports, downloads, transcripts, and videos you watch will be listed here.</p>
+          <p class="activity-empty" id="activityEmpty" data-cms="history.empty">Imports, downloads, transcripts, and videos you watch will be listed here.</p>
         </section>
         <section class="nav-panel" id="playlistsPanel" aria-labelledby="playlistsTitle">
           <div class="section-heading">
-            <h2 id="playlistsTitle">Playlists</h2>
+            <h2 id="playlistsTitle" data-cms="playlists.title">Playlists</h2>
           </div>
           <form class="playlist-create" id="createPlaylistForm">
             <label for="playlistNameInput">New playlist</label>
@@ -345,26 +346,26 @@
             </div>
           </form>
           <div id="playlistList"></div>
-          <p class="playlist-empty" id="playlistEmpty">No playlists yet. Create one to start a list.</p>
+          <p class="playlist-empty" id="playlistEmpty" data-cms="playlists.empty">No playlists yet. Create one to start a list.</p>
         </section>
         <section class="nav-panel" id="favouritesPanel" aria-labelledby="favouritesTitle">
           <div class="section-heading">
-            <h2 id="favouritesTitle">Favourites</h2>
+            <h2 id="favouritesTitle" data-cms="favourites.title">Favourites</h2>
           </div>
           <ul class="playlist-videos" id="favouriteList"></ul>
-          <p class="playlist-empty" id="favouriteEmpty">No favourites yet. Use the heart on a video to save it here.</p>
+          <p class="playlist-empty" id="favouriteEmpty" data-cms="favourites.empty">No favourites yet. Use the heart on a video to save it here.</p>
         </section>
         <section class="nav-panel shop-panel" id="shopPanel" data-colorway="espresso" aria-labelledby="shopTitle">
           <header class="shop-head">
-            <p class="eyebrow">Merch</p>
+            <p class="eyebrow" data-cms="shop.eyebrow">Merch</p>
             <div class="shop-head-row">
-              <h2 id="shopTitle">Wear the curiosity.</h2>
+              <h2 id="shopTitle" data-cms="shop.title">Wear the curiosity.</h2>
               <button class="secondary-button shop-bag" id="shopBag" type="button">
                 Bag
                 <span id="shopBagCount">0</span>
               </button>
             </div>
-            <p class="shop-lead">A small run of Picker goods for the desk, the bag, and the wall. Each piece carries a real Picker mark.</p>
+            <p class="shop-lead" data-cms="shop.lead">A small run of Picker goods for the desk, the bag, and the wall. Each piece carries a real Picker mark.</p>
           </header>
           <div class="shop-colors" role="group" aria-label="Colourway" id="shopColors"></div>
           <div class="shop-categories" role="group" aria-label="Shop categories" id="shopCategories"></div>
@@ -373,7 +374,7 @@
 
         <section class="downloads-panel" aria-labelledby="libraryOfflineTitle">
           <div class="section-heading">
-            <h2 id="libraryOfflineTitle">Downloads</h2>
+            <h2 id="libraryOfflineTitle" data-cms="downloads.title">Downloads</h2>
           </div>
           <div class="library-offline-bar">
             <p id="bulkOfflineStatus">Mark videos in the library, then download them here.</p>
@@ -816,6 +817,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-106" defer></script>
+    <script src="./app.js?v=picker-nav-107" defer></script>
   </body>
 </html>

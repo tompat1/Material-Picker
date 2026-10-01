@@ -356,6 +356,7 @@ function init() {
     selectedVideoIds.add(video.id);
   });
   saveState();
+  void loadCms();
   void loadAccount().then(() => {
     const params = new URLSearchParams(location.search);
     if (youtubeConnected && params.get("feed") === "subscriptions") {
@@ -1587,6 +1588,8 @@ async function loadAccount() {
   }
   if (google) google.hidden = data.configured === false;
   youtubeConnected = Boolean(data.user?.youtubeConnected);
+  cmsUserAdmin = Boolean(data.user?.admin);
+  syncCmsEditor();
   const youtubeNav = document.querySelector("#youtubeNav");
   if (youtubeNav) youtubeNav.hidden = !youtubeConnected;
   if (!youtubeConnected && document.querySelector("#desk-youtube")?.checked) {
@@ -1609,6 +1612,9 @@ async function loadAccount() {
   delete link.dataset.signedIn;
   link.title = "Sign in or create a Picker account";
   if (signOut) signOut.hidden = true;
+  cmsUserAdmin = false;
+  cmsEditing = false;
+  syncCmsEditor();
 }
 
 let youtubeShelf = {
@@ -8410,6 +8416,128 @@ const MERCH_CATEGORIES = [
   { id: "daily", label: "Daily goods" },
   { id: "studio", label: "Studio objects" },
 ];
+let cmsDoc = { copy: {}, shop: {} };
+let cmsUserAdmin = false;
+let cmsEditing = false;
+
+function merchCatalog() {
+  return MERCH_CATALOG.map((item) => ({ ...item, ...(cmsDoc.shop?.[item.id] || {}) }));
+}
+
+async function loadCms() {
+  try {
+    const response = await fetch("/api/cms");
+    if (!response.ok) return;
+    const data = await response.json();
+    cmsDoc = {
+      copy: data.copy && typeof data.copy === "object" ? data.copy : {},
+      shop: data.shop && typeof data.shop === "object" ? data.shop : {},
+    };
+  } catch {
+    cmsDoc = { copy: {}, shop: {} };
+  }
+  applyCmsCopy();
+  renderShop();
+}
+
+function applyCmsCopy() {
+  document.querySelectorAll("[data-cms]").forEach((node) => {
+    if (!node.dataset.cmsDefault) node.dataset.cmsDefault = node.textContent;
+    const saved = cmsDoc.copy[node.dataset.cms];
+    if (document.activeElement === node) return;
+    node.textContent = saved || node.dataset.cmsDefault;
+    node.contentEditable = cmsEditing ? "true" : "false";
+  });
+}
+
+function syncCmsEditor() {
+  const button = document.querySelector("#cmsEdit");
+  document.body.classList.toggle("is-cms", cmsEditing);
+  if (button) {
+    button.hidden = !cmsUserAdmin;
+    button.textContent = cmsEditing ? "Done" : "Edit";
+    button.setAttribute("aria-pressed", cmsEditing ? "true" : "false");
+  }
+  applyCmsCopy();
+  if (document.querySelector("#shopGrid")) renderShop();
+}
+
+function toggleCmsEditing() {
+  if (!cmsUserAdmin) return;
+  cmsEditing = !cmsEditing;
+  syncCmsEditor();
+}
+
+function onCmsCopyKey(event) {
+  if (!cmsEditing || event.key !== "Enter" || !event.target?.dataset?.cms) return;
+  event.preventDefault();
+  event.target.blur();
+}
+
+async function onCmsCopyBlur(event) {
+  const node = event.target;
+  if (!cmsEditing || !node?.dataset?.cms) return;
+  const key = node.dataset.cms;
+  const text = node.textContent.replace(/\s+/g, " ").trim();
+  const previous = cmsDoc.copy[key] || node.dataset.cmsDefault || "";
+  if (text === previous) return;
+  const copy = { [key]: text === node.dataset.cmsDefault ? "" : text };
+  await saveCms({ copy });
+}
+
+async function onShopCmsBlur(event) {
+  const field = event.target.closest("[data-cms-shop]");
+  if (!field || field.type === "file") return;
+  const id = field.dataset.cmsShop;
+  const prop = field.dataset.cmsProp;
+  const product = merchCatalog().find((item) => item.id === id);
+  if (!product) return;
+  if (prop === "priceSek") {
+    const priceSek = Number(field.value);
+    if (!Number.isInteger(priceSek) || priceSek === product.priceSek) return;
+    await saveCms({ shop: { [id]: { priceSek, priceEur: Math.round(priceSek / 11) } } });
+    return;
+  }
+  const text = field.value.replace(/\s+/g, " ").trim();
+  if (text === product[prop]) return;
+  await saveCms({ shop: { [id]: { [prop]: text } } });
+}
+
+async function onShopCmsImage(input) {
+  const file = input.files?.[0];
+  const id = input.dataset.cmsImage;
+  if (!file || !id) return;
+  const response = await fetch("/api/cms/media", {
+    method: "POST",
+    headers: { "content-type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    setStatus(data.error || "The image could not be saved.");
+    return;
+  }
+  await saveCms({ shop: { [id]: { image: data.url } } }, { rerender: true });
+  setStatus("Shop image updated.");
+}
+
+async function saveCms(patch, { rerender = false } = {}) {
+  const response = await fetch("/api/cms", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    setStatus(data.error || "The edit could not be saved.");
+    applyCmsCopy();
+    return;
+  }
+  cmsDoc = data;
+  applyCmsCopy();
+  if (rerender) renderShop();
+}
+
 const MERCH_SIZES = ["S", "M", "L", "XL"];
 const MERCH_CATALOG = [
   { id: "hoodie-black", image: "/merch/hoodie-black.jpg", category: "apparel", name: "Black hoodie", description: "Heavyweight black fleece with the orange Picker mark on the chest.", priceSek: 890, priceEur: 79, badge: "First run", featured: true, optionLabel: "Size", options: MERCH_SIZES, specs: [["Material", "420 gsm cotton fleece"], ["Mark", "Orange play mark"]], stock: "In stock" },
@@ -8461,6 +8589,10 @@ function merchMoney(amount) {
 function bindMerchShop() {
   document.querySelector("#shopPanel")?.addEventListener("click", onShopClick);
   document.querySelector("#shopPanel")?.addEventListener("change", onShopChange);
+  document.querySelector("#shopPanel")?.addEventListener("focusout", onShopCmsBlur);
+  document.querySelector("#cmsEdit")?.addEventListener("click", toggleCmsEditing);
+  document.addEventListener("focusout", onCmsCopyBlur);
+  document.addEventListener("keydown", onCmsCopyKey);
   document.querySelector("#shopDrawer")?.addEventListener("click", onShopDrawerClick);
   document.querySelector("#shopLightbox")?.addEventListener("click", onShopLightboxClick);
   document.addEventListener("keydown", (event) => {
@@ -8497,13 +8629,18 @@ function onShopClick(event) {
 }
 
 function onShopChange(event) {
+  const image = event.target.closest("[data-cms-image]");
+  if (image) {
+    void onShopCmsImage(image);
+    return;
+  }
   const select = event.target.closest("[data-shop-option]");
   if (!select) return;
   select.closest(".shop-card")?.setAttribute("data-option", select.value);
 }
 
 function addMerchToCart(productId, button) {
-  const product = MERCH_CATALOG.find((item) => item.id === productId);
+  const product = merchCatalog().find((item) => item.id === productId);
   if (!product) return;
   const card = button.closest(".shop-card");
   const option = card?.querySelector("[data-shop-option]")?.value || "One size";
@@ -8570,7 +8707,7 @@ function closeShopDrawer() {
 }
 
 function openShopLightbox(productId) {
-  const product = MERCH_CATALOG.find((item) => item.id === productId);
+  const product = merchCatalog().find((item) => item.id === productId);
   const box = document.querySelector("#shopLightbox");
   const stage = document.querySelector("#shopLightboxStage");
   const caption = document.querySelector("#shopLightboxCaption");
@@ -8600,7 +8737,7 @@ function onShopLightboxClick(event) {
 
 function merchCartTotal() {
   return merchCart.reduce((sum, line) => {
-    const product = MERCH_CATALOG.find((item) => item.id === line.productId);
+    const product = merchCatalog().find((item) => item.id === line.productId);
     return sum + (product ? product.priceSek * line.qty : 0);
   }, 0);
 }
@@ -8620,7 +8757,7 @@ function renderShop() {
   if (categories) {
     categories.innerHTML = MERCH_CATEGORIES.map((category) => `<button type="button" data-shop-category="${category.id}" aria-pressed="${category.id === merchCategory ? "true" : "false"}">${escapeHtml(category.label)}</button>`).join("");
   }
-  const visible = MERCH_CATALOG.filter((item) => merchCategory === "all" || item.category === merchCategory);
+  const visible = merchCatalog().filter((item) => merchCategory === "all" || item.category === merchCategory);
   grid.innerHTML = visible.map((item) => {
     const options = item.options
       ? `<label class="shop-option"><span>${escapeHtml(item.optionLabel || "Size")}</span><select data-shop-option>${item.options.map((option) => `<option>${escapeHtml(option)}</option>`).join("")}</select></label>`
@@ -8632,6 +8769,7 @@ function renderShop() {
         <div class="shop-card-top"><span class="shop-price">${item.priceSek} SEK <small>(${item.priceEur} €)</small></span>${item.badge ? `<span class="shop-badge">${escapeHtml(item.badge)}</span>` : ""}</div>
         <h3>${escapeHtml(item.name)}</h3>
         <p>${escapeHtml(item.description)}</p>
+        ${cmsEditing ? `<div class="cms-fields"><label>Name<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="name" value="${escapeHtml(item.name)}"></label><label>Description<textarea data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="description">${escapeHtml(item.description)}</textarea></label><label>Price SEK<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="priceSek" inputmode="numeric" value="${Number(item.priceSek) || 0}"></label><label>Replace image<input type="file" accept="image/jpeg,image/png,image/webp" data-cms-image="${escapeHtml(item.id)}"></label></div>` : ""}
         <dl class="shop-specs">${specs}</dl>
         ${options}
         <p class="shop-stock">${escapeHtml(item.stock)}</p>
@@ -8661,7 +8799,7 @@ function renderShopDrawer() {
   }
   const total = merchCartTotal();
   const lines = merchCart.map((line) => {
-    const product = MERCH_CATALOG.find((item) => item.id === line.productId);
+    const product = merchCatalog().find((item) => item.id === line.productId);
     if (!product) return "";
     return `<li class="shop-line">${merchPieceMarkup(product)}<div><h3>${escapeHtml(product.name)}</h3><p>${escapeHtml(line.option)}</p><div class="shop-qty"><button type="button" data-shop-qty="${escapeHtml(line.id)}" data-delta="-1" aria-label="Decrease">−</button><span>${line.qty}</span><button type="button" data-shop-qty="${escapeHtml(line.id)}" data-delta="1" aria-label="Increase">+</button></div></div><div><strong>${product.priceSek * line.qty} SEK</strong><button class="shop-remove" type="button" data-shop-remove="${escapeHtml(line.id)}">Remove</button></div></li>`;
   }).join("");
