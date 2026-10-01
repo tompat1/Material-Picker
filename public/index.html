@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-97" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-98" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -828,6 +828,7 @@
         <h2>Account</h2>
         <button class="ghost-button" value="close">Close</button>
       </form>
+      <a class="account-google" id="accountGoogle" href="/api/auth/google/start">Continue with Google</a>
       <form id="accountLoginForm" class="account-form">
         <h3>Sign in</h3>
         <label>Email <input type="email" name="email" required autocomplete="username" /></label>
@@ -841,7 +842,6 @@
         <label>Password <input type="password" name="password" required minlength="8" autocomplete="new-password" /></label>
         <button class="secondary-button" type="submit">Create account</button>
       </form>
-      <a class="account-google" id="accountGoogle" href="/api/auth/google/start">Continue with Google</a>
       <p class="hint" id="accountFormStatus" role="status"></p>
     </dialog>
 
