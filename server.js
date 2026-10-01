@@ -1809,6 +1809,31 @@ async function handleCms(request, response) {
   response.end(Buffer.from(await webResponse.arrayBuffer()));
 }
 
+async function handleFeedly(request, response) {
+  const { handleFeedlyRequest } = await import("./feedly.mjs");
+  const proto = request.headers["x-forwarded-proto"] || "http";
+  const host = request.headers.host || `localhost:${PORT}`;
+  const webRequest = new Request(`${proto}://${host}${request.url}`, {
+    method: request.method,
+    headers: request.headers,
+  });
+  const webResponse = await handleFeedlyRequest(webRequest, {
+    store: await accountStore(),
+    clientId: process.env.FEEDLY_CLIENT_ID || "",
+    clientSecret: process.env.FEEDLY_CLIENT_SECRET || "",
+  });
+  const headers = {};
+  webResponse.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "set-cookie") headers[key] = value;
+  });
+  const cookies = webResponse.headers.getSetCookie?.() || [];
+  response.writeHead(webResponse.status, {
+    ...headers,
+    ...(cookies.length ? { "Set-Cookie": cookies } : {}),
+  });
+  response.end(Buffer.from(await webResponse.arrayBuffer()));
+}
+
 async function handleAccount(request, response) {
   const { handleAuthRequest } = await import("./auth.mjs");
   const proto = request.headers["x-forwarded-proto"] || "http";
@@ -1850,6 +1875,9 @@ function startServer() {
     const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
     if (requestUrl.pathname.startsWith("/api/auth") || requestUrl.pathname.startsWith("/api/youtube/")) {
       return handleAccount(request, response);
+    }
+    if (requestUrl.pathname.startsWith("/api/feedly")) {
+      return handleFeedly(request, response);
     }
     if (requestUrl.pathname.startsWith("/api/cms")) {
       return handleCms(request, response);

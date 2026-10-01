@@ -755,6 +755,7 @@ body:has(#activityList:not(:empty)) .activity-empty {
 }
 
 body:has(#desk-youtube:checked) #youtubePanel,
+body:has(#desk-feeds:checked) #feedsPanel,
 body:has(#desk-shop:checked) #shopPanel,
 body:has(#desk-history:checked) #historyPanel,
 body:has(#desk-playlists:checked) #playlistsPanel,
@@ -767,12 +768,14 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 }
 
 #shopNav .nav-icon,
-#youtubeNav .nav-icon {
+#youtubeNav .nav-icon,
+#feedsNav .nav-icon {
   display: none;
 }
 
 #shopNav .nav-glyph,
-#youtubeNav .nav-glyph {
+#youtubeNav .nav-glyph,
+#feedsNav .nav-glyph {
   display: block;
   width: 22px;
   height: 22px;
@@ -786,6 +789,91 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 
 #youtubePanel {
   padding: 0.85rem 1rem 1.5rem 0.5rem;
+}
+
+.feed-layout {
+  display: grid;
+  grid-template-columns: minmax(11rem, 16rem) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.feed-sources {
+  display: grid;
+  gap: 0.85rem;
+  max-height: calc(100dvh - 8rem);
+  overflow: auto;
+}
+
+.feed-sources h3 {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.feed-sources button {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+.feed-sources button[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.feed-articles {
+  display: grid;
+}
+
+.feed-item {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.feed-item a {
+  color: var(--ink);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.feed-item p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.feed-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.feed-connect {
+  max-width: 36rem;
+}
+
+.feed-connect .primary-button {
+  display: inline-flex;
+  margin-top: 0.9rem;
+  text-decoration: none;
+}
+
+@media (max-width: 760px) {
+  .feed-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .feed-sources {
+    max-height: 14rem;
+  }
 }
 
 #youtubePanel .section-heading {
@@ -1196,6 +1284,7 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 }
 
 body:has(#desk-youtube:checked) .library-panel,
+body:has(#desk-feeds:checked) .library-panel,
 body:has(#desk-history:checked) .library-panel,
 body:has(#desk-playlists:checked) .library-panel,
 body:has(#desk-shop:checked) .library-panel,
@@ -1216,6 +1305,7 @@ body:has(#desk-downloads:checked) .downloads-panel {
 
 body:has(#desk-downloads:checked) .watch-column,
 body:has(#desk-youtube:checked) .watch-column,
+body:has(#desk-feeds:checked) .watch-column,
 body:has(#desk-history:checked) .watch-column,
 body:has(#desk-playlists:checked) .watch-column,
 body:has(#desk-shop:checked) .watch-column,
@@ -1225,6 +1315,7 @@ body:has(#desk-favourites:checked) .watch-column {
 
 body:has(#desk-downloads:checked) .app-shell,
 body:has(#desk-youtube:checked) .app-shell,
+body:has(#desk-feeds:checked) .app-shell,
 body:has(#desk-history:checked) .app-shell,
 body:has(#desk-playlists:checked) .app-shell,
 body:has(#desk-shop:checked) .app-shell,
@@ -1237,6 +1328,7 @@ body:has(#desk-favourites:checked) .app-shell {
 
 body:has(#desk-downloads:checked) .bench,
 body:has(#desk-youtube:checked) .bench,
+body:has(#desk-feeds:checked) .bench,
 body:has(#desk-history:checked) .bench,
 body:has(#desk-playlists:checked) .bench,
 body:has(#desk-shop:checked) .bench,
@@ -5246,6 +5338,7 @@ html[data-picker-theme="new-age"] .history-list {
   body:has(#desk-downloads:checked) .workspace-nav label[for="desk-downloads"],
   body:has(#desk-transcripts:checked) .workspace-nav label[for="desk-transcripts"],
   body:has(#desk-youtube:checked) .nav-more,
+  body:has(#desk-feeds:checked) .nav-more,
   body:has(#desk-history:checked) .nav-more,
   body:has(#desk-playlists:checked) .nav-more,
   body:has(#desk-shop:checked) .nav-more,

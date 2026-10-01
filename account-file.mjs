@@ -122,12 +122,14 @@ export function createFileAccountStore(filePath) {
         const user = data.users.find((item) => item.id === session.userId);
         if (!user) return null;
         const token = data.tokens.find((item) => item.userId === user.id);
+        const feedly = (data.feedlyTokens || []).find((item) => item.userId === user.id);
         return {
           id: user.id,
           email: user.email || "",
           name: user.name || "",
           picture: user.picture || "",
           youtubeConnected: Boolean(token?.refreshToken),
+          feedlyConnected: Boolean(feedly?.refreshToken),
         };
       });
     },
@@ -161,6 +163,23 @@ export function createFileAccountStore(filePath) {
     },
     async subscriptionsForUser(userId) {
       return update((data) => data.tokens.find((item) => item.userId === userId)?.subscriptions || null);
+    },
+    async feedlyTokensForUser(userId) {
+      return update((data) => (data.feedlyTokens || []).find((item) => item.userId === userId) || null);
+    },
+    async saveFeedlyTokens(userId, tokenSet) {
+      await update((data) => {
+        data.feedlyTokens ||= [];
+        const current = data.feedlyTokens.find((item) => item.userId === userId) || {};
+        data.feedlyTokens = data.feedlyTokens.filter((item) => item.userId !== userId);
+        data.feedlyTokens.push({
+          userId,
+          feedlyId: tokenSet.feedlyId || current.feedlyId || "",
+          refreshToken: tokenSet.refreshToken || current.refreshToken || "",
+          accessToken: tokenSet.accessToken || "",
+          accessExpiresAt: tokenSet.accessExpiresAt || "",
+        });
+      });
     },
   };
 }

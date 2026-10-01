@@ -1,5 +1,6 @@
 import { createD1AccountStore, handleAuthRequest, sessionUser } from "./auth.mjs";
 import { createD1CmsStore, handleCmsRequest } from "./cms.mjs";
+import { handleFeedlyRequest } from "./feedly.mjs";
 import { fetchVideoChapters } from "./video-chapters.mjs";
 import { searchVideos, videoFeed } from "./video-search.mjs";
 
@@ -782,6 +783,14 @@ export async function handleApiRequest(request, dependencies = {}) {
   });
   if (authResponse) return authResponse;
   const url = new URL(request.url);
+  if (url.pathname.startsWith("/api/feedly")) {
+    return handleFeedlyRequest(request, {
+      store: dependencies.accountStore || null,
+      fetchImpl,
+      clientId: dependencies.feedlyClientId || "",
+      clientSecret: dependencies.feedlyClientSecret || "",
+    });
+  }
   if (url.pathname.startsWith("/api/cms")) {
     const user = await sessionUser(request, dependencies.accountStore);
     return handleCmsRequest(request, { store: dependencies.cmsStore || null, user });

@@ -141,6 +141,9 @@ const LIBRARY_FEEDS = [
   { id: "vimeo-staff-picks", label: "Vimeo Staff Picks" },
 ];
 let youtubeConnected = false;
+let feedlyConnected = false;
+let pickerSignedIn = false;
+let feedlyStreamId = "all";
 let folderBrowseRunning = false;
 const selectedVideoIds = new Set();
 const offlinePackageFiles = new Map();
@@ -367,6 +370,18 @@ function init() {
       if (desk) desk.checked = true;
       void loadYouTubeHome();
     }
+    if (params.get("desk") === "feeds" || params.get("feedly")) {
+      const desk = document.querySelector("#desk-feeds");
+      if (desk) desk.checked = true;
+      if (params.get("feedly") === "error") document.querySelector("#feedsHome")?.setAttribute("data-feedly-error", "1");
+      if (params.get("feedly") === "signin") {
+        document.querySelector("#accountDialog")?.showModal();
+        const status = document.querySelector("#accountFormStatus");
+        if (status) status.textContent = "Sign in with Google, then connect Feedly.";
+      }
+      void loadFeedlyHome();
+      history.replaceState(null, "", location.pathname);
+    }
     return loadLibraryFeed();
   });
   void restorePersistedFolders().then(() => loadFolderScript(selectedVideo()));
@@ -515,6 +530,10 @@ function bindEvents() {
   document.querySelector("#desk-youtube")?.addEventListener("change", () => {
     if (document.querySelector("#desk-youtube")?.checked) void loadYouTubeHome();
   });
+  document.querySelector("#desk-feeds")?.addEventListener("change", () => {
+    if (document.querySelector("#desk-feeds")?.checked) void loadFeedlyHome();
+  });
+  document.querySelector("#feedsHome")?.addEventListener("click", onFeedlyClick);
   document.querySelectorAll('input[name="desk"]').forEach((desk) => {
     desk.addEventListener("change", syncPlayBubble);
   });
@@ -1587,7 +1606,9 @@ async function loadAccount() {
     data = { configured: false, user: null };
   }
   if (google) google.hidden = data.configured === false;
+  pickerSignedIn = Boolean(data.user);
   youtubeConnected = Boolean(data.user?.youtubeConnected);
+  feedlyConnected = Boolean(data.user?.feedlyConnected);
   cmsUserAdmin = Boolean(data.user?.admin);
   syncCmsEditor();
   const youtubeNav = document.querySelector("#youtubeNav");
@@ -1604,6 +1625,7 @@ async function loadAccount() {
     link.dataset.signedIn = "true";
     link.title = data.user.youtubeConnected ? `${label} · YouTube connected` : label;
     if (signOut) signOut.hidden = false;
+    if (document.querySelector("#desk-feeds")?.checked) void loadFeedlyHome();
     return;
   }
   link.hidden = false;
@@ -1615,6 +1637,7 @@ async function loadAccount() {
   cmsUserAdmin = false;
   cmsEditing = false;
   syncCmsEditor();
+  if (document.querySelector("#desk-feeds")?.checked) void loadFeedlyHome();
 }
 
 let youtubeShelf = {
@@ -1840,6 +1863,64 @@ function onYouTubeHomeClick(event) {
   youtubeShelf.channelId = "";
   youtubeShelf.playlistId = "";
   paintYouTubeGrid();
+}
+
+function onFeedlyClick(event) {
+  const signIn = event.target.closest("[data-feedly-signin]");
+  if (signIn) {
+    document.querySelector("#accountDialog")?.showModal();
+    return;
+  }
+  const feed = event.target.closest("[data-feedly-feed]");
+  if (!feed) return;
+  feedlyStreamId = feed.dataset.feedlyFeed || "all";
+  void loadFeedlyHome(feedlyStreamId);
+}
+
+async function loadFeedlyHome(streamId = feedlyStreamId) {
+  const mount = document.querySelector("#feedsHome");
+  if (!mount) return;
+  feedlyStreamId = streamId || "all";
+  if (!pickerSignedIn) {
+    mount.innerHTML = `<div class="feed-connect"><p>Sign in to Picker with Google, then connect Feedly with that same account.</p><button class="primary-button" type="button" data-feedly-signin>Sign in</button></div>`;
+    return;
+  }
+  if (!feedlyConnected) {
+    const failed = mount.dataset.feedlyError === "1";
+    mount.innerHTML = `<div class="feed-connect"><p>${failed ? "Feedly did not finish signing in. " : ""}Connect Feedly and choose Google. Use the same Google account as Picker.</p><a class="primary-button" href="/api/feedly/start">Connect Feedly</a></div>`;
+    return;
+  }
+  mount.innerHTML = `<p class="hint">Loading your feeds…</p>`;
+  let data = {};
+  try {
+    const response = await fetch(`/api/feedly/home?feed=${encodeURIComponent(feedlyStreamId)}`);
+    data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "Feedly could not be loaded.");
+  } catch (error) {
+    mount.innerHTML = `<p class="hint">${escapeHtml(error.message || "Feedly could not be loaded.")}</p>`;
+    return;
+  }
+  renderFeedlyHome(data);
+}
+
+function renderFeedlyHome(data) {
+  const mount = document.querySelector("#feedsHome");
+  if (!mount) return;
+  const groups = new Map();
+  for (const feed of data.feeds || []) {
+    const name = feed.category || "Uncategorized";
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(feed);
+  }
+  const sources = [`<button type="button" data-feedly-feed="all" aria-pressed="${feedlyStreamId === "all" ? "true" : "false"}">All</button>`];
+  for (const [name, feeds] of groups) {
+    sources.push(`<section><h3>${escapeHtml(name)}</h3>${feeds.map((feed) => `<button type="button" data-feedly-feed="${escapeHtml(feed.id)}" aria-pressed="${feed.id === feedlyStreamId ? "true" : "false"}">${escapeHtml(feed.title)}</button>`).join("")}</section>`);
+  }
+  const items = (data.items || []).map((item) => {
+    const when = item.published ? new Date(item.published).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+    return `<article class="feed-item"><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a><p class="feed-meta">${escapeHtml(item.feedTitle)}${when ? ` · ${escapeHtml(when)}` : ""}</p>${item.excerpt ? `<p>${escapeHtml(item.excerpt)}</p>` : ""}</article>`;
+  }).join("");
+  mount.innerHTML = `<div class="feed-layout"><div class="feed-sources">${sources.join("")}</div><div class="feed-articles">${items || `<p class="hint">No articles in this feed.</p>`}</div></div>`;
 }
 
 async function loadYouTubeHome() {
@@ -3020,6 +3101,7 @@ let playerOriginDesk = "";
 
 const playerDeskLabels = {
   youtube: "My YouTube",
+  feeds: "Feeds",
   history: "History",
   playlists: "Playlists",
   favourites: "Favourites",

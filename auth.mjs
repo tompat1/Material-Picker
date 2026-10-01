@@ -286,6 +286,7 @@ export function createMemoryAccountStore() {
   const sessions = new Map();
   const states = new Map();
   const tokens = new Map();
+  const feedlyTokens = new Map();
   return {
     async putState(id, expiresAt) {
       states.set(id, expiresAt);
@@ -359,7 +360,8 @@ export function createMemoryAccountStore() {
       if (!session || Date.parse(session.expiresAt) <= Date.now()) return null;
       const user = users.get(session.userId);
       if (!user) return null;
-      return publicUser(user, tokens.get(user.id));
+      const feedly = feedlyTokens.get(user.id);
+      return { ...publicUser(user, tokens.get(user.id)), feedlyConnected: Boolean(feedly?.refreshToken) };
     },
     async deleteSession(sessionId) {
       sessions.delete(sessionId);
@@ -382,6 +384,18 @@ export function createMemoryAccountStore() {
     },
     async subscriptionsForUser(userId) {
       return tokens.get(userId)?.subscriptions || null;
+    },
+    async feedlyTokensForUser(userId) {
+      return feedlyTokens.get(userId) || null;
+    },
+    async saveFeedlyTokens(userId, tokenSet) {
+      const current = feedlyTokens.get(userId) || {};
+      feedlyTokens.set(userId, {
+        feedlyId: tokenSet.feedlyId || current.feedlyId || "",
+        refreshToken: tokenSet.refreshToken || current.refreshToken || "",
+        accessToken: tokenSet.accessToken || "",
+        accessExpiresAt: tokenSet.accessExpiresAt || "",
+      });
     },
   };
 }
@@ -460,7 +474,8 @@ export function createD1AccountStore(db) {
       const user = await db.prepare("SELECT id, email, name, picture FROM users WHERE id = ?").bind(session.user_id).first();
       if (!user) return null;
       const token = await db.prepare("SELECT refresh_token FROM youtube_tokens WHERE user_id = ?").bind(user.id).first();
-      return publicUser(rowToUser(user), token ? { refreshToken: token.refresh_token } : null);
+      const feedly = await feedlyRow(db, user.id);
+      return { ...publicUser(rowToUser(user), token ? { refreshToken: token.refresh_token } : null), feedlyConnected: Boolean(feedly?.refresh_token) };
     },
     async deleteSession(sessionId) {
       await db.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId).run();
@@ -504,7 +519,43 @@ export function createD1AccountStore(db) {
         return null;
       }
     },
+    async feedlyTokensForUser(userId) {
+      const row = await feedlyRow(db, userId);
+      if (!row) return null;
+      return {
+        feedlyId: row.feedly_id || "",
+        refreshToken: row.refresh_token || "",
+        accessToken: row.access_token || "",
+        accessExpiresAt: row.access_expires_at || "",
+      };
+    },
+    async saveFeedlyTokens(userId, tokenSet) {
+      const current = await this.feedlyTokensForUser(userId);
+      await db.prepare(`INSERT INTO feedly_tokens (user_id, feedly_id, refresh_token, access_token, access_expires_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          feedly_id = excluded.feedly_id,
+          refresh_token = excluded.refresh_token,
+          access_token = excluded.access_token,
+          access_expires_at = excluded.access_expires_at`)
+        .bind(
+          userId,
+          tokenSet.feedlyId || current?.feedlyId || "",
+          tokenSet.refreshToken || current?.refreshToken || "",
+          tokenSet.accessToken || "",
+          tokenSet.accessExpiresAt || "",
+        )
+        .run();
+    },
   };
+}
+
+async function feedlyRow(db, userId) {
+  try {
+    return await db.prepare("SELECT feedly_id, refresh_token, access_token, access_expires_at FROM feedly_tokens WHERE user_id = ?").bind(userId).first();
+  } catch {
+    return null;
+  }
 }
 
 export async function handleAuthRequest(request, options) {
@@ -776,6 +827,7 @@ function publicUser(user, tokens) {
     name: user.name || "",
     picture: user.picture || "",
     youtubeConnected: Boolean(tokens?.refreshToken),
+    feedlyConnected: Boolean(tokens?.feedlyRefreshToken),
   };
 }
 

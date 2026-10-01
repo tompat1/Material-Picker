@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-86" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-87" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -104,6 +104,8 @@
         <div class="nav-group nav-sub" id="moreSheet">
           <input class="sr-only" type="radio" name="desk" id="desk-youtube" />
           <label for="desk-youtube" id="youtubeNav" hidden><span class="nav-icon nav-icon--youtube" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="17" height="11" rx="2.5"/><path d="m10.5 9.5 4.5 2.5-4.5 2.5z"/></svg><span>My YouTube</span></label>
+          <input class="sr-only" type="radio" name="desk" id="desk-feeds" />
+          <label for="desk-feeds" id="feedsNav"><span class="nav-icon" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.5" cy="17.5" r="1.6"/><path d="M5 10a9 9 0 0 1 9 9"/><path d="M5 5a14 14 0 0 1 14 14"/></svg><span>Feeds</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-history" />
           <label for="desk-history"><span class="nav-icon nav-icon--history" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg><span>History</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-playlists" />
@@ -326,6 +328,12 @@
             <h2 id="youtubeTitle">My YouTube</h2>
           </div>
           <div id="youtubeHome"></div>
+        </section>
+        <section class="nav-panel" id="feedsPanel" aria-labelledby="feedsTitle">
+          <div class="section-heading">
+            <h2 id="feedsTitle">Feeds</h2>
+          </div>
+          <div id="feedsHome"></div>
         </section>
         <section class="nav-panel" id="historyPanel" aria-labelledby="historyTitle">
           <div class="section-heading">
@@ -817,6 +825,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-107" defer></script>
+    <script src="./app.js?v=picker-nav-108" defer></script>
   </body>
 </html>
