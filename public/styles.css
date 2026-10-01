@@ -6397,7 +6397,9 @@ body.is-cms [data-cms] {
 }
 
 .feeds-icon-button[hidden] {
+  display: grid !important;
   visibility: hidden;
+  pointer-events: none;
 }
 
 .feeds-swipe {
