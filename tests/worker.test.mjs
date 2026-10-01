@@ -397,4 +397,57 @@ test("live transcription sends saved audio to Whisper", async () => {
   assert.equal(wav.subarray(8, 12).toString(), "WAVE");
 });
 
+test("rss catalog searches topics without fetching a remote feed", async () => {
+  let fetched = false;
+  const response = await handleApiRequest(request("/api/rss/catalog?topic=ai&q=openai"), {
+    fetchImpl: async () => {
+      fetched = true;
+      return new Response("", { status: 500 });
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(fetched, false);
+  const body = await response.json();
+  assert.ok(body.topics.some((topic) => topic.id === "movies"));
+  assert.deepEqual(body.feeds.map((feed) => feed.id), ["openai"]);
+});
+
+test("rss relay requires a feed or page URL", async () => {
+  const response = await handleApiRequest(request("/api/rss"));
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "A feed or page URL is required.");
+});
+
+test("rss relay rejects private targets before fetching", async () => {
+  const targets = ["http://127.0.0.1/feed.xml", "http://192.168.1.4/rss", "https://user:pass@news.example/feed.xml"];
+  for (const target of targets) {
+    let fetched = false;
+    const response = await handleApiRequest(request(`/api/rss?url=${encodeURIComponent(target)}`), {
+      fetchImpl: async () => {
+        fetched = true;
+        return new Response("<rss></rss>", { headers: { "content-type": "application/rss+xml" } });
+      },
+    });
+    assert.equal(response.status, 400, target);
+    assert.equal(fetched, false, target);
+  }
+});
+
+test("rss relay parses a public feed", async () => {
+  const response = await handleApiRequest(
+    request(`/api/rss?url=${encodeURIComponent("https://notes.example/feed.xml")}`),
+    {
+      fetchImpl: async () => new Response(
+        `<rss version="2.0"><channel><title>Notes</title><item><title>One</title><link>https://notes.example/one</link></item></channel></rss>`,
+        { headers: { "content-type": "application/rss+xml" } }
+      ),
+    }
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.kind, "feed");
+  assert.equal(body.feed.title, "Notes");
+  assert.equal(body.feed.items[0].link, "https://notes.example/one");
+});
+
 
