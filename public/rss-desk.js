@@ -572,9 +572,9 @@ function bindSwipe() {
     const dy = event.clientY - touchStart.y;
     touchStart = null;
     if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    swipe.dataset.suppressClick = "true";
     const next = feedPane + (dx < 0 ? 1 : -1);
     if (next > 0 && !selectedItemId) return;
-    swipe.dataset.suppressClick = "true";
     showPane(next);
   });
   swipe.addEventListener("click", (event) => {
