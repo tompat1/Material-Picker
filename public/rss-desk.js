@@ -6,6 +6,11 @@ let selectedFeedId = "all";
 let feedFilter = "all";
 let feedChoices = [];
 let feedsRefreshed = false;
+let selectedTopic = "";
+let catalogQuery = "";
+let catalogTopics = [];
+let directoryFeeds = [];
+let directoryRequest = 0;
 
 function loadFeedState() {
   try {
@@ -62,10 +67,29 @@ function unreadCount(feedId) {
   return feedState.items.filter((item) => item.feedId === feedId && !feedState.read[item.id]).length;
 }
 
+function feedRecord(feedId) {
+  return feedState.feeds.find((entry) => entry.id === feedId);
+}
+
+function storyMatchesTopic(item) {
+  if (!selectedTopic) return true;
+  return (feedRecord(item.feedId)?.topics || []).includes(selectedTopic);
+}
+
+function storyMatchesQuery(item) {
+  const words = catalogQuery.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const feed = feedRecord(item.feedId);
+  const haystack = `${item.title} ${item.summary} ${item.author} ${feed?.title || ""}`.toLowerCase();
+  return words.every((word) => haystack.includes(word));
+}
+
 function visibleFeedItems() {
   return feedState.items
     .filter((item) => selectedFeedId === "all" || item.feedId === selectedFeedId)
     .filter((item) => feedFilter === "all" || !feedState.read[item.id])
+    .filter(storyMatchesTopic)
+    .filter(storyMatchesQuery)
     .sort((a, b) => feedTime(b) - feedTime(a));
 }
 
@@ -81,19 +105,23 @@ async function requestFeed(url) {
   return data;
 }
 
-function storeFeed(feed) {
+function storeFeed(feed, options = {}) {
   let record = feedState.feeds.find((item) => item.url === feed.url);
+  const topics = Array.isArray(options.topics) ? options.topics.filter(Boolean) : [];
   if (!record) {
     record = {
       id: crypto.randomUUID(),
       url: feed.url,
-      title: feed.title || feedHost(feed.url) || "Untitled feed",
+      title: options.title || feed.title || feedHost(feed.url) || "Untitled feed",
       siteUrl: feed.siteUrl || "",
+      topics,
       addedAt: new Date().toISOString(),
     };
     feedState.feeds.unshift(record);
   } else {
-    record.title = feed.title || record.title;
+    if (!record.title) record.title = options.title || feed.title || "Untitled feed";
+    if (topics.length) record.topics = topics;
+    if (!Array.isArray(record.topics)) record.topics = [];
     record.siteUrl = feed.siteUrl || record.siteUrl;
   }
   const incoming = (feed.items || []).slice(0, FEED_ITEM_CAP).map((item) => ({
@@ -167,14 +195,76 @@ function renderFeeds() {
         </div>
       </article>`;
     }).join("")
-    : `<p class="feeds-river-empty">${feedState.feeds.length ? (feedFilter === "unread" ? "Nothing unread in this view." : "No stories in this view yet.") : "Follow a site or a feed URL. New stories collect here."}</p>`;
+    : `<p class="feeds-river-empty">${riverEmptyMessage()}</p>`;
   document.querySelectorAll("[data-feed-filter]").forEach((button) => {
     button.setAttribute("aria-pressed", button.dataset.feedFilter === feedFilter ? "true" : "false");
   });
   renderFeedChoices();
+  renderDirectory();
 }
 
-async function followUrl(value) {
+function riverEmptyMessage() {
+  if (!feedState.feeds.length && !selectedTopic && !catalogQuery) return "Follow a site or a feed URL. New stories collect here.";
+  if (selectedTopic || catalogQuery) return "No stories in this search yet. Follow a feed above to fill the river.";
+  if (feedFilter === "unread") return "Nothing unread in this view.";
+  return "No stories in this view yet.";
+}
+
+function topicLabel(id) {
+  return catalogTopics.find((topic) => topic.id === id)?.label || id;
+}
+
+function renderDirectory() {
+  const box = document.querySelector("#feedDirectory");
+  const topics = document.querySelector("#feedTopics");
+  if (topics) {
+    topics.querySelectorAll("[data-feed-topic]").forEach((button) => {
+      button.setAttribute("aria-pressed", (button.dataset.feedTopic || "") === selectedTopic ? "true" : "false");
+    });
+  }
+  if (!box) return;
+  const active = Boolean(selectedTopic || catalogQuery.trim());
+  box.hidden = !active;
+  if (!active) {
+    box.innerHTML = "";
+    return;
+  }
+  if (!directoryFeeds.length) {
+    box.innerHTML = `<p class="feeds-directory-empty">No feeds match that search.</p>`;
+    return;
+  }
+  box.innerHTML = directoryFeeds.map((feed) => {
+    const following = feedState.feeds.some((item) => item.url === feed.url);
+    return `<article class="feed-directory-card">
+      <p>${escapeFeedText(feed.topics.map(topicLabel).join(" · "))}</p>
+      <h3>${escapeFeedText(feed.title)}</h3>
+      <p>${escapeFeedText(feed.blurb)}</p>
+      <button class="ghost-button" type="button" data-catalog-url="${escapeFeedText(feed.url)}" data-catalog-title="${escapeFeedText(feed.title)}" data-catalog-topics="${escapeFeedText(feed.topics.join(","))}" ${following ? "disabled" : ""}>${following ? "Following" : "Follow"}</button>
+    </article>`;
+  }).join("");
+}
+
+async function loadDirectory() {
+  const requestId = ++directoryRequest;
+  const params = new URLSearchParams();
+  if (selectedTopic) params.set("topic", selectedTopic);
+  if (catalogQuery.trim()) params.set("q", catalogQuery.trim());
+  try {
+    const response = await fetch(`/api/rss/catalog?${params}`);
+    const data = await response.json().catch(() => ({}));
+    if (requestId !== directoryRequest) return;
+    if (!response.ok) throw new Error(data.error || "The feed list could not be loaded.");
+    catalogTopics = Array.isArray(data.topics) ? data.topics : catalogTopics;
+    directoryFeeds = Array.isArray(data.feeds) ? data.feeds : [];
+  } catch (error) {
+    if (requestId !== directoryRequest) return;
+    directoryFeeds = [];
+    setFeedStatus(error.message || "The feed list could not be loaded.");
+  }
+  renderFeeds();
+}
+
+async function followUrl(value, options = {}) {
   const url = normalizeFeedInput(value);
   if (!url) return;
   setFeedStatus("Looking for a feed…");
@@ -187,7 +277,7 @@ async function followUrl(value) {
       return;
     }
     feedChoices = [];
-    const record = storeFeed(result.feed);
+    const record = storeFeed(result.feed, options);
     selectedFeedId = record.id;
     const input = document.querySelector("#followFeedInput");
     if (input) input.value = "";
@@ -195,6 +285,7 @@ async function followUrl(value) {
     renderFeeds();
   } catch (error) {
     setFeedStatus(error.message || "The feed could not be loaded.");
+    renderFeeds();
   }
 }
 
@@ -260,11 +351,40 @@ function bindFeedsDesk() {
     event.preventDefault();
     void followUrl(document.querySelector("#followFeedInput")?.value);
   });
+  document.querySelector("#feedTopicSearch")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+  });
+  document.querySelector("#feedTopicQuery")?.addEventListener("input", (event) => {
+    catalogQuery = event.target.value || "";
+    void loadDirectory();
+  });
   document.querySelector("#refreshFeeds")?.addEventListener("click", () => {
     void refreshFeeds();
   });
   document.querySelector("#markFeedsRead")?.addEventListener("click", markVisibleRead);
   panel.addEventListener("click", (event) => {
+    const topicButton = event.target.closest("[data-feed-topic]");
+    if (topicButton) {
+      selectedTopic = topicButton.dataset.feedTopic || "";
+      void loadDirectory();
+      return;
+    }
+    const catalogButton = event.target.closest("[data-catalog-url]");
+    if (catalogButton) {
+      const url = catalogButton.dataset.catalogUrl;
+      const existing = feedState.feeds.find((item) => item.url === url);
+      if (existing) {
+        selectedFeedId = existing.id;
+        renderFeeds();
+        return;
+      }
+      catalogButton.disabled = true;
+      void followUrl(url, {
+        title: catalogButton.dataset.catalogTitle,
+        topics: (catalogButton.dataset.catalogTopics || "").split(",").filter(Boolean),
+      });
+      return;
+    }
     const choice = event.target.closest("[data-feed-choice]");
     if (choice) {
       const feed = feedChoices[Number(choice.dataset.feedChoice)];
@@ -322,6 +442,7 @@ function bindFeedsDesk() {
     }
   });
   renderFeeds();
+  void loadDirectory();
 }
 
 document.addEventListener("DOMContentLoaded", bindFeedsDesk);

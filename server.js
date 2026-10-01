@@ -170,6 +170,17 @@ function sendJson(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
+async function handleRssCatalog(response, requestUrl) {
+  const { FEED_TOPICS, searchFeedCatalog } = await import("./rss.mjs");
+  return sendJson(response, 200, {
+    topics: FEED_TOPICS,
+    feeds: searchFeedCatalog({
+      query: requestUrl.searchParams.get("q") || "",
+      topic: requestUrl.searchParams.get("topic") || "",
+    }),
+  });
+}
+
 async function handleRss(response, requestUrl) {
   const target = requestUrl.searchParams.get("url");
   if (!target) return sendJson(response, 400, { error: "A feed or page URL is required." });
@@ -1873,6 +1884,9 @@ function startServer() {
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/video-search") {
       return handleVideoSearch(response, requestUrl);
+    }
+    if (request.method === "GET" && requestUrl.pathname === "/api/rss/catalog") {
+      return handleRssCatalog(response, requestUrl);
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/rss") {
       return handleRss(response, requestUrl);

@@ -1,7 +1,7 @@
 import { createD1AccountStore, handleAuthRequest, sessionUser } from "./auth.mjs";
 import { createD1CmsStore, handleCmsRequest } from "./cms.mjs";
 import { fetchVideoChapters } from "./video-chapters.mjs";
-import { loadFeed, RSS_ACCEPT, RSS_CONTENT_TYPE } from "./rss.mjs";
+import { FEED_TOPICS, loadFeed, RSS_ACCEPT, RSS_CONTENT_TYPE, searchFeedCatalog } from "./rss.mjs";
 import { searchVideos, videoFeed } from "./video-search.mjs";
 
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
@@ -924,6 +924,15 @@ export async function handleApiRequest(request, dependencies = {}) {
   }
   if (request.method === "POST" && url.pathname === "/api/thumbnail") {
     return renderThumbnail(request, dependencies.ai);
+  }
+  if (request.method === "GET" && url.pathname === "/api/rss/catalog") {
+    return json(200, {
+      topics: FEED_TOPICS,
+      feeds: searchFeedCatalog({
+        query: url.searchParams.get("q") || "",
+        topic: url.searchParams.get("topic") || "",
+      }),
+    });
   }
   if (request.method === "GET" && url.pathname === "/api/rss") {
     const target = url.searchParams.get("url");

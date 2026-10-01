@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-87" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-88" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -372,6 +372,26 @@
               <button class="ghost-button" id="refreshFeeds" type="button">Refresh</button>
             </div>
           </header>
+          <div class="feeds-discover">
+            <form id="feedTopicSearch" role="search">
+              <label for="feedTopicQuery">Search feeds</label>
+              <input id="feedTopicQuery" type="search" placeholder="Movies, gaming, AI, Apple…" />
+            </form>
+            <div class="feeds-topics" id="feedTopics" role="group" aria-label="Feed topics">
+              <button type="button" data-feed-topic="" aria-pressed="true">All</button>
+              <button type="button" data-feed-topic="news">News</button>
+              <button type="button" data-feed-topic="tech">Tech</button>
+              <button type="button" data-feed-topic="apple">Apple</button>
+              <button type="button" data-feed-topic="ai">AI</button>
+              <button type="button" data-feed-topic="politics">Politics</button>
+              <button type="button" data-feed-topic="movies">Movies</button>
+              <button type="button" data-feed-topic="gaming">Gaming</button>
+              <button type="button" data-feed-topic="science">Science</button>
+              <button type="button" data-feed-topic="business">Business</button>
+              <button type="button" data-feed-topic="sports">Sports</button>
+            </div>
+            <div class="feeds-directory" id="feedDirectory" hidden></div>
+          </div>
           <div class="feeds-layout">
             <aside class="feeds-rail">
               <form id="followFeedForm">
@@ -852,6 +872,6 @@
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
     <script src="./app.js?v=picker-nav-108" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-1" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-2" defer></script>
   </body>
 </html>

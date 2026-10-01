@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { discoverFeeds, loadFeed, parseFeed } from "../rss.mjs";
+import { discoverFeeds, loadFeed, parseFeed, searchFeedCatalog } from "../rss.mjs";
 
 const RSS = `<?xml version="1.0"?>
 <rss version="2.0">
@@ -110,6 +110,24 @@ test("loadFeed follows the only discovered feed", async () => {
   assert.equal(result.kind, "feed");
   assert.equal(result.feed.title, "Desk notes");
   assert.equal(result.feed.items[0].title, "Hello & welcome");
+});
+
+test("searchFeedCatalog filters by topic and words", () => {
+  const movies = searchFeedCatalog({ topic: "movies" }).map((feed) => feed.title);
+  assert.ok(movies.includes("Variety"));
+  assert.ok(movies.includes("Roger Ebert"));
+  assert.equal(movies.some((title) => title === "OpenAI News"), false);
+
+  const apple = searchFeedCatalog({ query: "apple" }).map((feed) => feed.id);
+  assert.ok(apple.includes("macrumors"));
+  assert.ok(apple.includes("nineto5mac"));
+  assert.ok(apple.includes("daring-fireball"));
+
+  const gamingAi = searchFeedCatalog({ topic: "gaming", query: "pc" }).map((feed) => feed.id);
+  assert.deepEqual(gamingAi, ["rps"]);
+
+  assert.equal(searchFeedCatalog({}).length, 0);
+  assert.equal(searchFeedCatalog({ topic: "cooking" }).length, 0);
 });
 
 test("loadFeed reports when a page has no feed", async () => {

@@ -397,6 +397,21 @@ test("live transcription sends saved audio to Whisper", async () => {
   assert.equal(wav.subarray(8, 12).toString(), "WAVE");
 });
 
+test("rss catalog searches topics without fetching a remote feed", async () => {
+  let fetched = false;
+  const response = await handleApiRequest(request("/api/rss/catalog?topic=ai&q=openai"), {
+    fetchImpl: async () => {
+      fetched = true;
+      return new Response("", { status: 500 });
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(fetched, false);
+  const body = await response.json();
+  assert.ok(body.topics.some((topic) => topic.id === "movies"));
+  assert.deepEqual(body.feeds.map((feed) => feed.id), ["openai"]);
+});
+
 test("rss relay requires a feed or page URL", async () => {
   const response = await handleApiRequest(request("/api/rss"));
   assert.equal(response.status, 400);
