@@ -565,6 +565,7 @@ function bindSwipe() {
     if (!isPhoneFeeds() || event.button !== 0) return;
     if (event.target.closest("input, textarea, a")) return;
     touchStart = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    swipe.setPointerCapture(event.pointerId);
   });
   swipe.addEventListener("pointerup", (event) => {
     if (!touchStart || event.pointerId !== touchStart.id) return;
