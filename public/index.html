@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-94" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-97" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -395,6 +395,14 @@
               <div class="input-row">
                 <input id="followFeedInput" type="text" inputmode="url" autocomplete="url" placeholder="https://example.com" required />
                 <button class="primary-button" type="submit">Follow</button>
+              </div>
+              <label for="followFeedFolder">Folder</label>
+              <div class="input-row feeds-folder-pick">
+                <select id="followFeedFolder" aria-label="Folder">
+                  <option value="">No folder</option>
+                  <option value="__new">New folder…</option>
+                </select>
+                <input id="followFeedFolderName" type="text" maxlength="80" placeholder="Folder name" hidden />
               </div>
             </form>
             <div id="feedChoices" hidden></div>
@@ -884,6 +892,6 @@
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
     <script src="./app.js?v=picker-nav-109" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-11" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-14" defer></script>
   </body>
 </html>

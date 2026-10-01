@@ -6630,7 +6630,7 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 .feeds-folder ul button {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.6rem;
   width: 100%;
   min-height: 2.6rem;
@@ -6657,14 +6657,27 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 }
 
 .feeds-folder-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
   margin: 1.1rem 0.45rem 0.35rem;
   color: var(--ink);
   font: 650 1.15rem/1 var(--sans);
 }
 
+.feeds-folder-heading button,
+.feeds-folder-remove {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: 600 0.82rem/1 var(--sans);
+  cursor: pointer;
+}
+
 .feeds-folder {
   display: grid;
-  grid-template-columns: 1.6rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
 }
 
@@ -6683,20 +6696,109 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   margin-left: 1.4rem;
 }
 
-.feeds-feed-mark {
+.feeds-folder-remove {
+  height: 2.6rem;
+  padding: 0 0.35rem;
+}
+
+.feeds-feed-row {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.feeds-feed-row small {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 560;
+}
+
+.feeds-feed-delete {
+  height: 2.6rem;
+  padding: 0 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: 600 0.82rem/1 var(--sans);
+  cursor: pointer;
+}
+
+.feeds-feed-empty {
+  padding: 0.4rem 0.45rem;
+  color: var(--muted);
+}
+
+.feeds-select {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 2.6rem;
+}
+
+.feeds-select input {
   width: 1rem;
   height: 1rem;
-  margin-right: 0.45rem;
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.feeds-feed-row > button > span,
+.feeds-folder > button[data-source] > span,
+.feeds-source-list button > span {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.feeds-source-list em,
+.feeds-folder em {
+  margin-left: auto;
+}
+
+.feeds-selection,
+.feeds-new-folder,
+.feeds-folder-pick {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.35rem 0 0.7rem;
+}
+
+.feeds-selection p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.feeds-selection-actions,
+.feeds-new-folder,
+.feeds-folder-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.feeds-selection-actions select,
+.feeds-new-folder input,
+.feeds-folder-pick select,
+.feeds-folder-pick input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.4rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink);
+  padding: 0 0.8rem;
 }
 
 .feeds-folder ul button span:first-child,
 .feeds-source-list button span {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   min-width: 0;
+  text-align: left;
 }
 
 .feed-row {

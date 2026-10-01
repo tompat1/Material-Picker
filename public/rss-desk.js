@@ -21,6 +21,11 @@ let feedPane = 0;
 let feedChoices = [];
 let feedRefreshTask = null;
 let lastFeedRefreshAt = 0;
+let selectedFeedIds = new Set();
+let folderDraft = false;
+let folderDraftMoves = false;
+let folderDraftName = "";
+let folderDraftFocus = false;
 let selectedTopic = "";
 let catalogQuery = "";
 let catalogTopics = [];
@@ -70,6 +75,34 @@ function normalizeFeedInput(value) {
   const text = String(value || "").trim();
   if (!text) return "";
   return /^https?:\/\//i.test(text) ? text : `https://${text}`;
+}
+
+function canonicalFeedUrl(value) {
+  try {
+    const url = new URL(normalizeFeedInput(value));
+    url.hash = "";
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    const dropPort = (url.protocol === "https:" && url.port === "443") || (url.protocol === "http:" && url.port === "80");
+    const port = url.port && !dropPort ? `:${url.port}` : "";
+    const path = url.pathname.replace(/\/+$/, "");
+    const params = [...url.searchParams.entries()].sort(([left], [right]) => left.localeCompare(right));
+    const search = params.length ? `?${params.map(([key, item]) => `${encodeURIComponent(key)}=${encodeURIComponent(item)}`).join("&")}` : "";
+    return `${url.protocol.toLowerCase()}//${host}${port}${path}${search}`;
+  } catch {
+    return String(value || "").trim().toLowerCase();
+  }
+}
+
+function canonicalItemKey(item) {
+  const link = item?.link || item?.videoUrl || "";
+  if (link) return canonicalFeedUrl(link);
+  return `item:${item?.feedId || ""}:${item?.title || item?.id || ""}`;
+}
+
+function moveFeedFlag(map, from, to) {
+  if (!map || !from || from === to) return;
+  if (map[from]) map[to] = true;
+  delete map[from];
 }
 
 function folderSlug(name) {
@@ -137,19 +170,100 @@ function unreadItems() {
   return feedState.items.filter(isUnread);
 }
 
+function uniqueStories(items) {
+  const seen = new Set();
+  const unique = [];
+  for (const item of [...items].sort((a, b) => feedTime(b) - feedTime(a))) {
+    const key = canonicalItemKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+  return unique;
+}
+
 function itemsForSource(source = selectedSource) {
-  if (source === "archive") return feedState.items.filter((item) => feedState.archived[item.id]);
-  if (source === "all") return unreadItems();
+  if (source === "archive") return uniqueStories(feedState.items.filter((item) => feedState.archived[item.id]));
+  if (source === "all") return uniqueStories(unreadItems());
   if (source.startsWith("folder:")) {
     const folderId = source.slice(7);
     const feedIds = new Set(feedState.feeds.filter((feed) => (feed.folderIds || []).includes(folderId)).map((feed) => feed.id));
-    return unreadItems().filter((item) => feedIds.has(item.feedId));
+    return uniqueStories(unreadItems().filter((item) => feedIds.has(item.feedId)));
   }
   if (source.startsWith("feed:")) {
     const feedId = source.slice(5);
-    return unreadItems().filter((item) => item.feedId === feedId);
+    return uniqueStories(unreadItems().filter((item) => item.feedId === feedId));
   }
-  return unreadItems();
+  return uniqueStories(unreadItems());
+}
+
+function dedupeFeedLibrary() {
+  let changed = false;
+  const groups = new Map();
+  feedState.feeds.forEach((feed) => {
+    const key = canonicalFeedUrl(feed.url);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(feed);
+  });
+  const idMap = new Map();
+  const kept = [];
+  groups.forEach((group) => {
+    const ranked = [...group].sort((a, b) => {
+      const aCount = feedState.items.filter((item) => item.feedId === a.id).length;
+      const bCount = feedState.items.filter((item) => item.feedId === b.id).length;
+      if (bCount !== aCount) return bCount - aCount;
+      return String(a.addedAt || "").localeCompare(String(b.addedAt || ""));
+    });
+    const primary = ranked[0];
+    primary.folderIds = [...new Set(ranked.flatMap((feed) => feed.folderIds || []))];
+    primary.topics = [...new Set(ranked.flatMap((feed) => feed.topics || []))];
+    if (!primary.siteUrl) primary.siteUrl = ranked.find((feed) => feed.siteUrl)?.siteUrl || "";
+    if (!primary.title) primary.title = ranked.find((feed) => feed.title)?.title || "Untitled feed";
+    kept.push(primary);
+    ranked.slice(1).forEach((feed) => idMap.set(feed.id, primary.id));
+    if (ranked.length > 1) changed = true;
+  });
+  feedState.feeds = kept;
+  if (idMap.size) {
+    feedState.items.forEach((item) => {
+      const nextId = idMap.get(item.feedId);
+      if (!nextId) return;
+      const oldId = item.id;
+      const suffix = oldId.startsWith(`${item.feedId}:`) ? oldId.slice(item.feedId.length + 1) : oldId;
+      item.feedId = nextId;
+      item.id = `${nextId}:${suffix}`;
+      moveFeedFlag(feedState.read, oldId, item.id);
+      moveFeedFlag(feedState.archived, oldId, item.id);
+      moveFeedFlag(feedState.starred, oldId, item.id);
+    });
+    if (selectedSource.startsWith("feed:") && idMap.has(selectedSource.slice(5))) {
+      selectedSource = `feed:${idMap.get(selectedSource.slice(5))}`;
+    }
+    selectedFeedIds = new Set([...selectedFeedIds].map((id) => idMap.get(id) || id));
+    changed = true;
+  }
+  const seen = new Map();
+  const items = [];
+  [...feedState.items].sort((a, b) => feedTime(b) - feedTime(a)).forEach((item) => {
+    const key = canonicalItemKey(item);
+    const existing = seen.get(key);
+    if (existing) {
+      moveFeedFlag(feedState.read, item.id, existing.id);
+      moveFeedFlag(feedState.archived, item.id, existing.id);
+      moveFeedFlag(feedState.starred, item.id, existing.id);
+      delete feedState.read[item.id];
+      delete feedState.archived[item.id];
+      delete feedState.starred[item.id];
+      changed = true;
+      return;
+    }
+    seen.set(key, item);
+    items.push(item);
+  });
+  if (items.length !== feedState.items.length) changed = true;
+  feedState.items = items;
+  if (changed) saveFeedState();
+  return changed;
 }
 
 function sourceTitle(source = selectedSource) {
@@ -185,7 +299,8 @@ function assignFolderNames(record, names) {
 }
 
 function storeFeed(feed, options = {}) {
-  let record = feedState.feeds.find((item) => item.url === feed.url);
+  const key = canonicalFeedUrl(feed.url);
+  let record = feedState.feeds.find((item) => canonicalFeedUrl(item.url) === key);
   const topicNames = (Array.isArray(options.topics) ? options.topics : []).map((topic) => TOPIC_LABELS[topic] || topic);
   if (!record) {
     record = {
@@ -212,6 +327,7 @@ function storeFeed(feed, options = {}) {
       if (!record.folderIds.includes(id)) record.folderIds.push(id);
     });
   }
+  const seenIncoming = new Set();
   const incoming = (feed.items || []).slice(0, FEED_ITEM_CAP).map((item) => ({
     id: `${record.id}:${item.id || item.link || item.title}`,
     feedId: record.id,
@@ -222,7 +338,12 @@ function storeFeed(feed, options = {}) {
     author: item.author || "",
     image: item.image || "",
     videoUrl: item.videoUrl || "",
-  }));
+  })).filter((item) => {
+    const itemKey = canonicalItemKey(item);
+    if (seenIncoming.has(itemKey)) return false;
+    seenIncoming.add(itemKey);
+    return true;
+  });
   const kept = new Map(incoming.map((item) => [item.id, item]));
   feedState.items
     .filter((item) => item.feedId === record.id && !kept.has(item.id))
@@ -259,31 +380,143 @@ function applyPane() {
   }
 }
 
+function feedSourceRow(feed, options = {}) {
+  const unread = itemsForSource(`feed:${feed.id}`).length;
+  const checked = selectedFeedIds.has(feed.id) ? "checked" : "";
+  const folders = (feed.folderIds || []).map((id) => feedState.folders.find((folder) => folder.id === id)?.name).filter(Boolean);
+  const folderNote = options.showFolder && folders.length ? `<small>${escapeFeedText(folders.join(", "))}</small>` : "";
+  const remove = options.showDelete
+    ? `<button class="feeds-feed-delete" type="button" data-delete-feed="${escapeFeedText(feed.id)}" aria-label="Delete ${escapeFeedText(feed.title)}">Delete</button>`
+    : "";
+  return `<li class="feeds-feed-row">
+    <label class="feeds-select"><input type="checkbox" data-select-feed="${escapeFeedText(feed.id)}" ${checked} aria-label="Select ${escapeFeedText(feed.title)}" /></label>
+    <button type="button" data-source="feed:${escapeFeedText(feed.id)}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span>${escapeFeedText(feed.title)}${folderNote}</span><em>${unread ? countLabel(unread) : ""}</em></button>
+    ${remove}
+  </li>`;
+}
+
+function newFolderForm() {
+  return `<form class="feeds-new-folder" data-new-folder-form>
+    <input id="newFolderInput" type="text" maxlength="80" placeholder="Folder name" value="${escapeFeedText(folderDraftName)}" required />
+    <button class="primary-button" type="submit">${folderDraftMoves ? "Move" : "Add"}</button>
+  </form>`;
+}
+
 function renderSources() {
   const root = document.querySelector("#feedsSources");
   if (!root) return;
   const allCount = unreadItems().length;
   const folders = feedState.folders.map((folder) => {
-    const feeds = feedState.feeds.filter((feed) => (feed.folderIds || []).includes(folder.id));
     const count = itemsForSource(`folder:${folder.id}`).length;
-    const nested = folder.collapsed ? "" : `<ul>${feeds.map((feed) => {
-      const unread = itemsForSource(`feed:${feed.id}`).length;
-      return `<li><button type="button" data-source="feed:${escapeFeedText(feed.id)}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span class="feeds-feed-mark" aria-hidden="true"></span><span>${escapeFeedText(feed.title)}</span><em>${unread ? countLabel(unread) : ""}</em></button></li>`;
-    }).join("")}</ul>`;
     return `<li class="feeds-folder">
-      <button class="feeds-folder-toggle" type="button" data-folder-toggle="${escapeFeedText(folder.id)}" aria-expanded="${folder.collapsed ? "false" : "true"}" aria-label="${folder.collapsed ? "Expand" : "Collapse"} ${escapeFeedText(folder.name)}">${folder.collapsed ? "›" : "⌄"}</button>
       <button type="button" data-source="folder:${escapeFeedText(folder.id)}" aria-pressed="${selectedSource === `folder:${folder.id}` ? "true" : "false"}"><span>${escapeFeedText(folder.name)}</span><em>${count ? countLabel(count) : ""}</em></button>
-      ${nested}
+      <button class="feeds-folder-remove" type="button" data-remove-folder="${escapeFeedText(folder.id)}" aria-label="Remove ${escapeFeedText(folder.name)} folder">Remove</button>
     </li>`;
   }).join("");
-  const loose = feedState.feeds.filter((feed) => !(feed.folderIds || []).length).map((feed) => `<li><button type="button" data-source="feed:${escapeFeedText(feed.id)}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span class="feeds-feed-mark" aria-hidden="true"></span><span>${escapeFeedText(feed.title)}</span><em>${countLabel(itemsForSource(`feed:${feed.id}`).length)}</em></button></li>`).join("");
+  const allFeeds = [...feedState.feeds].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
+  const folderOptions = feedState.folders.map((folder) => `<option value="${escapeFeedText(folder.name)}">${escapeFeedText(folder.name)}</option>`).join("");
+  const selection = selectedFeedIds.size
+    ? `<div class="feeds-selection">
+        <p>${selectedFeedIds.size === 1 ? "1 feed selected" : `${selectedFeedIds.size} feeds selected`}</p>
+        <div class="feeds-selection-actions">
+          <select data-move-feeds aria-label="Move selected feeds to a folder">
+            <option value="">Move to folder</option>
+            ${folderOptions}
+            <option value="__new">New folder…</option>
+          </select>
+          <button class="ghost-button" type="button" data-delete-feeds>Delete</button>
+        </div>
+        ${folderDraft && folderDraftMoves ? newFolderForm() : ""}
+      </div>`
+    : "";
   root.innerHTML = `<ul class="feeds-source-list">
     <li><button type="button" data-source="all" aria-pressed="${selectedSource === "all" ? "true" : "false"}"><span>All items</span><em>${countLabel(allCount)}</em></button></li>
     <li><button type="button" data-source="archive" aria-pressed="${selectedSource === "archive" ? "true" : "false"}"><span>Archive</span><em></em></button></li>
   </ul>
-  <div class="feeds-folder-heading"><span>Folders</span></div>
-  <ul class="feeds-source-list">${folders}${loose}</ul>
-  ${feedState.feeds.length ? "" : ""}`;
+  <div class="feeds-folder-heading"><span>Folders</span><button type="button" data-start-folder>New folder</button></div>
+  ${folderDraft && !folderDraftMoves ? newFolderForm() : ""}
+  ${selection}
+  <ul class="feeds-source-list">${folders}</ul>
+  <div class="feeds-folder-heading"><span>All feeds</span></div>
+  <ul class="feeds-source-list">${allFeeds.map((feed) => feedSourceRow(feed, { showDelete: true, showFolder: true })).join("") || `<li class="feeds-feed-empty">Feeds you follow show up here.</li>`}</ul>`;
+  if (folderDraftFocus) {
+    folderDraftFocus = false;
+    document.querySelector("#newFolderInput")?.focus();
+  }
+}
+
+function renderFolderPicker() {
+  const select = document.querySelector("#followFeedFolder");
+  if (!select) return;
+  const current = select.value;
+  const names = feedState.folders.map((folder) => folder.name);
+  select.innerHTML = [`<option value="">No folder</option>`, ...names.map((name) => `<option value="${escapeFeedText(name)}">${escapeFeedText(name)}</option>`), `<option value="__new">New folder…</option>`].join("");
+  select.value = ["", "__new", ...names].includes(current) ? current : "";
+  const nameInput = document.querySelector("#followFeedFolderName");
+  if (nameInput) nameInput.hidden = select.value !== "__new";
+}
+
+function chosenFolderNames() {
+  const select = document.querySelector("#followFeedFolder");
+  if (!select || !select.value) return [];
+  if (select.value === "__new") {
+    const name = document.querySelector("#followFeedFolderName")?.value.trim();
+    return name ? [name] : [];
+  }
+  return [select.value];
+}
+
+function revealFolders(record) {
+  (record?.folderIds || []).forEach((id) => {
+    const folder = feedState.folders.find((item) => item.id === id);
+    if (folder) folder.collapsed = false;
+  });
+}
+
+function moveSelectedFeeds(name) {
+  const folder = ensureFolder(name);
+  folder.collapsed = false;
+  feedState.feeds.forEach((feed) => {
+    if (!selectedFeedIds.has(feed.id)) return;
+    feed.folderIds = Array.isArray(feed.folderIds) ? feed.folderIds : [];
+    if (!feed.folderIds.includes(folder.id)) feed.folderIds.push(folder.id);
+  });
+  selectedFeedIds = new Set();
+  folderDraft = false;
+  folderDraftMoves = false;
+  folderDraftName = "";
+  saveFeedState();
+  renderFeeds();
+}
+
+function deleteSelectedFeeds() {
+  if (!selectedFeedIds.size) return;
+  const itemIds = feedState.items.filter((item) => selectedFeedIds.has(item.feedId)).map((item) => item.id);
+  feedState.feeds = feedState.feeds.filter((feed) => !selectedFeedIds.has(feed.id));
+  feedState.items = feedState.items.filter((item) => !selectedFeedIds.has(item.feedId));
+  itemIds.forEach((id) => {
+    delete feedState.read[id];
+    delete feedState.archived[id];
+    delete feedState.starred[id];
+  });
+  if (selectedSource.startsWith("feed:") && selectedFeedIds.has(selectedSource.slice(5))) {
+    selectedSource = "all";
+    selectedItemId = "";
+    feedPane = 0;
+  }
+  selectedFeedIds = new Set();
+  saveFeedState();
+  renderFeeds();
+}
+
+function removeFolder(id) {
+  feedState.folders = feedState.folders.filter((folder) => folder.id !== id);
+  feedState.feeds.forEach((feed) => {
+    feed.folderIds = (feed.folderIds || []).filter((folderId) => folderId !== id);
+  });
+  if (selectedSource === `folder:${id}`) selectedSource = "all";
+  saveFeedState();
+  renderFeeds();
 }
 
 function renderList() {
@@ -367,7 +600,7 @@ function renderDirectory() {
     return;
   }
   box.innerHTML = directoryFeeds.map((feed) => {
-    const following = feedState.feeds.some((item) => item.url === feed.url);
+    const following = feedState.feeds.some((item) => canonicalFeedUrl(item.url) === canonicalFeedUrl(feed.url));
     return `<article class="feed-directory-card">
       <p>${escapeFeedText((feed.topics || []).map(topicLabel).join(" · "))}</p>
       <h3>${escapeFeedText(feed.title)}</h3>
@@ -398,6 +631,7 @@ function renderFeeds() {
   renderReader();
   renderDirectory();
   renderFeedChoices();
+  renderFolderPicker();
   applyPane();
 }
 
@@ -439,7 +673,9 @@ async function followUrl(value, options = {}) {
       return;
     }
     feedChoices = [];
-    const record = storeFeed(result.feed, options);
+    const record = storeFeed(result.feed, { ...options, folderNames: [...(options.folderNames || []), ...chosenFolderNames()] });
+    revealFolders(record);
+    saveFeedState();
     selectedSource = `feed:${record.id}`;
     selectedItemId = "";
     const input = document.querySelector("#followFeedInput");
@@ -496,6 +732,7 @@ async function pullFeeds() {
     }
   });
   await Promise.all(workers);
+  dedupeFeedLibrary();
   setFeedStatus(failures.length ? `Some feeds could not refresh: ${failures.slice(0, 3).join(", ")}` : "Feeds are up to date.");
   if (selectedItemId) paintIncomingFeeds();
   else renderFeeds();
@@ -553,6 +790,7 @@ async function importOpmlFile(file) {
     }
   });
   await Promise.all(workers);
+  dedupeFeedLibrary();
   setFeedStatus(imported.length === 1 ? "1 feed is in your folders." : `${imported.length} feeds are in your folders.`);
   renderFeeds();
 }
@@ -638,6 +876,7 @@ function bindFeedsDesk() {
   const panel = document.querySelector("#feedsPanel");
   if (!panel || panel.dataset.bound === "true") return;
   panel.dataset.bound = "true";
+  dedupeFeedLibrary();
   feedState.feeds.forEach((feed) => {
     if (!Array.isArray(feed.folderIds)) feed.folderIds = [];
     (feed.topics || []).forEach((topic) => {
@@ -670,7 +909,80 @@ function bindFeedsDesk() {
   document.querySelector("#refreshFeeds")?.addEventListener("click", () => {
     void refreshFeeds({ force: true });
   });
+  panel.addEventListener("change", (event) => {
+    const picked = event.target.closest("[data-select-feed]");
+    if (picked) {
+      if (picked.checked) selectedFeedIds.add(picked.dataset.selectFeed);
+      else selectedFeedIds.delete(picked.dataset.selectFeed);
+      renderSources();
+      return;
+    }
+    const move = event.target.closest("[data-move-feeds]");
+    if (move) {
+      if (move.value === "__new") {
+        folderDraft = true;
+        folderDraftMoves = true;
+        folderDraftFocus = true;
+        renderSources();
+      } else if (move.value) {
+        moveSelectedFeeds(move.value);
+      }
+      return;
+    }
+    if (event.target.id === "followFeedFolder") {
+      const nameInput = document.querySelector("#followFeedFolderName");
+      if (nameInput) {
+        nameInput.hidden = event.target.value !== "__new";
+        if (!nameInput.hidden) nameInput.focus();
+      }
+    }
+  });
+  panel.addEventListener("input", (event) => {
+    if (event.target.id === "newFolderInput") folderDraftName = event.target.value;
+  });
+  panel.addEventListener("submit", (event) => {
+    const form = event.target.closest("[data-new-folder-form]");
+    if (!form) return;
+    event.preventDefault();
+    const name = form.querySelector("input")?.value.trim();
+    if (!name) return;
+    if (folderDraftMoves) {
+      moveSelectedFeeds(name);
+      return;
+    }
+    const folder = ensureFolder(name);
+    folder.collapsed = false;
+    folderDraft = false;
+    folderDraftName = "";
+    saveFeedState();
+    renderFeeds();
+  });
   panel.addEventListener("click", (event) => {
+    const startFolder = event.target.closest("[data-start-folder]");
+    if (startFolder) {
+      folderDraft = true;
+      folderDraftMoves = false;
+      folderDraftName = "";
+      folderDraftFocus = true;
+      renderSources();
+      return;
+    }
+    const removeFolderButton = event.target.closest("[data-remove-folder]");
+    if (removeFolderButton) {
+      removeFolder(removeFolderButton.dataset.removeFolder);
+      return;
+    }
+    const deleteButton = event.target.closest("[data-delete-feeds]");
+    if (deleteButton) {
+      deleteSelectedFeeds();
+      return;
+    }
+    const deleteOne = event.target.closest("[data-delete-feed]");
+    if (deleteOne) {
+      selectedFeedIds = new Set([deleteOne.dataset.deleteFeed]);
+      deleteSelectedFeeds();
+      return;
+    }
     const topicButton = event.target.closest("[data-feed-topic]");
     if (topicButton) {
       selectedTopic = selectedTopic === topicButton.dataset.feedTopic ? "" : topicButton.dataset.feedTopic;
