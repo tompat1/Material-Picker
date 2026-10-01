@@ -1594,6 +1594,7 @@ async function loadAccount() {
   }
   if (data.user) {
     const label = data.user.name || data.user.email || "Signed in";
+    link.hidden = true;
     link.setAttribute("aria-label", label);
     link.setAttribute("aria-disabled", "true");
     link.dataset.signedIn = "true";
@@ -1601,6 +1602,7 @@ async function loadAccount() {
     if (signOut) signOut.hidden = false;
     return;
   }
+  link.hidden = false;
   link.setAttribute("aria-label", "Sign in");
   link.removeAttribute("aria-disabled");
   delete link.dataset.signedIn;
