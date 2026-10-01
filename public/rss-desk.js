@@ -562,20 +562,29 @@ function bindSwipe() {
   const swipe = document.querySelector("#feedsSwipe");
   if (!swipe || swipe.dataset.swipe === "true") return;
   swipe.dataset.swipe = "true";
-  swipe.addEventListener("touchstart", (event) => {
-    if (!isPhoneFeeds() || event.touches.length !== 1) return;
-    const target = event.target.closest("input, textarea, a");
-    if (target) return;
-    touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
-  }, { passive: true });
-  swipe.addEventListener("touchend", (event) => {
-    if (!touchStart) return;
-    const dx = event.changedTouches[0].clientX - touchStart.x;
-    const dy = event.changedTouches[0].clientY - touchStart.y;
+  swipe.addEventListener("pointerdown", (event) => {
+    if (!isPhoneFeeds() || event.button !== 0) return;
+    if (event.target.closest("input, textarea, a")) return;
+    touchStart = { x: event.clientX, y: event.clientY, id: event.pointerId };
+  });
+  swipe.addEventListener("pointerup", (event) => {
+    if (!touchStart || event.pointerId !== touchStart.id) return;
+    const dx = event.clientX - touchStart.x;
+    const dy = event.clientY - touchStart.y;
     touchStart = null;
     if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    swipe.dataset.suppressClick = "true";
     showPane(feedPane + (dx < 0 ? 1 : -1));
-  }, { passive: true });
+  });
+  swipe.addEventListener("click", (event) => {
+    if (swipe.dataset.suppressClick !== "true") return;
+    delete swipe.dataset.suppressClick;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+  swipe.addEventListener("pointercancel", () => {
+    touchStart = null;
+  });
 }
 
 function bindFeedsDesk() {
