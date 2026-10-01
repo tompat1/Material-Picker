@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-86" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-91" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -110,6 +110,8 @@
           <label for="desk-playlists"><span class="nav-icon nav-icon--playlists" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg><span>Playlists</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-favourites" />
           <label for="desk-favourites"><span class="nav-icon nav-icon--favourites" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/></svg><span>Favourites</span></label>
+          <input class="sr-only" type="radio" name="desk" id="desk-feeds" />
+          <label for="desk-feeds" id="feedsNav"><span class="nav-icon" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.2" cy="17.2" r="1.5"/><path d="M5 11a8 8 0 0 1 8 8"/><path d="M5 6a13 13 0 0 1 13 13"/></svg><span>Feeds</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-shop" />
           <label for="desk-shop" id="shopNav"><span class="nav-icon" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8.5h11l-.8 11.2a1.5 1.5 0 0 1-1.5 1.3H8.8a1.5 1.5 0 0 1-1.5-1.3z"/><path d="M9 8.5a3 3 0 0 1 6 0"/></svg><span>Shop</span></label>
           <button class="more-action" id="moreCheckPlayback" type="button">Check playback</button>
@@ -354,6 +356,69 @@
           </div>
           <ul class="playlist-videos" id="favouriteList"></ul>
           <p class="playlist-empty" id="favouriteEmpty" data-cms="favourites.empty">No favourites yet. Use the heart on a video to save it here.</p>
+        </section>
+        <section class="nav-panel feeds-panel" id="feedsPanel" aria-labelledby="feedsTitle">
+          <header class="feeds-reeder-bar">
+            <button class="feeds-icon-button" id="feedsBack" type="button" hidden aria-label="Back">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5"/></svg>
+            </button>
+            <div class="feeds-reeder-title">
+              <h2 id="feedsTitle">Feeds</h2>
+              <p id="feedsSubtitle"></p>
+            </div>
+            <button class="feeds-icon-button" id="feedsAdd" type="button" aria-label="Set up feeds">+</button>
+          </header>
+          <p class="feeds-status" id="feedsStatus" role="status"></p>
+          <div class="feeds-swipe" id="feedsSwipe">
+            <div class="feeds-track" id="feedsTrack" data-pane="0">
+              <section class="feeds-pane feeds-pane--list" id="feedRiver" aria-live="polite"></section>
+              <section class="feeds-pane feeds-pane--reader" id="feedReader" aria-label="Article"></section>
+            </div>
+          </div>
+          <dialog class="feeds-add-dialog" id="feedsAddDialog">
+            <form method="dialog" class="feeds-add-close">
+              <button type="submit" aria-label="Close">Close</button>
+            </form>
+            <h3>Setup</h3>
+            <form id="followFeedForm">
+              <label for="followFeedInput">Follow a site or feed</label>
+              <div class="input-row">
+                <input id="followFeedInput" type="text" inputmode="url" autocomplete="url" placeholder="https://example.com" required />
+                <button class="primary-button" type="submit">Follow</button>
+              </div>
+            </form>
+            <div id="feedChoices" hidden></div>
+            <form id="feedTopicSearch" role="search">
+              <label for="feedTopicQuery">Search by topic</label>
+              <input id="feedTopicQuery" type="search" placeholder="Movies, gaming, AI, Apple…" />
+            </form>
+            <div class="feeds-topics" id="feedTopics" role="group" aria-label="Feed topics">
+              <button type="button" data-feed-topic="news">News</button>
+              <button type="button" data-feed-topic="tech">Tech</button>
+              <button type="button" data-feed-topic="apple">Apple</button>
+              <button type="button" data-feed-topic="ai">AI</button>
+              <button type="button" data-feed-topic="politics">Politics</button>
+              <button type="button" data-feed-topic="movies">Movies</button>
+              <button type="button" data-feed-topic="gaming">Gaming</button>
+              <button type="button" data-feed-topic="science">Science</button>
+              <button type="button" data-feed-topic="business">Business</button>
+              <button type="button" data-feed-topic="sports">Sports</button>
+            </div>
+            <div class="feeds-directory" id="feedDirectory"></div>
+            <section class="feeds-setup-sources" id="feedsSources" aria-label="Subscriptions"></section>
+            <form id="feedlyConnectForm">
+              <label for="feedlyToken">Feedly account</label>
+              <p class="feeds-feedly-note">Paste a token from your Feedly account. Folders and subscriptions are copied into this browser.</p>
+              <div class="input-row">
+                <input id="feedlyToken" type="password" autocomplete="off" placeholder="Feedly token" />
+                <button class="primary-button" type="submit">Connect</button>
+              </div>
+              <a href="https://feedly.com/v3/auth/dev" target="_blank" rel="noreferrer">Get a token while signed in to Feedly</a>
+            </form>
+            <div class="button-row">
+              <button class="ghost-button" id="refreshFeeds" type="button">Refresh</button>
+            </div>
+          </dialog>
         </section>
         <section class="nav-panel shop-panel" id="shopPanel" data-colorway="espresso" aria-labelledby="shopTitle">
           <header class="shop-head">
@@ -817,6 +882,7 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-107" defer></script>
+    <script src="./app.js?v=picker-nav-108" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-8" defer></script>
   </body>
 </html>

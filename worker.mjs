@@ -1,6 +1,8 @@
 import { createD1AccountStore, handleAuthRequest, sessionUser } from "./auth.mjs";
 import { createD1CmsStore, handleCmsRequest } from "./cms.mjs";
 import { fetchVideoChapters } from "./video-chapters.mjs";
+import { loadFeedlyAccount } from "./feedly.mjs";
+import { FEED_TOPICS, loadFeed, RSS_ACCEPT, RSS_CONTENT_TYPE, searchFeedCatalog } from "./rss.mjs";
 import { searchVideos, videoFeed } from "./video-search.mjs";
 
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
@@ -126,6 +128,29 @@ async function fetchPage(value, fetchImpl, redirects = 0) {
   }
   const body = await readLimitedText(response);
   return { body, finalUrl: url.href, challenged: isBotChallenge(body) };
+}
+
+async function fetchFeedDocument(value, fetchImpl, redirects = 0) {
+  const url = assertPageUrl(value);
+  const response = await fetchImpl(url, {
+    headers: {
+      Accept: RSS_ACCEPT,
+      "User-Agent": BROWSER_USER_AGENT,
+    },
+    redirect: "manual",
+  });
+
+  if (response.status >= 300 && response.status < 400 && response.headers.get("location")) {
+    if (redirects >= MAX_REDIRECTS) throw fail(502, "The page redirected too many times.");
+    return fetchFeedDocument(new URL(response.headers.get("location"), url).href, fetchImpl, redirects + 1);
+  }
+  if (!response.ok) throw fail(502, `The page returned ${response.status}.`);
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType && !RSS_CONTENT_TYPE.test(contentType)) {
+    throw fail(502, "The URL returned an unsupported content type.");
+  }
+  return { body: await readLimitedText(response), finalUrl: url.href, contentType };
 }
 
 function isBotChallenge(html) {
@@ -900,6 +925,32 @@ export async function handleApiRequest(request, dependencies = {}) {
   }
   if (request.method === "POST" && url.pathname === "/api/thumbnail") {
     return renderThumbnail(request, dependencies.ai);
+  }
+  if (request.method === "POST" && url.pathname === "/api/feedly/subscriptions") {
+    try {
+      const body = await request.json().catch(() => ({}));
+      return json(200, await loadFeedlyAccount(body.token, fetchImpl));
+    } catch (error) {
+      return json(error.status || 502, { error: error.message || "Feedly could not be connected." });
+    }
+  }
+  if (request.method === "GET" && url.pathname === "/api/rss/catalog") {
+    return json(200, {
+      topics: FEED_TOPICS,
+      feeds: searchFeedCatalog({
+        query: url.searchParams.get("q") || "",
+        topic: url.searchParams.get("topic") || "",
+      }),
+    });
+  }
+  if (request.method === "GET" && url.pathname === "/api/rss") {
+    const target = url.searchParams.get("url");
+    if (!target) return json(400, { error: "A feed or page URL is required." });
+    try {
+      return json(200, await loadFeed(target, (value) => fetchFeedDocument(value, fetchImpl)));
+    } catch (error) {
+      return json(error.status || 502, { error: error.message || "The feed could not be loaded." });
+    }
   }
   if (request.method === "POST" && url.pathname === "/api/proofread") {
     try {
