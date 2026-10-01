@@ -507,13 +507,18 @@ function bindEvents() {
     setStatus("Created a blank video record.");
   });
   els.clearAllButton.addEventListener("click", clearAll);
-  document.querySelector("#accountSignOut")?.addEventListener("click", async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    await loadAccount();
+  document.querySelector("#accountSignOut")?.addEventListener("click", () => {
+    void signOutAccount();
+  });
+  document.querySelector("#accountDialogSignOut")?.addEventListener("click", () => {
+    void signOutAccount();
+  });
+  document.querySelector("#moreSignOut")?.addEventListener("click", () => {
+    void signOutAccount();
   });
   document.querySelector("#accountLink")?.addEventListener("click", () => {
-    if (document.querySelector("#accountLink")?.getAttribute("aria-disabled") === "true") return;
-    document.querySelector("#accountFormStatus").textContent = "";
+    const status = document.querySelector("#accountFormStatus");
+    if (status) status.textContent = "";
     document.querySelector("#accountDialog")?.showModal();
   });
   document.querySelector("#accountLoginForm")?.addEventListener("submit", (event) => {
@@ -1605,10 +1610,27 @@ async function submitAccountForm(path, form) {
   }
 }
 
+async function signOutAccount() {
+  document.querySelector("#accountDialog")?.close();
+  document.body.classList.remove("is-more-open");
+  document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
+  try {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+  } catch {
+    // Refresh the account controls anyway. A network error should not leave a dead button.
+  }
+  await loadAccount();
+}
+
 async function loadAccount() {
   const link = document.querySelector("#accountLink");
   const signOut = document.querySelector("#accountSignOut");
   const google = document.querySelector("#accountGoogle");
+  const session = document.querySelector("#accountSession");
+  const sessionName = document.querySelector("#accountSessionName");
+  const moreSignOut = document.querySelector("#moreSignOut");
+  const login = document.querySelector("#accountLoginForm");
+  const register = document.querySelector("#accountRegisterForm");
   if (!link) return;
   let data = { configured: false, user: null };
   try {
@@ -1617,7 +1639,6 @@ async function loadAccount() {
   } catch {
     data = { configured: false, user: null };
   }
-  if (google) google.hidden = data.configured === false;
   pickerSignedIn = Boolean(data.user);
   youtubeConnected = Boolean(data.user?.youtubeConnected);
   feedlyConnected = Boolean(data.user?.feedlyConnected);
@@ -1629,13 +1650,20 @@ async function loadAccount() {
     const library = document.querySelector("#desk-library");
     if (library) library.checked = true;
   }
+  const signedIn = Boolean(data.user);
+  if (google) google.hidden = signedIn || data.configured === false;
+  if (session) session.hidden = !signedIn;
+  if (moreSignOut) moreSignOut.hidden = !signedIn;
+  if (login) login.hidden = signedIn;
+  if (register) register.hidden = signedIn;
   if (data.user) {
     const label = data.user.name || data.user.email || "Signed in";
-    link.hidden = true;
-    link.setAttribute("aria-label", label);
-    link.setAttribute("aria-disabled", "true");
+    link.hidden = false;
+    link.setAttribute("aria-label", "Account");
+    link.removeAttribute("aria-disabled");
     link.dataset.signedIn = "true";
     link.title = data.user.youtubeConnected ? `${label} · YouTube connected` : label;
+    if (sessionName) sessionName.textContent = label;
     if (signOut) signOut.hidden = false;
     if (document.querySelector("#desk-feeds")?.checked) void loadFeedlyHome();
     return;
@@ -1645,6 +1673,7 @@ async function loadAccount() {
   link.removeAttribute("aria-disabled");
   delete link.dataset.signedIn;
   link.title = "Sign in or create a Picker account";
+  if (sessionName) sessionName.textContent = "";
   if (signOut) signOut.hidden = true;
   cmsUserAdmin = false;
   cmsEditing = false;

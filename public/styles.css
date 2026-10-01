@@ -2552,6 +2552,22 @@ html[data-picker-theme="new-age"] .account-google {
   color: #f6f3f0;
 }
 
+.account-session {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.account-session p {
+  margin: 0;
+  font: 560 0.95rem/1.4 var(--sans);
+}
+
+.account-sign-out-action {
+  width: 100%;
+  min-height: 2.75rem;
+}
+
 #accountDialog {
   width: min(28rem, calc(100vw - 2rem));
   max-height: min(80dvh, 720px);
@@ -4963,6 +4979,14 @@ html[data-picker-theme="new-age"] .history-list {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .account-link[data-signed-in="true"] {
+    display: inline-flex;
+  }
+
+  #accountSignOut {
+    display: none;
   }
 
   .thumb-style {

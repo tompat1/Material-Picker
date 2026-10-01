@@ -577,7 +577,13 @@ export async function handleAuthRequest(request, options) {
   }
   if (request.method === "POST" && url.pathname === "/api/auth/logout") {
     const sessionId = readCookie(request, SESSION_COOKIE);
-    if (sessionId) await store.deleteSession(sessionId);
+    if (sessionId) {
+      try {
+        await store.deleteSession(sessionId);
+      } catch {
+        // Still clear the cookie. A storage write failure must not leave the browser signed in.
+      }
+    }
     return json(200, { ok: true }, [clearCookie(SESSION_COOKIE, url)]);
   }
   if (request.method === "GET" && url.pathname === "/api/auth/google/start") {

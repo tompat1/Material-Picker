@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-98" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-99" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -114,6 +114,7 @@
           <label for="desk-feeds" id="feedsNav"><span class="nav-icon" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.2" cy="17.2" r="1.5"/><path d="M5 11a8 8 0 0 1 8 8"/><path d="M5 6a13 13 0 0 1 13 13"/></svg><span>Feeds</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-shop" />
           <label for="desk-shop" id="shopNav"><span class="nav-icon" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8.5h11l-.8 11.2a1.5 1.5 0 0 1-1.5 1.3H8.8a1.5 1.5 0 0 1-1.5-1.3z"/><path d="M9 8.5a3 3 0 0 1 6 0"/></svg><span>Shop</span></label>
+          <button class="more-action" id="moreSignOut" type="button" hidden>Sign out</button>
           <button class="more-action" id="moreCheckPlayback" type="button">Check playback</button>
           <button class="more-action" id="moreClearLibrary" type="button">Clear library</button>
         </div>
@@ -828,6 +829,10 @@
         <h2>Account</h2>
         <button class="ghost-button" value="close">Close</button>
       </form>
+      <div class="account-session" id="accountSession" hidden>
+        <p id="accountSessionName"></p>
+        <button class="primary-button account-sign-out-action" id="accountDialogSignOut" type="button">Sign out</button>
+      </div>
       <a class="account-google" id="accountGoogle" href="/api/auth/google/start">Continue with Google</a>
       <form id="accountLoginForm" class="account-form">
         <h3>Sign in</h3>
@@ -891,7 +896,7 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-109" defer></script>
+    <script src="./app.js?v=picker-nav-110" defer></script>
     <script src="./rss-desk.js?v=picker-nav-14" defer></script>
   </body>
 </html>

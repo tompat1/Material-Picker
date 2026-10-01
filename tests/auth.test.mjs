@@ -133,6 +133,27 @@ test("email accounts can be created and signed in without Google", async () => {
   assert.equal(again.status, 401);
 });
 
+test("logout clears the session cookie when storage cannot delete the session", async () => {
+  const store = createMemoryAccountStore();
+  const register = await handleAuthRequest(new Request("http://localhost:4173/api/auth/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Ada", email: "ada@example.com", password: "long-enough" }),
+  }), { store });
+  const session = register.headers.getSetCookie().find((item) => item.startsWith("picker_session="));
+  const sessionId = decodeURIComponent(session.split(";")[0].slice("picker_session=".length));
+  store.deleteSession = async () => {
+    throw new Error("storage write failed");
+  };
+  const logout = await handleAuthRequest(new Request("http://localhost:4173/api/auth/logout", {
+    method: "POST",
+    headers: { cookie: `picker_session=${sessionId}` },
+  }), { store });
+  assert.equal(logout.status, 200);
+  const cleared = logout.headers.getSetCookie().find((item) => item.startsWith("picker_session="));
+  assert.match(cleared, /Max-Age=0/);
+});
+
 test("linking Google keeps the password email lowercase", async () => {
   const store = createMemoryAccountStore();
   const register = await handleAuthRequest(new Request("http://localhost:4173/api/auth/register", {
