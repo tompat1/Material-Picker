@@ -572,8 +572,15 @@ function bindSwipe() {
   swipe.addEventListener("pointerdown", (event) => {
     if (!isPhoneFeeds() || event.button !== 0) return;
     if (event.target.closest("input, textarea, a")) return;
-    touchStart = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    touchStart = { x: event.clientX, y: event.clientY, id: event.pointerId, captured: false };
+  });
+  swipe.addEventListener("pointermove", (event) => {
+    if (!touchStart || event.pointerId !== touchStart.id || touchStart.captured) return;
+    const dx = event.clientX - touchStart.x;
+    const dy = event.clientY - touchStart.y;
+    if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy)) return;
     swipe.setPointerCapture(event.pointerId);
+    touchStart.captured = true;
   });
   swipe.addEventListener("pointerup", (event) => {
     if (!touchStart || event.pointerId !== touchStart.id) return;
