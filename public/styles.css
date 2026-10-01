@@ -5343,7 +5343,8 @@ html[data-picker-theme="new-age"] .history-list {
     font-size: 1rem;
   }
 
-  .transcript-panel {
+  body:has(#watch-transcript:checked) .transcript-panel,
+  body:has(#desk-transcripts:checked) .transcript-panel {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
