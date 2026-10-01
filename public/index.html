@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-81" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-85" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -109,6 +109,8 @@
           <label for="desk-playlists"><span class="nav-icon nav-icon--playlists" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg><span>Playlists</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-favourites" />
           <label for="desk-favourites"><span class="nav-icon nav-icon--favourites" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/></svg><span>Favourites</span></label>
+          <input class="sr-only" type="radio" name="desk" id="desk-shop" />
+          <label for="desk-shop" id="shopNav"><span class="nav-icon" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8.5h11l-.8 11.2a1.5 1.5 0 0 1-1.5 1.3H8.8a1.5 1.5 0 0 1-1.5-1.3z"/><path d="M9 8.5a3 3 0 0 1 6 0"/></svg><span>Shop</span></label>
           <button class="more-action" id="moreCheckPlayback" type="button">Check playback</button>
           <button class="more-action" id="moreClearLibrary" type="button">Clear library</button>
         </div>
@@ -351,6 +353,22 @@
           </div>
           <ul class="playlist-videos" id="favouriteList"></ul>
           <p class="playlist-empty" id="favouriteEmpty">No favourites yet. Use the heart on a video to save it here.</p>
+        </section>
+        <section class="nav-panel shop-panel" id="shopPanel" data-colorway="espresso" aria-labelledby="shopTitle">
+          <header class="shop-head">
+            <p class="eyebrow">Merch</p>
+            <div class="shop-head-row">
+              <h2 id="shopTitle">Wear the curiosity.</h2>
+              <button class="secondary-button shop-bag" id="shopBag" type="button">
+                Bag
+                <span id="shopBagCount">0</span>
+              </button>
+            </div>
+            <p class="shop-lead">A small run of Picker goods for the desk, the bag, and the wall. Each piece carries a real Picker mark.</p>
+          </header>
+          <div class="shop-colors" role="group" aria-label="Colourway" id="shopColors"></div>
+          <div class="shop-categories" role="group" aria-label="Shop categories" id="shopCategories"></div>
+          <div class="shop-grid" id="shopGrid"></div>
         </section>
 
         <section class="downloads-panel" aria-labelledby="libraryOfflineTitle">
@@ -708,6 +726,28 @@
       </form>
     </div>
 
+    <div class="shop-drawer" id="shopDrawer" hidden>
+      <button class="shop-drawer-scrim" type="button" data-shop-close aria-label="Close bag"></button>
+      <aside class="shop-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="shopDrawerTitle">
+        <header class="shop-drawer-head">
+          <h2 id="shopDrawerTitle">Your bag</h2>
+          <button class="ghost-button" type="button" data-shop-close>Close</button>
+        </header>
+        <div id="shopDrawerBody"></div>
+      </aside>
+    </div>
+    <div class="shop-lightbox" id="shopLightbox" hidden>
+      <button class="shop-lightbox-scrim" type="button" data-shop-lightbox-close aria-label="Close preview"></button>
+      <figure>
+        <button class="ghost-button shop-lightbox-close" type="button" data-shop-lightbox-close>Close</button>
+        <button class="shop-lightbox-zoom" type="button" id="shopLightboxZoom" aria-label="Zoom product">
+          <span id="shopLightboxStage"></span>
+        </button>
+        <p class="shop-lightbox-hint">Click to zoom</p>
+        <figcaption id="shopLightboxCaption"></figcaption>
+      </figure>
+    </div>
+
     <dialog id="accountDialog">
       <form method="dialog" class="dialog-bar">
         <h2>Account</h2>
@@ -776,6 +816,6 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-103" defer></script>
+    <script src="./app.js?v=picker-nav-106" defer></script>
   </body>
 </html>

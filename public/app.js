@@ -524,6 +524,7 @@ function bindEvents() {
     youtubeShelf.query = event.target.value;
     paintYouTubeGrid();
   });
+  bindMerchShop();
   document.querySelectorAll(".nav-sub label, #desk-library, #desk-downloads, #desk-transcripts").forEach((control) => {
     control.addEventListener("change", closeMobileMenus);
     control.addEventListener("click", closeMobileMenus);
@@ -2456,6 +2457,9 @@ function setThumbnailStyle(style) {
   state.thumbnailStyle = next;
   saveState();
   syncThumbnailStyleControl();
+  merchColorway = merchColorwayForTheme();
+  merchColorwayReady = true;
+  renderShop();
   renderLibrary();
   renderPlayer();
   queueMissingThumbnails();
@@ -3015,6 +3019,7 @@ const playerDeskLabels = {
   favourites: "Favourites",
   downloads: "Downloads",
   transcripts: "Transcripts",
+  shop: "Shop",
 };
 
 function currentDeskName() {
@@ -3140,6 +3145,7 @@ function render() {
   renderActivity();
   renderPlaylists();
   renderFavourites();
+  renderShop();
   syncPlayButton();
   syncThumbnailStyleControl();
   queueMissingThumbnails();
@@ -8394,6 +8400,275 @@ function saveState() {
 
 function loadState() {
   return core.loadState(localStorage, STORAGE_KEY);
+}
+
+const MERCH_FREE_SHIPPING = 500;
+const MERCH_STORAGE_KEY = "material-picker:merch";
+const MERCH_CATEGORIES = [
+  { id: "all", label: "All pieces" },
+  { id: "apparel", label: "Apparel" },
+  { id: "daily", label: "Daily goods" },
+  { id: "studio", label: "Studio objects" },
+];
+const MERCH_SIZES = ["S", "M", "L", "XL"];
+const MERCH_CATALOG = [
+  { id: "hoodie-black", image: "/merch/hoodie-black.jpg", category: "apparel", name: "Black hoodie", description: "Heavyweight black fleece with the orange Picker mark on the chest.", priceSek: 890, priceEur: 79, badge: "First run", featured: true, optionLabel: "Size", options: MERCH_SIZES, specs: [["Material", "420 gsm cotton fleece"], ["Mark", "Orange play mark"]], stock: "In stock" },
+  { id: "hoodie-white", image: "/merch/hoodie-white.jpg", category: "apparel", name: "White hoodie", description: "Heavyweight white fleece with the rust Picker mark on the chest.", priceSek: 890, priceEur: 79, optionLabel: "Size", options: MERCH_SIZES, specs: [["Material", "420 gsm cotton fleece"], ["Mark", "Rust play mark"]], stock: "In stock" },
+  { id: "sweat-black", image: "/merch/sweat-black.jpg", category: "apparel", name: "Black sweatshirt", description: "Black crew fleece with the orange Picker mark.", priceSek: 690, priceEur: 62, optionLabel: "Size", options: MERCH_SIZES, specs: [["Material", "Cotton fleece"], ["Mark", "Orange play mark"]], stock: "In stock" },
+  { id: "sweat-white", image: "/merch/sweat-white.jpg", category: "apparel", name: "White sweatshirt", description: "White crew fleece with the rust Picker mark.", priceSek: 690, priceEur: 62, optionLabel: "Size", options: MERCH_SIZES, specs: [["Material", "Cotton fleece"], ["Mark", "Rust play mark"]], stock: "In stock" },
+  { id: "tee-black", image: "/merch/tee-black.jpg", category: "apparel", name: "Black t-shirt", description: "Heavyweight black jersey with the orange Picker mark.", priceSek: 390, priceEur: 35, optionLabel: "Size", options: MERCH_SIZES, specs: [["Material", "240 gsm cotton"], ["Fit", "Classic crew"]], stock: "In stock" },
+  { id: "tee-white", image: "/merch/tee-white.jpg", category: "apparel", name: "White t-shirt", description: "Heavyweight white jersey with the rust Picker mark.", priceSek: 390, priceEur: 35, optionLabel: "Size", options: MERCH_SIZES, specs: [["Material", "240 gsm cotton"], ["Fit", "Classic crew"]], stock: "In stock" },
+  { id: "cap", image: "/merch/cap.jpg", category: "daily", name: "Black cap", description: "Dad cap with the orange Picker mark on the front panel.", priceSek: 320, priceEur: 29, badge: "Low stock", specs: [["Material", "Cotton twill"], ["Detail", "Adjustable strap"]], stock: "A few left" },
+  { id: "beanie", image: "/merch/beanie.jpg", category: "daily", name: "Black beanie", description: "Ribbed knit beanie with the orange Picker mark on the cuff.", priceSek: 280, priceEur: 25, specs: [["Material", "Ribbed knit"], ["Mark", "Orange play mark"]], stock: "In stock" },
+  { id: "tote-black", image: "/merch/tote-black.jpg", category: "daily", name: "Black tote", description: "Black canvas tote with the orange Picker mark.", priceSek: 240, priceEur: 22, specs: [["Material", "Heavy canvas"], ["Mark", "Orange play mark"]], stock: "In stock" },
+  { id: "tote-white", image: "/merch/tote-white.jpg", category: "daily", name: "White tote", description: "Off-white canvas tote with the rust Picker wordmark.", priceSek: 240, priceEur: 22, specs: [["Material", "Heavy canvas"], ["Mark", "Rust wordmark"]], stock: "In stock" },
+  { id: "case", image: "/merch/case.jpg", category: "daily", name: "Phone case", description: "Matte black case for a current iPhone, with the orange Picker mark.", priceSek: 290, priceEur: 26, specs: [["Finish", "Matte black"], ["Mark", "Orange play mark"]], stock: "In stock" },
+  { id: "print", image: "/merch/print.jpg", category: "studio", name: "Framed art print", description: "The light lockup, framed, for a quiet wall.", priceSek: 480, priceEur: 43, badge: "Print", optionLabel: "Size", options: ["20×30", "50×70", "70×100"], specs: [["Paper", "Warm stock"], ["Frame", "Thin black"]], stock: "In stock" },
+  { id: "stickers", image: "/merch/sticker.jpg", category: "studio", name: "Sticker sheet", description: "Every Picker mark, wordmark, and icon, on one vinyl sheet.", priceSek: 90, priceEur: 8, specs: [["Contents", "Full logo set"], ["Finish", "Matte vinyl"]], stock: "In stock" },
+];
+
+let merchCategory = "all";
+let merchColorway = "espresso";
+let merchColorwayReady = false;
+let merchCart = loadMerchCart();
+let merchOrder = null;
+
+function loadMerchCart() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(MERCH_STORAGE_KEY) || "[]");
+    return Array.isArray(saved) ? saved.filter((line) => line && line.id && line.qty > 0) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMerchCart() {
+  localStorage.setItem(MERCH_STORAGE_KEY, JSON.stringify(merchCart));
+}
+
+function merchColorwayForTheme() {
+  return document.documentElement.dataset.pickerTheme === "new-age" ? "parchment" : "espresso";
+}
+
+function merchPieceMarkup(product) {
+  return `<span class="shop-piece shop-piece-photo"><img class="shop-photo" src="${escapeHtml(product.image)}" alt="" /></span>`;
+}
+
+function merchMoney(amount) {
+  return `${amount} SEK`;
+}
+
+function bindMerchShop() {
+  document.querySelector("#shopPanel")?.addEventListener("click", onShopClick);
+  document.querySelector("#shopPanel")?.addEventListener("change", onShopChange);
+  document.querySelector("#shopDrawer")?.addEventListener("click", onShopDrawerClick);
+  document.querySelector("#shopLightbox")?.addEventListener("click", onShopLightboxClick);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    closeShopLightbox();
+    closeShopDrawer();
+  });
+}
+
+function onShopClick(event) {
+  const color = event.target.closest("[data-shop-color]");
+  if (color) {
+    merchColorway = color.dataset.shopColor;
+    renderShop();
+    return;
+  }
+  const category = event.target.closest("[data-shop-category]");
+  if (category) {
+    merchCategory = category.dataset.shopCategory;
+    renderShop();
+    return;
+  }
+  const preview = event.target.closest("[data-shop-preview]");
+  if (preview) {
+    openShopLightbox(preview.dataset.shopPreview);
+    return;
+  }
+  const add = event.target.closest("[data-shop-add]");
+  if (add) {
+    addMerchToCart(add.dataset.shopAdd, add);
+    return;
+  }
+  if (event.target.closest("#shopBag")) openShopDrawer();
+}
+
+function onShopChange(event) {
+  const select = event.target.closest("[data-shop-option]");
+  if (!select) return;
+  select.closest(".shop-card")?.setAttribute("data-option", select.value);
+}
+
+function addMerchToCart(productId, button) {
+  const product = MERCH_CATALOG.find((item) => item.id === productId);
+  if (!product) return;
+  const card = button.closest(".shop-card");
+  const option = card?.querySelector("[data-shop-option]")?.value || "One size";
+  const id = `${product.id}:${option}`;
+  const existing = merchCart.find((line) => line.id === id);
+  if (existing) existing.qty += 1;
+  else merchCart.push({ id, productId: product.id, option, qty: 1 });
+  saveMerchCart();
+  merchOrder = null;
+  acknowledgeAction(button, `${product.name} added to your bag.`, button.getBoundingClientRect());
+  renderShop();
+}
+
+function onShopDrawerClick(event) {
+  if (event.target.closest("[data-shop-close]")) {
+    closeShopDrawer();
+    return;
+  }
+  const qty = event.target.closest("[data-shop-qty]");
+  if (qty) {
+    const line = merchCart.find((item) => item.id === qty.dataset.shopQty);
+    if (!line) return;
+    line.qty += Number(qty.dataset.delta) || 0;
+    merchCart = merchCart.filter((item) => item.qty > 0);
+    saveMerchCart();
+    renderShop();
+    return;
+  }
+  const remove = event.target.closest("[data-shop-remove]");
+  if (remove) {
+    merchCart = merchCart.filter((item) => item.id !== remove.dataset.shopRemove);
+    saveMerchCart();
+    renderShop();
+    return;
+  }
+  if (event.target.closest("[data-shop-checkout]")) checkoutMerch();
+}
+
+function checkoutMerch() {
+  if (!merchCart.length) return;
+  const total = merchCartTotal();
+  const count = merchCart.reduce((sum, line) => sum + line.qty, 0);
+  merchOrder = {
+    id: `PK-${Date.now().toString().slice(-6)}`,
+    count,
+    total,
+  };
+  merchCart = [];
+  saveMerchCart();
+  renderShop();
+}
+
+function openShopDrawer() {
+  const drawer = document.querySelector("#shopDrawer");
+  if (!drawer) return;
+  drawer.hidden = false;
+  document.body.classList.add("is-shop-open");
+}
+
+function closeShopDrawer() {
+  const drawer = document.querySelector("#shopDrawer");
+  if (drawer) drawer.hidden = true;
+  document.body.classList.remove("is-shop-open");
+}
+
+function openShopLightbox(productId) {
+  const product = MERCH_CATALOG.find((item) => item.id === productId);
+  const box = document.querySelector("#shopLightbox");
+  const stage = document.querySelector("#shopLightboxStage");
+  const caption = document.querySelector("#shopLightboxCaption");
+  if (!product || !box || !stage) return;
+  stage.innerHTML = merchPieceMarkup(product);
+  if (caption) caption.textContent = product.name;
+  box.classList.remove("is-zoomed");
+  box.hidden = false;
+}
+
+function closeShopLightbox() {
+  const box = document.querySelector("#shopLightbox");
+  if (!box) return;
+  box.hidden = true;
+  box.classList.remove("is-zoomed");
+}
+
+function onShopLightboxClick(event) {
+  if (event.target.closest("[data-shop-lightbox-close]")) {
+    closeShopLightbox();
+    return;
+  }
+  if (event.target.closest("#shopLightboxZoom")) {
+    document.querySelector("#shopLightbox")?.classList.toggle("is-zoomed");
+  }
+}
+
+function merchCartTotal() {
+  return merchCart.reduce((sum, line) => {
+    const product = MERCH_CATALOG.find((item) => item.id === line.productId);
+    return sum + (product ? product.priceSek * line.qty : 0);
+  }, 0);
+}
+
+function renderShop() {
+  const panel = document.querySelector("#shopPanel");
+  const grid = document.querySelector("#shopGrid");
+  if (!panel || !grid) return;
+  if (!merchColorwayReady) {
+    merchColorway = merchColorwayForTheme();
+    merchColorwayReady = true;
+  }
+  panel.dataset.colorway = merchColorway;
+  const colors = document.querySelector("#shopColors");
+  const categories = document.querySelector("#shopCategories");
+  if (colors) colors.innerHTML = "";
+  if (categories) {
+    categories.innerHTML = MERCH_CATEGORIES.map((category) => `<button type="button" data-shop-category="${category.id}" aria-pressed="${category.id === merchCategory ? "true" : "false"}">${escapeHtml(category.label)}</button>`).join("");
+  }
+  const visible = MERCH_CATALOG.filter((item) => merchCategory === "all" || item.category === merchCategory);
+  grid.innerHTML = visible.map((item) => {
+    const options = item.options
+      ? `<label class="shop-option"><span>${escapeHtml(item.optionLabel || "Size")}</span><select data-shop-option>${item.options.map((option) => `<option>${escapeHtml(option)}</option>`).join("")}</select></label>`
+      : `<p class="shop-option"><span>Size</span><strong>One size</strong></p>`;
+    const specs = item.specs.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
+    return `<article class="shop-card${item.featured ? " is-featured" : ""}">
+      <button class="shop-piece-button" type="button" data-shop-preview="${escapeHtml(item.id)}" aria-label="Preview ${escapeHtml(item.name)}">${merchPieceMarkup(item)}</button>
+      <div>
+        <div class="shop-card-top"><span class="shop-price">${item.priceSek} SEK <small>(${item.priceEur} €)</small></span>${item.badge ? `<span class="shop-badge">${escapeHtml(item.badge)}</span>` : ""}</div>
+        <h3>${escapeHtml(item.name)}</h3>
+        <p>${escapeHtml(item.description)}</p>
+        <dl class="shop-specs">${specs}</dl>
+        ${options}
+        <p class="shop-stock">${escapeHtml(item.stock)}</p>
+      </div>
+      <button class="primary-button" type="button" data-shop-add="${escapeHtml(item.id)}">Add to bag</button>
+    </article>`;
+  }).join("");
+  const count = merchCart.reduce((sum, line) => sum + line.qty, 0);
+  const badge = document.querySelector("#shopBagCount");
+  if (badge) badge.textContent = String(count);
+  renderShopDrawer();
+}
+
+function renderShopDrawer() {
+  const body = document.querySelector("#shopDrawerBody");
+  const title = document.querySelector("#shopDrawerTitle");
+  if (!body) return;
+  if (merchOrder) {
+    if (title) title.textContent = "Order kept";
+    body.innerHTML = `<div class="shop-receipt"><h3>${escapeHtml(merchOrder.id)}</h3><p>${merchOrder.count} ${merchOrder.count === 1 ? "piece" : "pieces"} · ${merchMoney(merchOrder.total)}</p><p class="shop-ship">Saved on this device. Nothing is charged or shipped.</p></div>`;
+    return;
+  }
+  if (title) title.textContent = "Your bag";
+  if (!merchCart.length) {
+    body.innerHTML = `<p class="shop-empty">Your bag is empty.</p><p class="shop-ship">Choose a piece from the run. Free shipping in Sweden from ${MERCH_FREE_SHIPPING} SEK.</p>`;
+    return;
+  }
+  const total = merchCartTotal();
+  const lines = merchCart.map((line) => {
+    const product = MERCH_CATALOG.find((item) => item.id === line.productId);
+    if (!product) return "";
+    return `<li class="shop-line">${merchPieceMarkup(product)}<div><h3>${escapeHtml(product.name)}</h3><p>${escapeHtml(line.option)}</p><div class="shop-qty"><button type="button" data-shop-qty="${escapeHtml(line.id)}" data-delta="-1" aria-label="Decrease">−</button><span>${line.qty}</span><button type="button" data-shop-qty="${escapeHtml(line.id)}" data-delta="1" aria-label="Increase">+</button></div></div><div><strong>${product.priceSek * line.qty} SEK</strong><button class="shop-remove" type="button" data-shop-remove="${escapeHtml(line.id)}">Remove</button></div></li>`;
+  }).join("");
+  const shipping = total >= MERCH_FREE_SHIPPING
+    ? "Free shipping in Sweden."
+    : `Add ${MERCH_FREE_SHIPPING - total} SEK for free shipping.`;
+  body.innerHTML = `<ul class="shop-lines">${lines}</ul><div class="shop-drawer-foot"><div class="shop-total"><span>Subtotal</span><strong>${merchMoney(total)}</strong></div><p class="shop-ship">${escapeHtml(shipping)}</p><button class="primary-button" type="button" data-shop-checkout>Keep this order</button><p class="shop-ship">Preview shop. Orders stay on this device and are not charged.</p></div>`;
 }
 
 function escapeHtml(value) {
