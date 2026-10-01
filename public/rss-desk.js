@@ -1,5 +1,6 @@
 const FEEDS_KEY = "material-picker:feeds";
 const FEED_ITEM_CAP = 40;
+const FEED_REFRESH_MS = 15 * 60 * 1000;
 const TOPIC_LABELS = {
   news: "News",
   tech: "Tech",
@@ -18,7 +19,8 @@ let selectedSource = "all";
 let selectedItemId = "";
 let feedPane = 0;
 let feedChoices = [];
-let feedsRefreshed = false;
+let feedRefreshTask = null;
+let lastFeedRefreshAt = 0;
 let selectedTopic = "";
 let catalogQuery = "";
 let catalogTopics = [];
@@ -452,28 +454,61 @@ async function followUrl(value, options = {}) {
   }
 }
 
-async function refreshFeeds() {
+function paintIncomingFeeds() {
+  document.querySelector("#feedsPanel")?.classList.toggle("is-empty", feedState.feeds.length === 0);
+  renderSources();
+  renderList();
+  applyPane();
+}
+
+async function refreshFeeds(options = {}) {
+  if (feedRefreshTask) return feedRefreshTask;
   if (!feedState.feeds.length) return;
+  if (!options.force && lastFeedRefreshAt && Date.now() - lastFeedRefreshAt < FEED_REFRESH_MS) return;
   const button = document.querySelector("#refreshFeeds");
   if (button) button.disabled = true;
-  setFeedStatus("Refreshing feeds…");
+  lastFeedRefreshAt = Date.now();
+  feedRefreshTask = pullFeeds().finally(() => {
+    feedRefreshTask = null;
+    if (button) button.disabled = false;
+  });
+  return feedRefreshTask;
+}
+
+async function pullFeeds() {
   const queue = [...feedState.feeds];
+  const total = queue.length;
+  let done = 0;
   const failures = [];
+  setFeedStatus(total === 1 ? "Refreshing 1 feed…" : `Refreshing ${total} feeds…`);
   const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
     while (queue.length) {
       const feed = queue.shift();
       try {
         const result = await requestFeed(feed.url);
         if (result.kind === "feed") storeFeed(result.feed);
-      } catch (error) {
+      } catch {
         failures.push(feed.title);
       }
+      done += 1;
+      if (done < total) setFeedStatus(`Refreshing feeds… ${done} of ${total}`);
+      paintIncomingFeeds();
     }
   });
   await Promise.all(workers);
   setFeedStatus(failures.length ? `Some feeds could not refresh: ${failures.slice(0, 3).join(", ")}` : "Feeds are up to date.");
-  if (button) button.disabled = false;
-  renderFeeds();
+  if (selectedItemId) paintIncomingFeeds();
+  else renderFeeds();
+}
+
+function watchFeedRefresh() {
+  const tick = () => {
+    if (document.hidden) return;
+    void refreshFeeds();
+  };
+  setInterval(tick, FEED_REFRESH_MS);
+  document.addEventListener("visibilitychange", tick);
+  tick();
 }
 
 async function importOpmlFile(file) {
@@ -511,6 +546,7 @@ async function importOpmlFile(file) {
       try {
         const result = await requestFeed(feed.url);
         if (result.kind === "feed") storeFeed(result.feed, { title: feed.title, folderNames: [] });
+        paintIncomingFeeds();
       } catch {
         /* Keep the subscription even if this refresh fails. */
       }
@@ -632,7 +668,7 @@ function bindFeedsDesk() {
     void importOpmlFile(file).catch((error) => setFeedStatus(error.message || "That OPML file could not be read."));
   });
   document.querySelector("#refreshFeeds")?.addEventListener("click", () => {
-    void refreshFeeds();
+    void refreshFeeds({ force: true });
   });
   panel.addEventListener("click", (event) => {
     const topicButton = event.target.closest("[data-feed-topic]");
@@ -712,13 +748,11 @@ function bindFeedsDesk() {
   document.querySelector("#desk-feeds")?.addEventListener("change", () => {
     if (!document.querySelector("#desk-feeds")?.checked) return;
     renderFeeds();
-    if (!feedsRefreshed && feedState.feeds.length && feedState.feeds.length <= 12) {
-      feedsRefreshed = true;
-      void refreshFeeds();
-    }
+    void refreshFeeds();
   });
   window.addEventListener("resize", applyPane);
   renderFeeds();
+  watchFeedRefresh();
 }
 
 document.addEventListener("DOMContentLoaded", bindFeedsDesk);
