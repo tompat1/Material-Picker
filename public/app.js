@@ -1894,7 +1894,7 @@ async function loadFeedlyHome(streamId = feedlyStreamId) {
   if (!mount) return;
   feedlyStreamId = streamId || "all";
   if (!pickerSignedIn) {
-    mount.innerHTML = `<div class="feed-connect"><p>Sign in to Picker with Google, then connect Feedly with that same account.</p><button class="primary-button" type="button" data-feedly-signin>Sign in</button></div>`;
+    mount.innerHTML = `<div class="feed-connect"><button class="primary-button" type="button" data-feedly-signin>Sign in</button></div>`;
     return;
   }
   if (!feedlyConnected) {

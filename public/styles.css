@@ -6465,7 +6465,8 @@ body.is-cms [data-cms] {
   font-size: 0.86rem;
 }
 
-.feeds-icon-button {
+.feeds-icon-button,
+.feeds-add-button {
   width: 2.4rem;
   height: 2.4rem;
   border: 0;
@@ -6476,7 +6477,126 @@ body.is-cms [data-cms] {
   cursor: pointer;
 }
 
-.feeds-icon-button svg {
+.feeds-add-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  background: var(--accent);
+  color: #281e19;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+html[data-picker-theme="new-age"] .feeds-add-button {
+  color: #f6f3f0;
+}
+
+.feeds-add-button:hover,
+.feeds-add-button:focus-visible {
+  transform: translateY(-1px);
+}
+
+.feeds-add-button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.feeds-panel.is-empty .feeds-add-button {
+  animation: feeds-add-nudge 1.8s ease-in-out infinite;
+}
+
+.feeds-welcome {
+  display: grid;
+  justify-items: center;
+  gap: 0.9rem;
+  max-width: 28rem;
+  margin: 12vh auto 0;
+  text-align: center;
+}
+
+.feeds-welcome p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.02rem;
+  line-height: 1.45;
+}
+
+.feeds-welcome-mark {
+  width: 4.5rem;
+  height: auto;
+}
+
+.feeds-welcome-mark--light {
+  display: none;
+}
+
+html[data-picker-theme="new-age"] .feeds-welcome-mark--dark {
+  display: none;
+}
+
+html[data-picker-theme="new-age"] .feeds-welcome-mark--light {
+  display: block;
+}
+
+.feeds-opml {
+  margin: 0.2rem 0 1.1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.feeds-opml p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.feeds-add-dialog .feeds-opml a {
+  color: var(--accent);
+  font-size: 1rem;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.feeds-opml-upload {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  margin-top: 0.85rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #281e19;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+html[data-picker-theme="new-age"] .feeds-opml-upload {
+  color: #f6f3f0;
+}
+
+.feeds-opml-upload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+@keyframes feeds-add-nudge {
+  0%, 100% { box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 38%, transparent); }
+  50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 22%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feeds-panel.is-empty .feeds-add-button {
+    animation: none;
+  }
+}
+
+.feeds-icon-button svg,
+.feeds-add-button svg {
   width: 1.4rem;
   height: 1.4rem;
   fill: none;

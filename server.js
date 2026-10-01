@@ -170,13 +170,14 @@ function sendJson(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
-async function handleFeedly(request, response) {
+async function handleOpml(request, response) {
   try {
-    const body = await readJsonBody(request);
-    const { loadFeedlyAccount } = await import("./feedly.mjs");
-    return sendJson(response, 200, await loadFeedlyAccount(body.token, fetch));
+    const xml = await readRequestBody(request);
+    const { parseOpml } = await import("./rss.mjs");
+    const text = Buffer.isBuffer(xml) ? xml.toString("utf8") : String(xml || "");
+    return sendJson(response, 200, { feeds: parseOpml(text) });
   } catch (error) {
-    return sendJson(response, error.status || 400, { error: error.message || "Feedly could not be connected." });
+    return sendJson(response, error.status || 400, { error: error.message || "That OPML file could not be read." });
   }
 }
 
@@ -1914,8 +1915,8 @@ function startServer() {
     if (requestUrl.pathname.startsWith("/api/auth") || requestUrl.pathname.startsWith("/api/youtube/")) {
       return handleAccount(request, response);
     }
-    if (request.method === "POST" && requestUrl.pathname === "/api/feedly/subscriptions") {
-      return handleFeedly(request, response);
+    if (request.method === "POST" && requestUrl.pathname === "/api/rss/opml") {
+      return handleOpml(request, response);
     }
     if (requestUrl.pathname.startsWith("/api/feedly")) {
       return handleFeedlyAuth(request, response);

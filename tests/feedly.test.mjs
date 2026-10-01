@@ -115,52 +115,21 @@ test("normalizeFeedlySubscriptions keeps folders and merges a feed that appears 
   assert.deepEqual(macrumors.folderIds, ["apple", "tech"]);
 });
 
-test("feedly import requires a token and does not fetch without one", async () => {
-  let fetched = false;
-  const response = await handleApiRequest(new Request("https://picker.example/api/feedly/subscriptions", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: "short" }),
-  }), {
-    fetchImpl: async () => {
-      fetched = true;
-      return new Response("[]");
-    },
-  });
-  assert.equal(response.status, 400);
-  assert.equal(fetched, false);
-});
-
-test("feedly import copies subscriptions and a rejected token stays on Feedly", async () => {
-  const seen = [];
-  const ok = await handleApiRequest(new Request("https://picker.example/api/feedly/subscriptions", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: "a".repeat(40) }),
-  }), {
-    fetchImpl: async (input) => {
-      const href = String(input);
-      seen.push(href);
-      if (href.endsWith("/profile")) return new Response(JSON.stringify({ fullName: "Ada" }), { headers: { "content-type": "application/json" } });
-      return new Response(JSON.stringify(SUBSCRIPTIONS), { headers: { "content-type": "application/json" } });
-    },
-  });
+test("an OPML upload keeps folders and rejects a file with no feeds", async () => {
+  const xml = `<?xml version="1.0"?><opml version="2.0"><body>
+    <outline text="Studio">
+      <outline text="Clay &amp; Co" type="rss" xmlUrl="https://example.com/rss" htmlUrl="https://example.com/" />
+    </outline>
+  </body></opml>`;
+  const ok = await handleApiRequest(new Request("https://picker.example/api/rss/opml", { method: "POST", body: xml }));
   assert.equal(ok.status, 200);
   const body = await ok.json();
-  assert.equal(body.label, "Ada");
-  assert.equal(body.feeds.length, 2);
-  assert.deepEqual(seen, [
-    "https://cloud.feedly.com/v3/subscriptions",
-    "https://cloud.feedly.com/v3/profile",
-  ]);
-
-  const denied = await handleApiRequest(new Request("https://picker.example/api/feedly/subscriptions", {
+  assert.equal(body.feeds[0].title, "Clay & Co");
+  assert.equal(body.feeds[0].url, "https://example.com/rss");
+  assert.deepEqual(body.feeds[0].folderNames, ["Studio"]);
+  const empty = await handleApiRequest(new Request("https://picker.example/api/rss/opml", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: "b".repeat(40) }),
-  }), {
-    fetchImpl: async () => new Response("no", { status: 401 }),
-  });
-  assert.equal(denied.status, 401);
-  assert.match((await denied.json()).error, /not accepted/);
+    body: "<opml><body></body></opml>",
+  }));
+  assert.equal(empty.status, 400);
 });

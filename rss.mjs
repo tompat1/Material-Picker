@@ -311,3 +311,49 @@ export function searchFeedCatalog({ query = "", topic = "" } = {}) {
     return words.every((word) => haystack.includes(word));
   });
 }
+
+export function parseOpml(xml) {
+  const source = String(xml || "");
+  if (!/<outline\b/i.test(source)) throw fail(400, "That file is not an OPML list.");
+  const feeds = [];
+  const folders = [];
+  const tag = /<outline\b([^>]*?)(\/?)\s*>|<\/outline\s*>/gi;
+  let match;
+  while ((match = tag.exec(source))) {
+    if (match[0].startsWith("</")) {
+      folders.pop();
+      continue;
+    }
+    const attrs = outlineAttrs(match[1]);
+    const selfClosing = match[2] === "/";
+    const xmlUrl = String(attrs.xmlUrl || attrs.xmlurl || "").trim();
+    const title = String(attrs.title || attrs.text || "").replace(/\s+/g, " ").trim().slice(0, 300);
+    const siteUrl = httpSite(attrs.htmlUrl || attrs.htmlurl);
+    if (/^https?:\/\//i.test(xmlUrl)) {
+      feeds.push({
+        url: xmlUrl,
+        title,
+        siteUrl,
+        folderNames: folders.filter(Boolean).slice(0, 4),
+      });
+      if (!selfClosing) folders.push("");
+      continue;
+    }
+    if (!selfClosing && title) folders.push(title.slice(0, 80));
+  }
+  if (!feeds.length) throw fail(400, "That OPML file has no RSS feeds.");
+  return feeds;
+}
+
+function outlineAttrs(raw) {
+  const attrs = {};
+  const pattern = /([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let match;
+  while ((match = pattern.exec(raw))) attrs[match[1]] = decodeXml(match[2] ?? match[3] ?? "");
+  return attrs;
+}
+
+function httpSite(value) {
+  const url = String(value || "").trim();
+  return /^https?:\/\//i.test(url) ? url : "";
+}

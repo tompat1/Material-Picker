@@ -36,11 +36,9 @@ function loadFeedState() {
       read: saved.read && typeof saved.read === "object" ? saved.read : {},
       archived: saved.archived && typeof saved.archived === "object" ? saved.archived : {},
       starred: saved.starred && typeof saved.starred === "object" ? saved.starred : {},
-      feedlyLabel: typeof saved.feedlyLabel === "string" ? saved.feedlyLabel : "",
-      feedlyToken: typeof saved.feedlyToken === "string" ? saved.feedlyToken : "",
     };
   } catch {
-    return { feeds: [], folders: [], items: [], read: {}, archived: {}, starred: {}, feedlyLabel: "", feedlyToken: "" };
+    return { feeds: [], folders: [], items: [], read: {}, archived: {}, starred: {} };
   }
 }
 
@@ -283,7 +281,7 @@ function renderSources() {
   </ul>
   <div class="feeds-folder-heading"><span>Folders</span></div>
   <ul class="feeds-source-list">${folders}${loose}</ul>
-  ${feedState.feeds.length ? "" : `<p class="feeds-river-empty">Add a feed or connect Feedly to copy your subscriptions.</p>`}`;
+  ${feedState.feeds.length ? "" : ""}`;
 }
 
 function renderList() {
@@ -291,7 +289,13 @@ function renderList() {
   if (!river) return;
   const items = itemsForSource().sort((a, b) => feedTime(b) - feedTime(a));
   if (!items.length) {
-    river.innerHTML = `<p class="feeds-river-empty">${feedState.feeds.length ? "Nothing unread in this view." : "Stories you follow will show up here."}</p>`;
+    river.innerHTML = feedState.feeds.length
+      ? `<p class="feeds-river-empty">Nothing unread in this view.</p>`
+      : `<div class="feeds-welcome">
+          <img class="feeds-welcome-mark feeds-welcome-mark--dark" src="/brand/logos/picker-mark-dark.svg" alt="Picker" />
+          <img class="feeds-welcome-mark feeds-welcome-mark--light" src="/brand/logos/picker-mark-light.svg" alt="" />
+          <p>Click the + button in the corner to follow a site, or upload the Feedly list you downloaded.</p>
+        </div>`;
     return;
   }
   let lastDay = "";
@@ -386,6 +390,7 @@ function renderFeedChoices() {
 }
 
 function renderFeeds() {
+  document.querySelector("#feedsPanel")?.classList.toggle("is-empty", feedState.feeds.length === 0);
   renderSources();
   renderList();
   renderReader();
@@ -471,44 +476,32 @@ async function refreshFeeds() {
   renderFeeds();
 }
 
-async function connectFeedly(token) {
-  setFeedStatus("Copying Feedly subscriptions…");
-  const response = await fetch("/api/feedly/subscriptions", {
+async function importOpmlFile(file) {
+  const text = await file.text();
+  if (!text.trim()) throw new Error("That OPML file is empty.");
+  if (text.length > 2_000_000) throw new Error("That OPML file is too large.");
+  setFeedStatus("Reading the OPML file…");
+  const response = await fetch("/api/rss/opml", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token }),
+    headers: { "content-type": "text/xml; charset=utf-8" },
+    body: text,
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Feedly could not be connected.");
-  const importedFolders = data.folders || [];
-  importedFolders.forEach((folder) => ensureFolder(folder.name));
+  if (!response.ok) throw new Error(data.error || "That OPML file could not be read.");
   const imported = [];
   (data.feeds || []).forEach((feed) => {
-    const names = (feed.folderIds || []).map((id) => importedFolders.find((folder) => folder.id === id)?.name).filter(Boolean);
-    let record = feedState.feeds.find((item) => item.url === feed.url);
-    if (!record) {
-      record = {
-        id: crypto.randomUUID(),
-        url: feed.url,
-        title: feed.title || feedHost(feed.url) || "Untitled feed",
-        siteUrl: feed.siteUrl || "",
-        topics: [],
-        folderIds: [],
-        addedAt: new Date().toISOString(),
-      };
-      feedState.feeds.push(record);
-    }
-    assignFolderNames(record, names);
-    if (feed.title) record.title = feed.title;
+    const record = storeFeed({ url: feed.url, title: feed.title, siteUrl: feed.siteUrl }, {
+      title: feed.title,
+      folderNames: feed.folderNames || [],
+    });
     imported.push(record);
   });
-  feedState.feedlyLabel = data.label || "Feedly";
-  feedState.feedlyToken = token;
   selectedSource = "all";
   selectedItemId = "";
   feedPane = 0;
   saveFeedState();
-  setFeedStatus(`Copied ${imported.length} subscriptions from Feedly. Loading stories…`);
+  const countLabel = imported.length === 1 ? "1 feed" : `${imported.length} feeds`;
+  setFeedStatus(`Added ${countLabel}. Loading stories…`);
   renderFeeds();
   document.querySelector("#feedsAddDialog")?.close();
   const queue = [...imported];
@@ -517,14 +510,14 @@ async function connectFeedly(token) {
       const feed = queue.shift();
       try {
         const result = await requestFeed(feed.url);
-        if (result.kind === "feed") storeFeed(result.feed, { title: feed.title, folderIds: feed.folderIds });
+        if (result.kind === "feed") storeFeed(result.feed, { title: feed.title, folderNames: [] });
       } catch {
         /* Keep the subscription even if this refresh fails. */
       }
     }
   });
   await Promise.all(workers);
-  setFeedStatus(`Feedly is connected. ${feedState.feeds.length} subscriptions are in your folders.`);
+  setFeedStatus(imported.length === 1 ? "1 feed is in your folders." : `${imported.length} feeds are in your folders.`);
   renderFeeds();
 }
 
@@ -632,10 +625,11 @@ function bindFeedsDesk() {
     selectedTopic = "";
     void loadDirectory();
   });
-  document.querySelector("#feedlyConnectForm")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const token = document.querySelector("#feedlyToken")?.value || "";
-    void connectFeedly(token).catch((error) => setFeedStatus(error.message || "Feedly could not be connected."));
+  document.querySelector("#opmlFile")?.addEventListener("change", (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    void importOpmlFile(file).catch((error) => setFeedStatus(error.message || "That OPML file could not be read."));
   });
   document.querySelector("#refreshFeeds")?.addEventListener("click", () => {
     void refreshFeeds();
