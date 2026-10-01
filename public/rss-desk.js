@@ -561,6 +561,14 @@ function bindSwipe() {
   const swipe = document.querySelector("#feedsSwipe");
   if (!swipe || swipe.dataset.swipe === "true") return;
   swipe.dataset.swipe = "true";
+  let suppressTimer = 0;
+  const suppressNextClick = () => {
+    swipe.dataset.suppressClick = "true";
+    window.clearTimeout(suppressTimer);
+    suppressTimer = window.setTimeout(() => {
+      delete swipe.dataset.suppressClick;
+    }, 400);
+  };
   swipe.addEventListener("pointerdown", (event) => {
     if (!isPhoneFeeds() || event.button !== 0) return;
     if (event.target.closest("input, textarea, a")) return;
@@ -573,7 +581,7 @@ function bindSwipe() {
     const dy = event.clientY - touchStart.y;
     touchStart = null;
     if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
-    swipe.dataset.suppressClick = "true";
+    suppressNextClick();
     const next = feedPane + (dx < 0 ? 1 : -1);
     if (next > 0 && !selectedItemId) return;
     showPane(next);
@@ -581,6 +589,7 @@ function bindSwipe() {
   swipe.addEventListener("click", (event) => {
     if (swipe.dataset.suppressClick !== "true") return;
     delete swipe.dataset.suppressClick;
+    window.clearTimeout(suppressTimer);
     event.preventDefault();
     event.stopPropagation();
   }, true);
