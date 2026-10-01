@@ -170,6 +170,16 @@ function sendJson(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
+async function handleFeedly(request, response) {
+  try {
+    const body = await readJsonBody(request);
+    const { loadFeedlyAccount } = await import("./feedly.mjs");
+    return sendJson(response, 200, await loadFeedlyAccount(body.token, fetch));
+  } catch (error) {
+    return sendJson(response, error.status || 400, { error: error.message || "Feedly could not be connected." });
+  }
+}
+
 async function handleRssCatalog(response, requestUrl) {
   const { FEED_TOPICS, searchFeedCatalog } = await import("./rss.mjs");
   return sendJson(response, 200, {
@@ -1884,6 +1894,9 @@ function startServer() {
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/video-search") {
       return handleVideoSearch(response, requestUrl);
+    }
+    if (request.method === "POST" && requestUrl.pathname === "/api/feedly/subscriptions") {
+      return handleFeedly(request, response);
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/rss/catalog") {
       return handleRssCatalog(response, requestUrl);

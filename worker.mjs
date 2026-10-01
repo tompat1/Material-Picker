@@ -1,6 +1,7 @@
 import { createD1AccountStore, handleAuthRequest, sessionUser } from "./auth.mjs";
 import { createD1CmsStore, handleCmsRequest } from "./cms.mjs";
 import { fetchVideoChapters } from "./video-chapters.mjs";
+import { loadFeedlyAccount } from "./feedly.mjs";
 import { FEED_TOPICS, loadFeed, RSS_ACCEPT, RSS_CONTENT_TYPE, searchFeedCatalog } from "./rss.mjs";
 import { searchVideos, videoFeed } from "./video-search.mjs";
 
@@ -924,6 +925,14 @@ export async function handleApiRequest(request, dependencies = {}) {
   }
   if (request.method === "POST" && url.pathname === "/api/thumbnail") {
     return renderThumbnail(request, dependencies.ai);
+  }
+  if (request.method === "POST" && url.pathname === "/api/feedly/subscriptions") {
+    try {
+      const body = await request.json().catch(() => ({}));
+      return json(200, await loadFeedlyAccount(body.token, fetchImpl));
+    } catch (error) {
+      return json(error.status || 502, { error: error.message || "Feedly could not be connected." });
+    }
   }
   if (request.method === "GET" && url.pathname === "/api/rss/catalog") {
     return json(200, {

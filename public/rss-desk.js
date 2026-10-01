@@ -1,9 +1,22 @@
 const FEEDS_KEY = "material-picker:feeds";
 const FEED_ITEM_CAP = 40;
+const TOPIC_LABELS = {
+  news: "News",
+  tech: "Tech",
+  apple: "Apple",
+  ai: "AI",
+  politics: "Politics",
+  movies: "Movies",
+  gaming: "Gaming",
+  science: "Science",
+  business: "Business",
+  sports: "Sports",
+};
 
 const feedState = loadFeedState();
-let selectedFeedId = "all";
-let feedFilter = "all";
+let selectedSource = "all";
+let selectedItemId = "";
+let feedPane = 0;
 let feedChoices = [];
 let feedsRefreshed = false;
 let selectedTopic = "";
@@ -11,22 +24,29 @@ let catalogQuery = "";
 let catalogTopics = [];
 let directoryFeeds = [];
 let directoryRequest = 0;
+let touchStart = null;
 
 function loadFeedState() {
   try {
     const saved = JSON.parse(localStorage.getItem(FEEDS_KEY) || "{}");
     return {
       feeds: Array.isArray(saved.feeds) ? saved.feeds : [],
+      folders: Array.isArray(saved.folders) ? saved.folders : [],
       items: Array.isArray(saved.items) ? saved.items : [],
       read: saved.read && typeof saved.read === "object" ? saved.read : {},
+      archived: saved.archived && typeof saved.archived === "object" ? saved.archived : {},
+      starred: saved.starred && typeof saved.starred === "object" ? saved.starred : {},
+      feedlyLabel: typeof saved.feedlyLabel === "string" ? saved.feedlyLabel : "",
+      feedlyToken: typeof saved.feedlyToken === "string" ? saved.feedlyToken : "",
     };
   } catch {
-    return { feeds: [], items: [], read: {} };
+    return { feeds: [], folders: [], items: [], read: {}, archived: {}, starred: {}, feedlyLabel: "", feedlyToken: "" };
   }
 }
 
 function saveFeedState() {
-  localStorage.setItem(FEEDS_KEY, JSON.stringify(feedState));
+  const payload = { ...feedState };
+  localStorage.setItem(FEEDS_KEY, JSON.stringify(payload));
 }
 
 function escapeFeedText(value) {
@@ -52,45 +72,96 @@ function normalizeFeedInput(value) {
   return /^https?:\/\//i.test(text) ? text : `https://${text}`;
 }
 
+function folderSlug(name) {
+  return String(name || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "folder";
+}
+
+function ensureFolder(name) {
+  const label = String(name || "Folder").trim().slice(0, 80) || "Folder";
+  const id = folderSlug(label);
+  let folder = feedState.folders.find((item) => item.id === id);
+  if (!folder) {
+    folder = { id, name: label, collapsed: feedState.folders.length > 3 };
+    feedState.folders.push(folder);
+  }
+  return folder;
+}
+
 function feedTime(item) {
-  const value = Date.parse(item.publishedAt || "");
+  const value = Date.parse(item?.publishedAt || "");
   return Number.isFinite(value) ? value : 0;
 }
 
-function formatFeedTime(value) {
+function formatClock(value) {
   const time = Date.parse(value || "");
   if (!Number.isFinite(time)) return "";
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(time);
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(time);
 }
 
-function unreadCount(feedId) {
-  return feedState.items.filter((item) => item.feedId === feedId && !feedState.read[item.id]).length;
+function dayKey(value) {
+  const time = Date.parse(value || "");
+  if (!Number.isFinite(time)) return "undated";
+  const date = new Date(time);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function dayLabel(value) {
+  const time = Date.parse(value || "");
+  if (!Number.isFinite(time)) return "Earlier";
+  const date = new Date(time);
+  const today = new Date();
+  const start = (day) => new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+  const diff = start(today) - start(date);
+  if (diff === 0) return "Today";
+  if (diff === 86400000) return "Yesterday";
+  return new Intl.DateTimeFormat(undefined, { month: "long", day: "numeric" }).format(date);
+}
+
+function isPhoneFeeds() {
+  return window.matchMedia("(max-width: 760px)").matches;
 }
 
 function feedRecord(feedId) {
   return feedState.feeds.find((entry) => entry.id === feedId);
 }
 
-function storyMatchesTopic(item) {
-  if (!selectedTopic) return true;
-  return (feedRecord(item.feedId)?.topics || []).includes(selectedTopic);
+function itemById(id) {
+  return feedState.items.find((item) => item.id === id);
 }
 
-function storyMatchesQuery(item) {
-  const words = catalogQuery.toLowerCase().split(/\s+/).filter(Boolean);
-  if (!words.length) return true;
-  const feed = feedRecord(item.feedId);
-  const haystack = `${item.title} ${item.summary} ${item.author} ${feed?.title || ""}`.toLowerCase();
-  return words.every((word) => haystack.includes(word));
+function isUnread(item) {
+  return item && !feedState.read[item.id] && !feedState.archived[item.id];
 }
 
-function visibleFeedItems() {
-  return feedState.items
-    .filter((item) => selectedFeedId === "all" || item.feedId === selectedFeedId)
-    .filter((item) => feedFilter === "all" || !feedState.read[item.id])
-    .filter(storyMatchesTopic)
-    .filter(storyMatchesQuery)
-    .sort((a, b) => feedTime(b) - feedTime(a));
+function unreadItems() {
+  return feedState.items.filter(isUnread);
+}
+
+function itemsForSource(source = selectedSource) {
+  if (source === "archive") return feedState.items.filter((item) => feedState.archived[item.id]);
+  if (source === "all") return unreadItems();
+  if (source.startsWith("folder:")) {
+    const folderId = source.slice(7);
+    const feedIds = new Set(feedState.feeds.filter((feed) => (feed.folderIds || []).includes(folderId)).map((feed) => feed.id));
+    return unreadItems().filter((item) => feedIds.has(item.feedId));
+  }
+  if (source.startsWith("feed:")) {
+    const feedId = source.slice(5);
+    return unreadItems().filter((item) => item.feedId === feedId);
+  }
+  return unreadItems();
+}
+
+function sourceTitle(source = selectedSource) {
+  if (source === "archive") return "Archive";
+  if (source === "all") return "All";
+  if (source.startsWith("folder:")) return feedState.folders.find((folder) => folder.id === source.slice(7))?.name || "Folder";
+  if (source.startsWith("feed:")) return feedRecord(source.slice(5))?.title || "Feed";
+  return "All";
+}
+
+function countLabel(count) {
+  return new Intl.NumberFormat(undefined).format(count);
 }
 
 function setFeedStatus(message) {
@@ -105,24 +176,41 @@ async function requestFeed(url) {
   return data;
 }
 
+function assignFolderNames(record, names) {
+  record.folderIds = Array.isArray(record.folderIds) ? record.folderIds : [];
+  names.filter(Boolean).forEach((name) => {
+    const folder = ensureFolder(name);
+    if (!record.folderIds.includes(folder.id)) record.folderIds.push(folder.id);
+  });
+}
+
 function storeFeed(feed, options = {}) {
   let record = feedState.feeds.find((item) => item.url === feed.url);
-  const topics = Array.isArray(options.topics) ? options.topics.filter(Boolean) : [];
+  const topicNames = (Array.isArray(options.topics) ? options.topics : []).map((topic) => TOPIC_LABELS[topic] || topic);
   if (!record) {
     record = {
       id: crypto.randomUUID(),
       url: feed.url,
       title: options.title || feed.title || feedHost(feed.url) || "Untitled feed",
       siteUrl: feed.siteUrl || "",
-      topics,
+      topics: Array.isArray(options.topics) ? options.topics : [],
+      folderIds: [],
       addedAt: new Date().toISOString(),
     };
+    assignFolderNames(record, [...topicNames, ...(options.folderNames || [])]);
+    (options.folderIds || []).forEach((id) => {
+      if (!record.folderIds.includes(id)) record.folderIds.push(id);
+    });
     feedState.feeds.unshift(record);
   } else {
-    if (!record.title) record.title = options.title || feed.title || "Untitled feed";
-    if (topics.length) record.topics = topics;
-    if (!Array.isArray(record.topics)) record.topics = [];
+    if (options.title) record.title = options.title;
+    else if (!record.title) record.title = feed.title || "Untitled feed";
     record.siteUrl = feed.siteUrl || record.siteUrl;
+    if (!Array.isArray(record.folderIds)) record.folderIds = [];
+    assignFolderNames(record, [...topicNames, ...(options.folderNames || [])]);
+    (options.folderIds || []).forEach((id) => {
+      if (!record.folderIds.includes(id)) record.folderIds.push(id);
+    });
   }
   const incoming = (feed.items || []).slice(0, FEED_ITEM_CAP).map((item) => ({
     id: `${record.id}:${item.id || item.link || item.title}`,
@@ -140,12 +228,151 @@ function storeFeed(feed, options = {}) {
     .filter((item) => item.feedId === record.id && !kept.has(item.id))
     .slice(0, FEED_ITEM_CAP)
     .forEach((item) => kept.set(item.id, item));
-  const merged = [...kept.values()]
-    .sort((a, b) => feedTime(b) - feedTime(a))
-    .slice(0, FEED_ITEM_CAP);
+  const merged = [...kept.values()].sort((a, b) => feedTime(b) - feedTime(a)).slice(0, FEED_ITEM_CAP);
   feedState.items = feedState.items.filter((item) => item.feedId !== record.id).concat(merged);
   saveFeedState();
   return record;
+}
+
+function applyPane() {
+  const track = document.querySelector("#feedsTrack");
+  if (track) {
+    track.dataset.pane = String(feedPane);
+    track.classList.toggle("is-reading", Boolean(selectedItemId));
+  }
+  const back = document.querySelector("#feedsBack");
+  if (back) back.hidden = !isPhoneFeeds() || feedPane === 0;
+  const title = document.querySelector("#feedsTitle");
+  const subtitle = document.querySelector("#feedsSubtitle");
+  const article = itemById(selectedItemId);
+  if (title) {
+    if (!isPhoneFeeds()) title.textContent = feedState.feedlyLabel || "Feeds";
+    else if (feedPane === 0) title.textContent = feedState.feedlyLabel || "Feeds";
+    else if (feedPane === 2) title.textContent = feedRecord(article?.feedId)?.title || "Article";
+    else title.textContent = sourceTitle();
+  }
+  if (subtitle) {
+    if (isPhoneFeeds() && feedPane === 1) {
+      const count = itemsForSource().length;
+      subtitle.textContent = selectedSource === "archive" ? `${countLabel(count)} archived` : `${countLabel(count)} unread`;
+    } else if (isPhoneFeeds() && feedPane === 2) {
+      subtitle.textContent = article?.author || "";
+    } else {
+      subtitle.textContent = `Today at ${formatClock(new Date().toISOString())}`;
+    }
+  }
+}
+
+function renderSources() {
+  const root = document.querySelector("#feedsSources");
+  if (!root) return;
+  const allCount = unreadItems().length;
+  const folders = feedState.folders.map((folder) => {
+    const feeds = feedState.feeds.filter((feed) => (feed.folderIds || []).includes(folder.id));
+    const count = itemsForSource(`folder:${folder.id}`).length;
+    const nested = folder.collapsed ? "" : `<ul>${feeds.map((feed) => {
+      const unread = itemsForSource(`feed:${feed.id}`).length;
+      return `<li><button type="button" data-source="feed:${escapeFeedText(feed.id)}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span class="feeds-feed-mark" aria-hidden="true"></span><span>${escapeFeedText(feed.title)}</span><em>${unread ? countLabel(unread) : ""}</em></button></li>`;
+    }).join("")}</ul>`;
+    return `<li class="feeds-folder">
+      <button class="feeds-folder-toggle" type="button" data-folder-toggle="${escapeFeedText(folder.id)}" aria-expanded="${folder.collapsed ? "false" : "true"}" aria-label="${folder.collapsed ? "Expand" : "Collapse"} ${escapeFeedText(folder.name)}">${folder.collapsed ? "›" : "⌄"}</button>
+      <button type="button" data-source="folder:${escapeFeedText(folder.id)}" aria-pressed="${selectedSource === `folder:${folder.id}` ? "true" : "false"}"><span>${escapeFeedText(folder.name)}</span><em>${count ? countLabel(count) : ""}</em></button>
+      ${nested}
+    </li>`;
+  }).join("");
+  const loose = feedState.feeds.filter((feed) => !(feed.folderIds || []).length).map((feed) => `<li><button type="button" data-source="feed:${escapeFeedText(feed.id)}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span class="feeds-feed-mark" aria-hidden="true"></span><span>${escapeFeedText(feed.title)}</span><em>${countLabel(itemsForSource(`feed:${feed.id}`).length)}</em></button></li>`).join("");
+  root.innerHTML = `<ul class="feeds-source-list">
+    <li><button type="button" data-source="all" aria-pressed="${selectedSource === "all" ? "true" : "false"}"><span>All items</span><em>${countLabel(allCount)}</em></button></li>
+    <li><button type="button" data-source="archive" aria-pressed="${selectedSource === "archive" ? "true" : "false"}"><span>Archive</span><em></em></button></li>
+  </ul>
+  <div class="feeds-folder-heading"><span>Folders</span></div>
+  <ul class="feeds-source-list">${folders}${loose}</ul>
+  ${feedState.feeds.length ? "" : `<p class="feeds-river-empty">Add a feed or connect Feedly to copy your subscriptions.</p>`}`;
+}
+
+function renderList() {
+  const river = document.querySelector("#feedRiver");
+  if (!river) return;
+  const items = itemsForSource().sort((a, b) => feedTime(b) - feedTime(a));
+  if (!items.length) {
+    river.innerHTML = `<p class="feeds-river-empty">${feedState.feeds.length ? "Nothing unread in this view." : "Stories you follow will show up here."}</p>`;
+    return;
+  }
+  let lastDay = "";
+  river.innerHTML = items.map((item) => {
+    const feed = feedRecord(item.feedId);
+    const day = dayKey(item.publishedAt);
+    const heading = day === lastDay ? "" : `<h3 class="feeds-day">${escapeFeedText(dayLabel(item.publishedAt))}</h3>`;
+    lastDay = day;
+    const when = formatClock(item.publishedAt);
+    return `${heading}<button class="feed-row${selectedItemId === item.id ? " is-selected" : ""}" type="button" data-open-story="${escapeFeedText(item.id)}">
+      <span class="feed-row-copy">
+        <span class="feed-row-source"><span>${escapeFeedText(feed?.title || "Feed")}</span>${when ? `<time>${escapeFeedText(when)}</time>` : ""}</span>
+        <strong>${feedState.starred[item.id] ? "★ " : ""}${escapeFeedText(item.title)}</strong>
+        ${item.summary ? `<span>${escapeFeedText(item.summary)}</span>` : ""}
+      </span>
+      ${item.image ? `<img src="${escapeFeedText(item.image)}" alt="" />` : `<span class="feed-row-thumb" aria-hidden="true"></span>`}
+    </button>`;
+  }).join("");
+}
+
+function renderReader() {
+  const reader = document.querySelector("#feedReader");
+  if (!reader) return;
+  const item = itemById(selectedItemId);
+  if (!item) {
+    reader.innerHTML = `<p class="feeds-river-empty">Select a story to read it.</p>`;
+    return;
+  }
+  const feed = feedRecord(item.feedId);
+  const when = item.publishedAt ? new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(item.publishedAt)) : "";
+  reader.innerHTML = `<article class="feed-article">
+    ${when ? `<p class="feed-article-date">${escapeFeedText(when)}</p>` : ""}
+    <h3>${escapeFeedText(item.title)}</h3>
+    ${item.author ? `<p class="feed-article-by">${escapeFeedText(item.author)}</p>` : ""}
+    <p class="feed-article-source">${escapeFeedText(feed?.title || "")}</p>
+    ${item.image ? `<img src="${escapeFeedText(item.image)}" alt="" />` : ""}
+    ${item.link ? `<a class="feed-article-link" href="${escapeFeedText(item.link)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(item.link) || "Open")} →</a>` : ""}
+    ${item.summary ? `<p class="feed-article-body">${escapeFeedText(item.summary)}</p>` : ""}
+    <div class="feed-article-actions">
+      <button class="ghost-button" type="button" data-star-item="${escapeFeedText(item.id)}">${feedState.starred[item.id] ? "Starred" : "Star"}</button>
+      <button class="ghost-button" type="button" data-archive-item="${escapeFeedText(item.id)}">${feedState.archived[item.id] ? "Archived" : "Archive"}</button>
+      ${item.videoUrl ? `<button class="ghost-button" type="button" data-save-video="${escapeFeedText(item.id)}">Save</button>` : ""}
+    </div>
+  </article>`;
+}
+
+function topicLabel(id) {
+  return catalogTopics.find((topic) => topic.id === id)?.label || TOPIC_LABELS[id] || id;
+}
+
+function renderDirectory() {
+  const box = document.querySelector("#feedDirectory");
+  const topics = document.querySelector("#feedTopics");
+  if (topics) {
+    topics.querySelectorAll("[data-feed-topic]").forEach((button) => {
+      button.setAttribute("aria-pressed", button.dataset.feedTopic === selectedTopic ? "true" : "false");
+    });
+  }
+  if (!box) return;
+  const active = Boolean(selectedTopic || catalogQuery.trim());
+  if (!active) {
+    box.innerHTML = "";
+    return;
+  }
+  if (!directoryFeeds.length) {
+    box.innerHTML = `<p class="feeds-directory-empty">No feeds match that search.</p>`;
+    return;
+  }
+  box.innerHTML = directoryFeeds.map((feed) => {
+    const following = feedState.feeds.some((item) => item.url === feed.url);
+    return `<article class="feed-directory-card">
+      <p>${escapeFeedText((feed.topics || []).map(topicLabel).join(" · "))}</p>
+      <h3>${escapeFeedText(feed.title)}</h3>
+      <p>${escapeFeedText(feed.blurb)}</p>
+      <button class="ghost-button" type="button" data-catalog-url="${escapeFeedText(feed.url)}" data-catalog-title="${escapeFeedText(feed.title)}" data-catalog-topics="${escapeFeedText((feed.topics || []).join(","))}" ${following ? "disabled" : ""}>${following ? "Following" : "Follow"}</button>
+    </article>`;
+  }).join("");
 }
 
 function renderFeedChoices() {
@@ -163,85 +390,12 @@ function renderFeedChoices() {
 }
 
 function renderFeeds() {
-  const list = document.querySelector("#feedList");
-  const empty = document.querySelector("#feedsEmpty");
-  const river = document.querySelector("#feedRiver");
-  if (!list || !river) return;
-  if (empty) empty.hidden = feedState.feeds.length > 0;
-  const allUnread = feedState.items.filter((item) => !feedState.read[item.id]).length;
-  list.innerHTML = feedState.feeds.length
-    ? `<li><button type="button" data-feed-id="all" aria-pressed="${selectedFeedId === "all" ? "true" : "false"}"><span>All</span><em>${allUnread}</em></button></li>${feedState.feeds
-      .map((feed) => `<li><button type="button" data-feed-id="${escapeFeedText(feed.id)}" aria-pressed="${selectedFeedId === feed.id ? "true" : "false"}"><span>${escapeFeedText(feed.title)}</span><em>${unreadCount(feed.id)}</em></button><button class="feed-unfollow" type="button" data-unfollow="${escapeFeedText(feed.id)}" aria-label="Unfollow ${escapeFeedText(feed.title)}">×</button></li>`)
-      .join("")}`
-    : "";
-
-  const items = visibleFeedItems();
-  river.innerHTML = items.length
-    ? items.map((item) => {
-      const feed = feedState.feeds.find((entry) => entry.id === item.feedId);
-      const read = Boolean(feedState.read[item.id]);
-      const when = formatFeedTime(item.publishedAt);
-      const source = [feed?.title, item.author].filter(Boolean).join(" · ");
-      const href = item.link || item.videoUrl;
-      return `<article class="feed-card${read ? " is-read" : ""}">
-        <a href="${escapeFeedText(href || "#")}" target="_blank" rel="noreferrer" data-open-item="${escapeFeedText(item.id)}" ${href ? "" : "aria-disabled=\"true\""}>
-          <p class="feed-card-meta"><span>${escapeFeedText(source)}</span>${when ? `<time datetime="${escapeFeedText(item.publishedAt)}">${escapeFeedText(when)}</time>` : ""}</p>
-          <h3>${escapeFeedText(item.title)}</h3>
-          ${item.summary ? `<p>${escapeFeedText(item.summary)}</p>` : ""}
-        </a>
-        <div class="feed-card-actions">
-          <button class="ghost-button" type="button" data-read-item="${escapeFeedText(item.id)}">${read ? "Keep unread" : "Mark read"}</button>
-          ${item.videoUrl ? `<button class="ghost-button" type="button" data-save-video="${escapeFeedText(item.id)}">Save</button>` : ""}
-        </div>
-      </article>`;
-    }).join("")
-    : `<p class="feeds-river-empty">${riverEmptyMessage()}</p>`;
-  document.querySelectorAll("[data-feed-filter]").forEach((button) => {
-    button.setAttribute("aria-pressed", button.dataset.feedFilter === feedFilter ? "true" : "false");
-  });
-  renderFeedChoices();
+  renderSources();
+  renderList();
+  renderReader();
   renderDirectory();
-}
-
-function riverEmptyMessage() {
-  if (!feedState.feeds.length && !selectedTopic && !catalogQuery) return "Follow a site or a feed URL. New stories collect here.";
-  if (selectedTopic || catalogQuery) return "No stories in this search yet. Follow a feed above to fill the river.";
-  if (feedFilter === "unread") return "Nothing unread in this view.";
-  return "No stories in this view yet.";
-}
-
-function topicLabel(id) {
-  return catalogTopics.find((topic) => topic.id === id)?.label || id;
-}
-
-function renderDirectory() {
-  const box = document.querySelector("#feedDirectory");
-  const topics = document.querySelector("#feedTopics");
-  if (topics) {
-    topics.querySelectorAll("[data-feed-topic]").forEach((button) => {
-      button.setAttribute("aria-pressed", (button.dataset.feedTopic || "") === selectedTopic ? "true" : "false");
-    });
-  }
-  if (!box) return;
-  const active = Boolean(selectedTopic || catalogQuery.trim());
-  box.hidden = !active;
-  if (!active) {
-    box.innerHTML = "";
-    return;
-  }
-  if (!directoryFeeds.length) {
-    box.innerHTML = `<p class="feeds-directory-empty">No feeds match that search.</p>`;
-    return;
-  }
-  box.innerHTML = directoryFeeds.map((feed) => {
-    const following = feedState.feeds.some((item) => item.url === feed.url);
-    return `<article class="feed-directory-card">
-      <p>${escapeFeedText(feed.topics.map(topicLabel).join(" · "))}</p>
-      <h3>${escapeFeedText(feed.title)}</h3>
-      <p>${escapeFeedText(feed.blurb)}</p>
-      <button class="ghost-button" type="button" data-catalog-url="${escapeFeedText(feed.url)}" data-catalog-title="${escapeFeedText(feed.title)}" data-catalog-topics="${escapeFeedText(feed.topics.join(","))}" ${following ? "disabled" : ""}>${following ? "Following" : "Follow"}</button>
-    </article>`;
-  }).join("");
+  renderFeedChoices();
+  applyPane();
 }
 
 async function loadDirectory() {
@@ -249,6 +403,11 @@ async function loadDirectory() {
   const params = new URLSearchParams();
   if (selectedTopic) params.set("topic", selectedTopic);
   if (catalogQuery.trim()) params.set("q", catalogQuery.trim());
+  if (!selectedTopic && !catalogQuery.trim()) {
+    directoryFeeds = [];
+    renderDirectory();
+    return;
+  }
   try {
     const response = await fetch(`/api/rss/catalog?${params}`);
     const data = await response.json().catch(() => ({}));
@@ -261,7 +420,7 @@ async function loadDirectory() {
     directoryFeeds = [];
     setFeedStatus(error.message || "The feed list could not be loaded.");
   }
-  renderFeeds();
+  renderDirectory();
 }
 
 async function followUrl(value, options = {}) {
@@ -272,17 +431,20 @@ async function followUrl(value, options = {}) {
     const result = await requestFeed(url);
     if (result.kind === "choices") {
       feedChoices = result.feeds || [];
-      setFeedStatus("");
+      setFeedStatus("Choose which feed to follow.");
       renderFeeds();
       return;
     }
     feedChoices = [];
     const record = storeFeed(result.feed, options);
-    selectedFeedId = record.id;
+    selectedSource = `feed:${record.id}`;
+    selectedItemId = "";
     const input = document.querySelector("#followFeedInput");
     if (input) input.value = "";
     setFeedStatus(`Following ${record.title}.`);
     renderFeeds();
+    if (isPhoneFeeds()) showPane(1);
+    document.querySelector("#feedsAddDialog")?.close();
   } catch (error) {
     setFeedStatus(error.message || "The feed could not be loaded.");
     renderFeeds();
@@ -294,39 +456,92 @@ async function refreshFeeds() {
   const button = document.querySelector("#refreshFeeds");
   if (button) button.disabled = true;
   setFeedStatus("Refreshing feeds…");
+  const queue = [...feedState.feeds];
   const failures = [];
-  for (const feed of [...feedState.feeds]) {
-    try {
-      const result = await requestFeed(feed.url);
-      if (result.kind === "feed") storeFeed(result.feed);
-    } catch (error) {
-      failures.push(`${feed.title}: ${error.message || "could not refresh"}`);
+  const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+    while (queue.length) {
+      const feed = queue.shift();
+      try {
+        const result = await requestFeed(feed.url);
+        if (result.kind === "feed") storeFeed(result.feed);
+      } catch (error) {
+        failures.push(feed.title);
+      }
     }
-  }
-  setFeedStatus(failures.length ? failures.join(" ") : "Feeds are up to date.");
+  });
+  await Promise.all(workers);
+  setFeedStatus(failures.length ? `Some feeds could not refresh: ${failures.slice(0, 3).join(", ")}` : "Feeds are up to date.");
   if (button) button.disabled = false;
   renderFeeds();
 }
 
-function unfollow(feedId) {
-  const feed = feedState.feeds.find((item) => item.id === feedId);
-  if (!feed) return;
-  if (!confirm(`Unfollow ${feed.title}?`)) return;
-  feedState.feeds = feedState.feeds.filter((item) => item.id !== feedId);
-  const removed = new Set(feedState.items.filter((item) => item.feedId === feedId).map((item) => item.id));
-  feedState.items = feedState.items.filter((item) => item.feedId !== feedId);
-  removed.forEach((id) => delete feedState.read[id]);
-  if (selectedFeedId === feedId) selectedFeedId = "all";
+async function connectFeedly(token) {
+  setFeedStatus("Copying Feedly subscriptions…");
+  const response = await fetch("/api/feedly/subscriptions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Feedly could not be connected.");
+  const importedFolders = data.folders || [];
+  importedFolders.forEach((folder) => ensureFolder(folder.name));
+  const imported = [];
+  (data.feeds || []).forEach((feed) => {
+    const names = (feed.folderIds || []).map((id) => importedFolders.find((folder) => folder.id === id)?.name).filter(Boolean);
+    let record = feedState.feeds.find((item) => item.url === feed.url);
+    if (!record) {
+      record = {
+        id: crypto.randomUUID(),
+        url: feed.url,
+        title: feed.title || feedHost(feed.url) || "Untitled feed",
+        siteUrl: feed.siteUrl || "",
+        topics: [],
+        folderIds: [],
+        addedAt: new Date().toISOString(),
+      };
+      feedState.feeds.push(record);
+    }
+    assignFolderNames(record, names);
+    if (feed.title) record.title = feed.title;
+    imported.push(record);
+  });
+  feedState.feedlyLabel = data.label || "Feedly";
+  feedState.feedlyToken = token;
   saveFeedState();
+  setFeedStatus(`Copied ${imported.length} subscriptions from Feedly. Loading stories…`);
+  renderFeeds();
+  document.querySelector("#feedsAddDialog")?.close();
+  const queue = [...imported];
+  const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+    while (queue.length) {
+      const feed = queue.shift();
+      try {
+        const result = await requestFeed(feed.url);
+        if (result.kind === "feed") storeFeed(result.feed, { title: feed.title, folderIds: feed.folderIds });
+      } catch {
+        /* Keep the subscription even if this refresh fails. */
+      }
+    }
+  });
+  await Promise.all(workers);
+  setFeedStatus(`Feedly is connected. ${feedState.feeds.length} subscriptions are in your folders.`);
   renderFeeds();
 }
 
-function markVisibleRead() {
-  visibleFeedItems().forEach((item) => {
-    feedState.read[item.id] = true;
-  });
+function openStory(id) {
+  const item = itemById(id);
+  if (!item) return;
+  selectedItemId = id;
+  if (!feedState.archived[id]) feedState.read[id] = true;
   saveFeedState();
   renderFeeds();
+  if (isPhoneFeeds()) showPane(2);
+}
+
+function showPane(index) {
+  feedPane = Math.max(0, Math.min(2, index));
+  applyPane();
 }
 
 function saveFeedVideo(item) {
@@ -343,43 +558,75 @@ function saveFeedVideo(item) {
   }));
 }
 
+function bindSwipe() {
+  const swipe = document.querySelector("#feedsSwipe");
+  if (!swipe || swipe.dataset.swipe === "true") return;
+  swipe.dataset.swipe = "true";
+  swipe.addEventListener("touchstart", (event) => {
+    if (!isPhoneFeeds() || event.touches.length !== 1) return;
+    const target = event.target.closest("input, textarea, a");
+    if (target) return;
+    touchStart = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+  }, { passive: true });
+  swipe.addEventListener("touchend", (event) => {
+    if (!touchStart) return;
+    const dx = event.changedTouches[0].clientX - touchStart.x;
+    const dy = event.changedTouches[0].clientY - touchStart.y;
+    touchStart = null;
+    if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    showPane(feedPane + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+}
+
 function bindFeedsDesk() {
   const panel = document.querySelector("#feedsPanel");
   if (!panel || panel.dataset.bound === "true") return;
   panel.dataset.bound = "true";
+  feedState.feeds.forEach((feed) => {
+    if (!Array.isArray(feed.folderIds)) feed.folderIds = [];
+    (feed.topics || []).forEach((topic) => {
+      const folder = ensureFolder(TOPIC_LABELS[topic] || topic);
+      if (!feed.folderIds.includes(folder.id)) feed.folderIds.push(folder.id);
+    });
+  });
+  bindSwipe();
+  document.querySelector("#feedsAdd")?.addEventListener("click", () => {
+    document.querySelector("#feedsAddDialog")?.showModal();
+    void loadDirectory();
+  });
+  document.querySelector("#feedsBack")?.addEventListener("click", () => showPane(feedPane - 1));
   document.querySelector("#followFeedForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     void followUrl(document.querySelector("#followFeedInput")?.value);
   });
-  document.querySelector("#feedTopicSearch")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-  });
+  document.querySelector("#feedTopicSearch")?.addEventListener("submit", (event) => event.preventDefault());
   document.querySelector("#feedTopicQuery")?.addEventListener("input", (event) => {
     catalogQuery = event.target.value || "";
+    selectedTopic = "";
     void loadDirectory();
+  });
+  document.querySelector("#feedlyConnectForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const token = document.querySelector("#feedlyToken")?.value || "";
+    void connectFeedly(token).catch((error) => setFeedStatus(error.message || "Feedly could not be connected."));
   });
   document.querySelector("#refreshFeeds")?.addEventListener("click", () => {
     void refreshFeeds();
   });
-  document.querySelector("#markFeedsRead")?.addEventListener("click", markVisibleRead);
   panel.addEventListener("click", (event) => {
     const topicButton = event.target.closest("[data-feed-topic]");
     if (topicButton) {
-      selectedTopic = topicButton.dataset.feedTopic || "";
+      selectedTopic = selectedTopic === topicButton.dataset.feedTopic ? "" : topicButton.dataset.feedTopic;
+      catalogQuery = "";
+      const query = document.querySelector("#feedTopicQuery");
+      if (query) query.value = "";
       void loadDirectory();
       return;
     }
     const catalogButton = event.target.closest("[data-catalog-url]");
-    if (catalogButton) {
-      const url = catalogButton.dataset.catalogUrl;
-      const existing = feedState.feeds.find((item) => item.url === url);
-      if (existing) {
-        selectedFeedId = existing.id;
-        renderFeeds();
-        return;
-      }
+    if (catalogButton && !catalogButton.disabled) {
       catalogButton.disabled = true;
-      void followUrl(url, {
+      void followUrl(catalogButton.dataset.catalogUrl, {
         title: catalogButton.dataset.catalogTitle,
         topics: (catalogButton.dataset.catalogTopics || "").split(",").filter(Boolean),
       });
@@ -391,58 +638,65 @@ function bindFeedsDesk() {
       if (feed) void followUrl(feed.url);
       return;
     }
-    const filter = event.target.closest("[data-feed-filter]");
-    if (filter) {
-      feedFilter = filter.dataset.feedFilter || "all";
+    const folderToggle = event.target.closest("[data-folder-toggle]");
+    if (folderToggle) {
+      const folder = feedState.folders.find((item) => item.id === folderToggle.dataset.folderToggle);
+      if (folder) {
+        folder.collapsed = !folder.collapsed;
+        saveFeedState();
+        renderFeeds();
+      }
+      return;
+    }
+    const sourceButton = event.target.closest("[data-source]");
+    if (sourceButton) {
+      selectedSource = sourceButton.dataset.source || "all";
+      selectedItemId = "";
       renderFeeds();
+      if (isPhoneFeeds()) showPane(1);
       return;
     }
-    const unfollowButton = event.target.closest("[data-unfollow]");
-    if (unfollowButton) {
-      unfollow(unfollowButton.dataset.unfollow);
+    const story = event.target.closest("[data-open-story]");
+    if (story) {
+      openStory(story.dataset.openStory);
       return;
     }
-    const feedButton = event.target.closest("[data-feed-id]");
-    if (feedButton) {
-      selectedFeedId = feedButton.dataset.feedId || "all";
-      renderFeeds();
-      return;
-    }
-    const readButton = event.target.closest("[data-read-item]");
-    if (readButton) {
-      const id = readButton.dataset.readItem;
-      if (feedState.read[id]) delete feedState.read[id];
-      else feedState.read[id] = true;
+    const star = event.target.closest("[data-star-item]");
+    if (star) {
+      const id = star.dataset.starItem;
+      if (feedState.starred[id]) delete feedState.starred[id];
+      else feedState.starred[id] = true;
       saveFeedState();
       renderFeeds();
+      return;
+    }
+    const archive = event.target.closest("[data-archive-item]");
+    if (archive) {
+      const id = archive.dataset.archiveItem;
+      if (feedState.archived[id]) delete feedState.archived[id];
+      else {
+        feedState.archived[id] = true;
+        feedState.read[id] = true;
+      }
+      saveFeedState();
+      if (feedState.archived[id] && selectedSource !== "archive") selectedItemId = "";
+      renderFeeds();
+      if (isPhoneFeeds() && !selectedItemId) showPane(1);
       return;
     }
     const saveButton = event.target.closest("[data-save-video]");
-    if (saveButton) {
-      saveFeedVideo(feedState.items.find((item) => item.id === saveButton.dataset.saveVideo));
-      return;
-    }
-    const open = event.target.closest("[data-open-item]");
-    if (open) {
-      if (!open.getAttribute("href") || open.getAttribute("href") === "#") event.preventDefault();
-      feedState.read[open.dataset.openItem] = true;
-      saveFeedState();
-      open.closest(".feed-card")?.classList.add("is-read");
-      const readButton = open.parentElement?.querySelector("[data-read-item]");
-      if (readButton) readButton.textContent = "Keep unread";
-      setTimeout(renderFeeds, 0);
-    }
+    if (saveButton) saveFeedVideo(itemById(saveButton.dataset.saveVideo));
   });
   document.querySelector("#desk-feeds")?.addEventListener("change", () => {
     if (!document.querySelector("#desk-feeds")?.checked) return;
     renderFeeds();
-    if (!feedsRefreshed) {
+    if (!feedsRefreshed && feedState.feeds.length && feedState.feeds.length <= 12) {
       feedsRefreshed = true;
       void refreshFeeds();
     }
   });
+  window.addEventListener("resize", applyPane);
   renderFeeds();
-  void loadDirectory();
 }
 
 document.addEventListener("DOMContentLoaded", bindFeedsDesk);

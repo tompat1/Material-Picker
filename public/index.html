@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-88" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-89" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -358,27 +358,42 @@
           <p class="playlist-empty" id="favouriteEmpty" data-cms="favourites.empty">No favourites yet. Use the heart on a video to save it here.</p>
         </section>
         <section class="nav-panel feeds-panel" id="feedsPanel" aria-labelledby="feedsTitle">
-          <header class="feeds-head">
-            <div>
-              <p class="eyebrow">Feeds</p>
-              <h2 id="feedsTitle">Your river</h2>
+          <header class="feeds-reeder-bar">
+            <button class="feeds-icon-button" id="feedsBack" type="button" hidden aria-label="Back">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5"/></svg>
+            </button>
+            <div class="feeds-reeder-title">
+              <h2 id="feedsTitle">Feeds</h2>
+              <p id="feedsSubtitle"></p>
             </div>
-            <div class="feeds-tools">
-              <div class="feeds-filters" role="group" aria-label="River filter">
-                <button type="button" data-feed-filter="all" aria-pressed="true">All</button>
-                <button type="button" data-feed-filter="unread" aria-pressed="false">Unread</button>
-              </div>
-              <button class="ghost-button" id="markFeedsRead" type="button">Mark read</button>
-              <button class="ghost-button" id="refreshFeeds" type="button">Refresh</button>
-            </div>
+            <button class="feeds-icon-button" id="feedsAdd" type="button" aria-label="Add feeds">+</button>
           </header>
-          <div class="feeds-discover">
+          <p class="feeds-status" id="feedsStatus" role="status"></p>
+          <div class="feeds-swipe" id="feedsSwipe">
+            <div class="feeds-track" id="feedsTrack" data-pane="0">
+              <section class="feeds-pane feeds-pane--sources" id="feedsSources" aria-label="Subscriptions"></section>
+              <section class="feeds-pane feeds-pane--list" id="feedRiver" aria-live="polite"></section>
+              <section class="feeds-pane feeds-pane--reader" id="feedReader" aria-label="Article"></section>
+            </div>
+          </div>
+          <dialog class="feeds-add-dialog" id="feedsAddDialog">
+            <form method="dialog" class="feeds-add-close">
+              <button type="submit" aria-label="Close">Close</button>
+            </form>
+            <h3>Add</h3>
+            <form id="followFeedForm">
+              <label for="followFeedInput">Follow a site or feed</label>
+              <div class="input-row">
+                <input id="followFeedInput" type="text" inputmode="url" autocomplete="url" placeholder="https://example.com" required />
+                <button class="primary-button" type="submit">Follow</button>
+              </div>
+            </form>
+            <div id="feedChoices" hidden></div>
             <form id="feedTopicSearch" role="search">
-              <label for="feedTopicQuery">Search feeds</label>
+              <label for="feedTopicQuery">Search by topic</label>
               <input id="feedTopicQuery" type="search" placeholder="Movies, gaming, AI, Apple…" />
             </form>
             <div class="feeds-topics" id="feedTopics" role="group" aria-label="Feed topics">
-              <button type="button" data-feed-topic="" aria-pressed="true">All</button>
               <button type="button" data-feed-topic="news">News</button>
               <button type="button" data-feed-topic="tech">Tech</button>
               <button type="button" data-feed-topic="apple">Apple</button>
@@ -390,24 +405,20 @@
               <button type="button" data-feed-topic="business">Business</button>
               <button type="button" data-feed-topic="sports">Sports</button>
             </div>
-            <div class="feeds-directory" id="feedDirectory" hidden></div>
-          </div>
-          <div class="feeds-layout">
-            <aside class="feeds-rail">
-              <form id="followFeedForm">
-                <label for="followFeedInput">Follow a site or feed</label>
-                <div class="input-row">
-                  <input id="followFeedInput" type="text" inputmode="url" autocomplete="url" placeholder="https://example.com" required />
-                  <button class="primary-button" type="submit">Follow</button>
-                </div>
-              </form>
-              <p class="feeds-status" id="feedsStatus" role="status"></p>
-              <div id="feedChoices" hidden></div>
-              <ul class="feed-list" id="feedList"></ul>
-              <p class="feeds-empty" id="feedsEmpty">Subscriptions stay in this browser.</p>
-            </aside>
-            <div class="feeds-river" id="feedRiver" aria-live="polite"></div>
-          </div>
+            <div class="feeds-directory" id="feedDirectory"></div>
+            <form id="feedlyConnectForm">
+              <label for="feedlyToken">Feedly account</label>
+              <p class="feeds-feedly-note">Paste a token from your Feedly account. Folders and subscriptions are copied into this browser.</p>
+              <div class="input-row">
+                <input id="feedlyToken" type="password" autocomplete="off" placeholder="Feedly token" />
+                <button class="primary-button" type="submit">Connect</button>
+              </div>
+              <a href="https://feedly.com/v3/auth/dev" target="_blank" rel="noreferrer">Get a token while signed in to Feedly</a>
+            </form>
+            <div class="button-row">
+              <button class="ghost-button" id="refreshFeeds" type="button">Refresh</button>
+            </div>
+          </dialog>
         </section>
         <section class="nav-panel shop-panel" id="shopPanel" data-colorway="espresso" aria-labelledby="shopTitle">
           <header class="shop-head">
@@ -872,6 +883,6 @@
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
     <script src="./app.js?v=picker-nav-108" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-2" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-3" defer></script>
   </body>
 </html>
