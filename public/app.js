@@ -402,6 +402,18 @@ function bindEvents() {
   els.localFolderInput?.addEventListener("change", handleLocalFolderInput);
   els.importForm.addEventListener("submit", handleImport);
   document.querySelector("#topicSearchForm")?.addEventListener("submit", searchTopics);
+  document.addEventListener("picker:add-video", (event) => {
+    const video = event.detail || {};
+    const url = String(video.url || video.sourceUrl || "");
+    if (!/^https?:\/\//i.test(url)) return;
+    const existing = state.videos.find((item) => item.url === url || item.sourceUrl === url);
+    if (existing) {
+      setStatus(`“${existing.title || "That video"}” is already in the library.`);
+      return;
+    }
+    addVideo({ ...video, url }, { reveal: false });
+    setStatus(`Saved “${video.title || "video"}” to the library.`);
+  });
   document.addEventListener("click", (event) => {
     const librarySectionToggle = event.target.closest("[data-library-section-toggle]");
     if (librarySectionToggle) {

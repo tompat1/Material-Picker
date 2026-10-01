@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_ENV=development node --watch --watch-path=./public --watch-path=./video-chapters.mjs --watch-path=./video-search.mjs server.js",
+    "dev": "NODE_ENV=development node --watch --watch-path=./public --watch-path=./video-chapters.mjs --watch-path=./video-search.mjs --watch-path=./rss.mjs server.js",
     "build": "npm test && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler deploy",
     "preview": "wrangler dev",

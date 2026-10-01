@@ -170,6 +170,23 @@ function sendJson(response, status, data) {
   response.end(JSON.stringify(data));
 }
 
+async function handleRss(response, requestUrl) {
+  const target = requestUrl.searchParams.get("url");
+  if (!target) return sendJson(response, 400, { error: "A feed or page URL is required." });
+  try {
+    const { loadFeed, RSS_ACCEPT, RSS_CONTENT_TYPE } = await import("./rss.mjs");
+    const result = await loadFeed(target, (value) => fetchRemoteText(value, {
+      accept: RSS_ACCEPT,
+      contentTypePattern: RSS_CONTENT_TYPE,
+    }));
+    return sendJson(response, 200, result);
+  } catch (error) {
+    const message = error.message || "The feed could not be loaded.";
+    const blocked = error instanceof TypeError || /private|credential|not valid|Only HTTP|not allowed/i.test(message);
+    return sendJson(response, error.status || (blocked ? 400 : 502), { error: message });
+  }
+}
+
 async function handleVideoSearch(response, requestUrl) {
   try {
     const { searchVideos, videoFeed } = await import("./video-search.mjs");
@@ -1856,6 +1873,9 @@ function startServer() {
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/video-search") {
       return handleVideoSearch(response, requestUrl);
+    }
+    if (request.method === "GET" && requestUrl.pathname === "/api/rss") {
+      return handleRss(response, requestUrl);
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/scrape") {
       return handleScrape(request, response, requestUrl);
