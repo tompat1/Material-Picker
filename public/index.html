@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-89" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-90" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -366,12 +366,11 @@
               <h2 id="feedsTitle">Feeds</h2>
               <p id="feedsSubtitle"></p>
             </div>
-            <button class="feeds-icon-button" id="feedsAdd" type="button" aria-label="Add feeds">+</button>
+            <button class="feeds-icon-button" id="feedsAdd" type="button" aria-label="Set up feeds">+</button>
           </header>
           <p class="feeds-status" id="feedsStatus" role="status"></p>
           <div class="feeds-swipe" id="feedsSwipe">
             <div class="feeds-track" id="feedsTrack" data-pane="0">
-              <section class="feeds-pane feeds-pane--sources" id="feedsSources" aria-label="Subscriptions"></section>
               <section class="feeds-pane feeds-pane--list" id="feedRiver" aria-live="polite"></section>
               <section class="feeds-pane feeds-pane--reader" id="feedReader" aria-label="Article"></section>
             </div>
@@ -380,7 +379,7 @@
             <form method="dialog" class="feeds-add-close">
               <button type="submit" aria-label="Close">Close</button>
             </form>
-            <h3>Add</h3>
+            <h3>Setup</h3>
             <form id="followFeedForm">
               <label for="followFeedInput">Follow a site or feed</label>
               <div class="input-row">
@@ -406,6 +405,7 @@
               <button type="button" data-feed-topic="sports">Sports</button>
             </div>
             <div class="feeds-directory" id="feedDirectory"></div>
+            <section class="feeds-setup-sources" id="feedsSources" aria-label="Subscriptions"></section>
             <form id="feedlyConnectForm">
               <label for="feedlyToken">Feedly account</label>
               <p class="feeds-feedly-note">Paste a token from your Feedly account. Folders and subscriptions are copied into this browser.</p>
@@ -883,6 +883,6 @@
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
     <script src="./app.js?v=picker-nav-108" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-3" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-4" defer></script>
   </body>
 </html>

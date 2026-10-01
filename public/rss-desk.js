@@ -245,20 +245,16 @@ function applyPane() {
   const title = document.querySelector("#feedsTitle");
   const subtitle = document.querySelector("#feedsSubtitle");
   const article = itemById(selectedItemId);
+  const onArticle = isPhoneFeeds() && feedPane === 1;
   if (title) {
-    if (!isPhoneFeeds()) title.textContent = feedState.feedlyLabel || "Feeds";
-    else if (feedPane === 0) title.textContent = feedState.feedlyLabel || "Feeds";
-    else if (feedPane === 2) title.textContent = feedRecord(article?.feedId)?.title || "Article";
-    else title.textContent = sourceTitle();
+    title.textContent = onArticle ? (feedRecord(article?.feedId)?.title || "Article") : sourceTitle();
   }
   if (subtitle) {
-    if (isPhoneFeeds() && feedPane === 1) {
-      const count = itemsForSource().length;
-      subtitle.textContent = selectedSource === "archive" ? `${countLabel(count)} archived` : `${countLabel(count)} unread`;
-    } else if (isPhoneFeeds() && feedPane === 2) {
+    if (onArticle) {
       subtitle.textContent = article?.author || "";
     } else {
-      subtitle.textContent = `Today at ${formatClock(new Date().toISOString())}`;
+      const count = itemsForSource().length;
+      subtitle.textContent = selectedSource === "archive" ? `${countLabel(count)} archived` : `${countLabel(count)} unread`;
     }
   }
 }
@@ -442,8 +438,8 @@ async function followUrl(value, options = {}) {
     const input = document.querySelector("#followFeedInput");
     if (input) input.value = "";
     setFeedStatus(`Following ${record.title}.`);
+    feedPane = 0;
     renderFeeds();
-    if (isPhoneFeeds()) showPane(1);
     document.querySelector("#feedsAddDialog")?.close();
   } catch (error) {
     setFeedStatus(error.message || "The feed could not be loaded.");
@@ -508,6 +504,9 @@ async function connectFeedly(token) {
   });
   feedState.feedlyLabel = data.label || "Feedly";
   feedState.feedlyToken = token;
+  selectedSource = "all";
+  selectedItemId = "";
+  feedPane = 0;
   saveFeedState();
   setFeedStatus(`Copied ${imported.length} subscriptions from Feedly. Loading stories…`);
   renderFeeds();
@@ -535,12 +534,12 @@ function openStory(id) {
   selectedItemId = id;
   if (!feedState.archived[id]) feedState.read[id] = true;
   saveFeedState();
+  feedPane = 1;
   renderFeeds();
-  if (isPhoneFeeds()) showPane(2);
 }
 
 function showPane(index) {
-  feedPane = Math.max(0, Math.min(2, index));
+  feedPane = Math.max(0, Math.min(1, index));
   applyPane();
 }
 
@@ -573,8 +572,10 @@ function bindSwipe() {
     const dy = event.clientY - touchStart.y;
     touchStart = null;
     if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+    const next = feedPane + (dx < 0 ? 1 : -1);
+    if (next > 0 && !selectedItemId) return;
     swipe.dataset.suppressClick = "true";
-    showPane(feedPane + (dx < 0 ? 1 : -1));
+    showPane(next);
   });
   swipe.addEventListener("click", (event) => {
     if (swipe.dataset.suppressClick !== "true") return;
@@ -603,7 +604,7 @@ function bindFeedsDesk() {
     document.querySelector("#feedsAddDialog")?.showModal();
     void loadDirectory();
   });
-  document.querySelector("#feedsBack")?.addEventListener("click", () => showPane(feedPane - 1));
+  document.querySelector("#feedsBack")?.addEventListener("click", () => showPane(0));
   document.querySelector("#followFeedForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     void followUrl(document.querySelector("#followFeedInput")?.value);
@@ -661,8 +662,9 @@ function bindFeedsDesk() {
     if (sourceButton) {
       selectedSource = sourceButton.dataset.source || "all";
       selectedItemId = "";
+      feedPane = 0;
       renderFeeds();
-      if (isPhoneFeeds()) showPane(1);
+      document.querySelector("#feedsAddDialog")?.close();
       return;
     }
     const story = event.target.closest("[data-open-story]");
@@ -689,8 +691,8 @@ function bindFeedsDesk() {
       }
       saveFeedState();
       if (feedState.archived[id] && selectedSource !== "archive") selectedItemId = "";
+      if (!selectedItemId) feedPane = 0;
       renderFeeds();
-      if (isPhoneFeeds() && !selectedItemId) showPane(1);
       return;
     }
     const saveButton = event.target.closest("[data-save-video]");
