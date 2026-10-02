@@ -1870,6 +1870,7 @@ let youtubeShelf = {
   liked: [],
   playlistVideos: [],
   view: "all",
+  topic: "",
   channelId: "",
   playlistId: "",
   playlistTitle: "",
@@ -1878,6 +1879,110 @@ let youtubeShelf = {
   channelVideosId: "",
   channelCache: {},
 };
+
+function getDerivedYouTubeTopics(shelf) {
+  const allVideos = [...(shelf.subscriptions || []), ...(shelf.liked || [])];
+  const topicsMap = new Map();
+
+  // 1. All chip (default)
+  topicsMap.set("All", { label: "All", topic: "", count: 9999 });
+
+  // 2. Dynamic status filters if matching videos exist
+  if (allVideos.some((v) => v?.publishedAt && Date.now() - Date.parse(v.publishedAt) <= 72 * 3600 * 1000)) {
+    topicsMap.set("Recently uploaded", { label: "Recently uploaded", topic: "Recently uploaded", count: 9900 });
+  }
+
+  // 3. User YouTube playlists
+  const skipPlaylists = new Set(["liked videos", "watch later", "favorites", "favourites"]);
+  (shelf.playlists || []).forEach((p) => {
+    const title = String(p.title || "").trim();
+    if (title && !skipPlaylists.has(title.toLowerCase())) {
+      topicsMap.set(title, { label: title, topic: title, count: 500 });
+    }
+  });
+
+  // 4. Predefined interest domains matched against user's feed data
+  const domainCandidates = [
+    { label: "Role-Playing Games", keywords: ["role-playing", "rpg", "d&d", "baldurs gate", "elden ring", "skyrim", "fallout", "jrpg"] },
+    { label: "Vocal Music", keywords: ["vocal music", "vocals", "singing", "choir", "vocalist", "acapella"] },
+    { label: "Mixes", keywords: ["mix", "mixes", "compilation", "playlist", "remix", "set"] },
+    { label: "Satire", keywords: ["satire", "parody", "sketch", "comedy", "satirical"] },
+    { label: "Live", keywords: ["live", "stream", "livestream", "broadcast"] },
+    { label: "Supercar", keywords: ["supercar", "hypercar", "ferrari", "lamborghini", "porsche", "bugatti", "mclaren", "racing"] },
+    { label: "Podcasts", keywords: ["podcast", "podcasts", "interview", "discussion", "talk show"] },
+    { label: "Music", keywords: ["music", "song", "album", "track", "concert", "band", "soundtrack"] },
+    { label: "Trailers", keywords: ["trailer", "trailers", "teaser", "first look", "preview"] },
+    { label: "Electrical Engineering", keywords: ["electrical engineering", "circuit", "electronics", "microcontroller", "pcb", "soldering", "voltage"] },
+    { label: "Gaming", keywords: ["gameplay", "gaming", "walkthrough", "playthrough", "gamer", "nintendo", "playstation", "xbox"] },
+    { label: "Tech & AI", keywords: ["tech", "ai", "machine learning", "apple", "google", "hardware", "software", "gpu", "cpu"] },
+    { label: "Science & Engineering", keywords: ["science", "physics", "engineering", "math", "chemistry", "space", "astronomy"] },
+    { label: "News & Analysis", keywords: ["news", "update", "analysis", "breakdown", "explained", "documentary"] },
+    { label: "Reviews", keywords: ["review", "unboxing", "hands-on", "vs", "benchmark"] },
+    { label: "Tutorials", keywords: ["tutorial", "how to", "guide", "course", "masterclass", "learn"] },
+  ];
+
+  for (const candidate of domainCandidates) {
+    let count = 0;
+    for (const v of allVideos) {
+      const text = `${v.title || ""} ${v.speaker || ""} ${v.channelTitle || ""}`.toLowerCase();
+      if (candidate.keywords.some((kw) => text.includes(kw))) {
+        count++;
+      }
+    }
+    if (count > 0) {
+      topicsMap.set(candidate.label, { label: candidate.label, topic: candidate.label, count });
+    }
+  }
+
+  // 5. Frequent creator channels (channels with 2+ videos in feed)
+  (shelf.channels || []).forEach((c) => {
+    const title = String(c.title || "").trim();
+    if (title.length > 2 && title.length < 24 && !topicsMap.has(title)) {
+      const videoCount = allVideos.filter((v) => v.channelId === c.id || v.speaker === title).length;
+      if (videoCount >= 2) {
+        topicsMap.set(title, { label: title, topic: title, count: videoCount });
+      }
+    }
+  });
+
+  const list = Array.from(topicsMap.values());
+  const allItem = list.find((i) => i.label === "All") || { label: "All", topic: "", count: 9999 };
+  const customItems = list.filter((i) => i.label !== "All").sort((a, b) => b.count - a.count);
+
+  return [allItem, ...customItems].map((i) => i.label);
+}
+
+function youtubeTopicMatches(item) {
+  if (!youtubeShelf.topic || youtubeShelf.topic === "All") return true;
+  const topicLower = youtubeShelf.topic.toLowerCase();
+
+  if (topicLower === "recently uploaded") {
+    if (!item?.publishedAt) return true;
+    const ageMs = Date.now() - Date.parse(item.publishedAt);
+    return ageMs <= 72 * 3600 * 1000;
+  }
+
+  const knownKeywords = {
+    "role-playing games": ["role-playing", "rpg", "d&d", "baldurs gate", "elden ring", "skyrim", "fallout", "jrpg"],
+    "vocal music": ["vocal music", "vocals", "singing", "choir", "vocalist", "acapella"],
+    "mixes": ["mix", "mixes", "compilation", "playlist", "remix", "set"],
+    "satire": ["satire", "parody", "sketch", "comedy", "satirical"],
+    "live": ["live", "stream", "livestream", "broadcast"],
+    "supercar": ["supercar", "hypercar", "ferrari", "lamborghini", "porsche", "bugatti", "mclaren", "racing"],
+    "podcasts": ["podcast", "podcasts", "interview", "discussion", "talk show"],
+    "music": ["music", "song", "album", "track", "concert", "band", "soundtrack"],
+    "trailers": ["trailer", "trailers", "teaser", "first look", "preview"],
+    "electrical engineering": ["electrical engineering", "circuit", "electronics", "microcontroller", "pcb", "soldering", "voltage"],
+    "gaming": ["gameplay", "gaming", "walkthrough", "playthrough", "gamer", "nintendo", "playstation", "xbox"],
+    "tech & ai": ["tech", "ai", "machine learning", "apple", "google", "hardware", "software", "gpu", "cpu"],
+    "science & engineering": ["science", "physics", "engineering", "math", "chemistry", "space", "astronomy"],
+  };
+
+  const keywords = knownKeywords[topicLower] || [topicLower];
+  const targetText = `${item?.title || ""} ${item?.speaker || ""} ${item?.channelTitle || ""}`.toLowerCase();
+
+  return keywords.some((kw) => targetText.includes(kw));
+}
 
 function youtubeWhen(value) {
   const then = Date.parse(value || "");
@@ -1905,17 +2010,17 @@ function youtubeTextMatches(item) {
 }
 
 function youtubeShelfVideos() {
-  if (youtubeShelf.view === "liked") return youtubeShelf.liked.filter(youtubeTextMatches);
+  if (youtubeShelf.view === "liked") return youtubeShelf.liked.filter((item) => youtubeTextMatches(item) && youtubeTopicMatches(item));
   if (youtubeShelf.view === "shorts") {
-    return youtubeShelf.subscriptions.filter((video) => video?.short === true && video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
+    return youtubeShelf.subscriptions.filter((video) => video?.short === true && video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video) && youtubeTopicMatches(video));
   }
-  if (youtubeShelf.view === "playlist") return youtubeShelf.playlistVideos.filter(youtubeTextMatches);
+  if (youtubeShelf.view === "playlist") return youtubeShelf.playlistVideos.filter((item) => youtubeTextMatches(item) && youtubeTopicMatches(item));
   const videos = youtubeShelf.view === "channel"
     ? (youtubeShelf.channelVideosId === youtubeShelf.channelId && youtubeShelf.channelVideos.length
       ? youtubeShelf.channelVideos
       : youtubeShelf.subscriptions.filter((video) => video.channelId === youtubeShelf.channelId))
     : youtubeShelf.subscriptions;
-  const filtered = videos.filter((video) => video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
+  const filtered = videos.filter((video) => video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video) && youtubeTopicMatches(video));
   if (youtubeShelf.view === "all") {
     const regular = filtered.filter((v) => !v?.short);
     const shorts = filtered.filter((v) => v?.short === true);
@@ -2044,9 +2149,27 @@ function bindYouTubeSwipe() {
   }, true);
 }
 
+function updateYouTubeTopicBar() {
+  const container = document.querySelector("#youtubeTopicsBar");
+  if (!container) return;
+  const topics = getDerivedYouTubeTopics(youtubeShelf);
+  if (!topics || topics.length <= 1) {
+    container.innerHTML = "";
+    container.style.display = "none";
+    return;
+  }
+  container.style.display = "flex";
+  const currentTopic = youtubeShelf.topic || "";
+  container.innerHTML = topics.map((t) => {
+    const active = (t === currentTopic) || (!currentTopic && t === "All");
+    return `<button class="yt-topic-chip${active ? " is-active" : ""}" type="button" data-youtube-topic="${escapeHtml(t)}" aria-pressed="${active ? "true" : "false"}">${escapeHtml(t)}</button>`;
+  }).join("");
+}
+
 function paintYouTubeGrid(message = "") {
   const grid = document.querySelector("#youtubeGrid");
   if (!grid) return;
+  updateYouTubeTopicBar();
   bindYouTubeSwipe();
   document.querySelectorAll("[data-youtube-view], [data-youtube-channel]").forEach((button) => {
     const view = button.dataset.youtubeView;
@@ -2228,6 +2351,7 @@ function renderYouTubeHome(data) {
           <button type="button" data-youtube-view="playlists" aria-pressed="false">Playlists</button>
           <button type="button" data-youtube-view="liked" aria-pressed="false">Liked videos</button>
         </div>
+        <div class="yt-topics-bar" id="youtubeTopicsBar" role="group" aria-label="YouTube topic filters"></div>
         <div class="yt-grid" id="youtubeGrid"></div>
       </div>
     </div>
@@ -2236,6 +2360,13 @@ function renderYouTubeHome(data) {
 }
 
 function onYouTubeHomeClick(event) {
+  const topicBtn = event.target.closest("[data-youtube-topic]");
+  if (topicBtn) {
+    const selected = topicBtn.dataset.youtubeTopic || "";
+    youtubeShelf.topic = (youtubeShelf.topic === selected || selected === "All") ? "" : selected;
+    paintYouTubeGrid();
+    return;
+  }
   const hide = event.target.closest("[data-youtube-hide]");
   if (hide) {
     const card = hide.closest(".yt-card");
