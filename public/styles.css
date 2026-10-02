@@ -5500,6 +5500,21 @@ html[data-picker-theme="new-age"] .history-list {
     box-shadow: var(--shadow);
   }
 
+  body.is-more-open .nav-sub label[for="desk-downloads"],
+  [data-library-filter="offline"],
+  .topic-download,
+  #downloadCurrentButton,
+  .card-download-progress,
+  .recent-offline,
+  .playback-badge[data-status="offline"],
+  .playback-badge[data-status="saving"],
+  .playback-badge[data-status="paused"],
+  .playback-badge[data-status="verified"],
+  .playback-badge[data-status="incomplete"],
+  .playback-badge[data-status="failed"] {
+    display: none;
+  }
+
   body.is-more-open .nav-sub label,
   .more-action {
     display: flex;

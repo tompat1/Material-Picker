@@ -583,6 +583,11 @@ function bindEvents() {
   els.retryPlaybackButton.addEventListener("click", retryPlayback);
   document.querySelector("#reconnectFolderButton")?.addEventListener("click", () => void mountImportFolder());
   els.renameCollectionButton?.addEventListener("click", renameActiveCollection);
+  window.matchMedia("(max-width: 760px)").addEventListener("change", () => {
+    renderLibrary();
+    renderFavourites();
+    renderPlaylists();
+  });
   els.searchLibrary.addEventListener("input", () => {
     syncNavSearch();
     queueLibraryTopicSearch();
@@ -3642,6 +3647,8 @@ async function measureLibraryMedia() {
 }
 
 function renderLibrary() {
+  if (phoneLayout() && mobileLibraryFilter === "offline") mobileLibraryFilter = "all";
+  if (phoneLayout() && document.querySelector("#desk-downloads")?.checked) showDesk("library");
   syncLibraryFilters();
   syncLibrarySectionChrome();
   const filtered = visibleVideos();
@@ -3784,10 +3791,25 @@ function videoInAnyPlaylist(videoId) {
   return playlists().some((playlist) => (playlist.videoIds || []).includes(videoId));
 }
 
+function phoneLayout() {
+  return window.matchMedia("(max-width: 760px)").matches;
+}
+
+function isOfflineVideo(video) {
+  const url = String(video?.url || "");
+  if (/^(blob:|file:)/i.test(url)) return true;
+  if (url.startsWith("/local-media/") || url.startsWith("/offline-media/") || url.includes("/hls-package/")) return true;
+  return hasDiskCopy(video);
+}
+
+function phoneLibraryVideo(video) {
+  return !phoneLayout() || !isOfflineVideo(video);
+}
+
 function playlistVideos(playlist) {
   return (playlist.videoIds || []).flatMap((id) => {
     const video = state.videos.find((item) => item.id === id);
-    return video ? [video] : [];
+    return video && phoneLibraryVideo(video) ? [video] : [];
   });
 }
 
@@ -4253,7 +4275,7 @@ function isFavourite(videoId) {
 function favouriteVideos() {
   return favouriteIds().flatMap((id) => {
     const video = state.videos.find((item) => item.id === id);
-    return video ? [video] : [];
+    return video && phoneLibraryVideo(video) ? [video] : [];
   });
 }
 
@@ -4321,6 +4343,7 @@ function syncLibraryFilters() {
 function visibleVideos() {
   const query = els.searchLibrary.value.trim().toLowerCase();
   return state.videos.filter((video) => {
+    if (!phoneLibraryVideo(video)) return false;
     if (core.feedVoteForUrl(state, video.url) === -1) return false;
     const matchesSearch = [video.title, video.speaker, video.tags, video.notes, video.url]
       .join(" ")
