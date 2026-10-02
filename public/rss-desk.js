@@ -1565,9 +1565,9 @@ function bindSwipe() {
   });
   swipe.addEventListener("pointerup", (event) => {
     if (!touchStart || event.pointerId !== touchStart.id) return;
-    const dx = event.clientX - touchStart.x;
-    const dy = event.clientY - touchStart.y;
-    const article = touchStart.article;
+    const { x, y, article } = touchStart;
+    const dx = event.clientX - x;
+    const dy = event.clientY - y;
     touchStart = null;
 
     if (article) {
