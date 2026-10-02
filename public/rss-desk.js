@@ -1047,6 +1047,13 @@ function bindFeedsDesk() {
       void loadDirectory();
     });
   });
+  const addDialog = document.querySelector("#feedsAddDialog");
+  addDialog?.addEventListener("click", (event) => {
+    if (!window.matchMedia("(min-width: 761px)").matches) return;
+    const box = addDialog.getBoundingClientRect();
+    const outside = event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
+    if (outside) addDialog.close();
+  });
   panel.addEventListener("click", (event) => {
     if (!event.target.closest("[data-feeds-signin]")) return;
     document.querySelector("#accountDialog")?.showModal();
