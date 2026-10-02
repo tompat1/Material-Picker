@@ -6434,6 +6434,16 @@ body.is-cms [data-cms] {
   line-height: 1.45;
 }
 
+.feeds-directory-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.7rem 0 0;
+}
+
+.feeds-directory-tools[hidden] {
+  display: none !important;
+}
+
 .feeds-discover-bar {
   margin-top: 0.85rem;
   padding: 0.75rem 0.8rem;
@@ -6738,6 +6748,29 @@ body.is-cms [data-cms] {
   align-items: center;
   gap: 0.45rem 0.65rem;
   min-width: 0;
+}
+
+.feeds-sort {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-top: 0.45rem;
+}
+
+.feeds-sort button {
+  min-height: 1.7rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: 600 0.75rem/1 var(--sans);
+  cursor: pointer;
+}
+
+.feeds-sort button[aria-pressed="true"] {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  color: var(--ink);
 }
 
 .feeds-reeder-title h2,

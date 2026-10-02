@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-114" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-115" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -370,6 +370,10 @@
                 <h2 id="feedsTitle">Feeds</h2>
                 <p class="feeds-count" id="feedsSubtitle"></p>
               </div>
+              <div class="feeds-sort" id="feedsSort" role="group" aria-label="Sort stories">
+                <button type="button" data-feed-sort="latest" aria-pressed="true">Latest</button>
+                <button type="button" data-feed-sort="active" aria-pressed="false">Active</button>
+              </div>
             </div>
             <button class="feeds-add-button" id="feedsAdd" type="button" aria-label="Add feeds">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -388,10 +392,10 @@
             </form>
             <section class="feeds-discover" id="feedsDiscover" aria-labelledby="discoverTitle">
               <h3 id="discoverTitle">Find interesting feeds</h3>
-              <p class="feeds-discover-lead">Pick a topic, select the ones you like, then add them to a folder you already have or create a new one.</p>
+              <p class="feeds-discover-lead">Pick a topic or search a subject (cybersecurity, indie games, gardening…). Select feeds, then file them into an existing folder or a new one.</p>
               <form id="feedTopicSearch" role="search">
-                <label for="feedTopicQuery">Search by topic or name</label>
-                <input id="feedTopicQuery" type="search" placeholder="Movies, gaming, AI, Apple…" />
+                <label for="feedTopicQuery">Search by subject or name</label>
+                <input id="feedTopicQuery" type="search" placeholder="cybersecurity, indie games, gardening…" />
               </form>
               <div class="feeds-topics" id="feedTopics" role="group" aria-label="Feed topics">
                 <button type="button" data-feed-topic="popular">Popular</button>
@@ -405,6 +409,9 @@
                 <button type="button" data-feed-topic="science">Science</button>
                 <button type="button" data-feed-topic="business">Business</button>
                 <button type="button" data-feed-topic="sports">Sports</button>
+              </div>
+              <div class="feeds-directory-tools" id="feedsDirectoryTools" hidden>
+                <button class="ghost-button" type="button" id="discoverTopicPack">Add this topic to a folder</button>
               </div>
               <div class="feeds-directory" id="feedDirectory"></div>
               <div class="feeds-discover-bar" id="feedsDiscoverBar" hidden>
@@ -928,6 +935,6 @@
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
     <script src="./app.js?v=picker-nav-120" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-24" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-25" defer></script>
   </body>
 </html>

@@ -168,11 +168,35 @@ test("searchFeedCatalog filters by topic and words", () => {
   assert.equal(searchFeedCatalog({ topic: "cooking" }).length, 0);
   assert.ok(searchFeedCatalog({ topic: "popular" }).length >= 12);
   assert.deepEqual(searchFeedCatalog({ topic: "popular" }).map((feed) => feed.id), popularFeedCatalog().map((feed) => feed.id));
+  assert.ok(searchFeedCatalog({ query: "gardening" }).every((feed) => feed.topics.includes("science")));
+  assert.ok(searchFeedCatalog({ query: "indie games" }).every((feed) => feed.topics.includes("gaming")));
+  assert.ok(searchFeedCatalog({ query: "cybersecurity" }).every((feed) => feed.topics.includes("tech")));
   assert.ok(searchFeedCatalog({ query: "marques" }).some((feed) => feed.id === "mkbhd"));
   assert.ok(searchFeedCatalog({ query: "mkbhd" }).some((feed) => feed.id === "mkbhd"));
   assert.ok(searchFeedCatalog({ query: "matt wolfe" }).some((feed) => feed.id === "matt-wolfe"));
   assert.ok(searchFeedCatalog({ query: "engadget" }).some((feed) => feed.id === "engadget"));
   assert.ok(searchFeedCatalog({ query: "guardian" }).some((feed) => feed.id === "guardian-world"));
+});
+
+test("loadFeed probes common feed paths when the page has no alternate links", async () => {
+  const seen = [];
+  const result = await loadFeed("https://notes.example/", async (url) => {
+    seen.push(url);
+    if (url === "https://notes.example/") {
+      return { body: "<html><body>No feed tags</body></html>", finalUrl: url, contentType: "text/html" };
+    }
+    if (url === "https://notes.example/feed") {
+      return {
+        body: `<?xml version="1.0"?><rss version="2.0"><channel><title>Notes</title><item><title>Hello</title><link>https://notes.example/1</link></item></channel></rss>`,
+        finalUrl: url,
+        contentType: "application/rss+xml",
+      };
+    }
+    throw new Error(`unexpected ${url}`);
+  });
+  assert.equal(result.kind, "feed");
+  assert.equal(result.feed.title, "Notes");
+  assert.deepEqual(seen.slice(0, 2), ["https://notes.example/", "https://notes.example/feed"]);
 });
 
 test("loadFeed reports when a page has no feed", async () => {

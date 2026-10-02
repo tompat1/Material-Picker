@@ -278,7 +278,8 @@ export async function loadFeed(value, fetchText) {
   if (looksLikeFeed(first.body, first.contentType)) {
     return { kind: "feed", feed: await fillMissingImages(parseFeed(first.body, pageUrl), fetchText) };
   }
-  const feeds = discoverFeeds(first.body, pageUrl);
+  let feeds = discoverFeeds(first.body, pageUrl);
+  if (!feeds.length) feeds = await probeCommonFeedPaths(pageUrl, fetchText);
   if (!feeds.length) throw fail(404, "No RSS or Atom feed was found.");
   if (feeds.length > 1) return { kind: "choices", pageUrl, feeds };
   const next = await fetchText(feeds[0].url);
@@ -287,6 +288,48 @@ export async function loadFeed(value, fetchText) {
   const feed = parseFeed(next.body, feedUrl);
   if (feed.title === "Untitled feed" && feeds[0].title) feed.title = feeds[0].title;
   return { kind: "feed", feed: await fillMissingImages(feed, fetchText) };
+}
+
+const COMMON_FEED_PATHS = [
+  "/feed",
+  "/feed/",
+  "/rss",
+  "/rss.xml",
+  "/atom.xml",
+  "/index.rss",
+  "/feeds/posts/default",
+];
+
+async function probeCommonFeedPaths(pageUrl, fetchText) {
+  let origin = "";
+  try {
+    origin = new URL(pageUrl).origin;
+  } catch {
+    return [];
+  }
+  const found = [];
+  const seen = new Set();
+  for (const path of COMMON_FEED_PATHS) {
+    const target = `${origin}${path}`;
+    if (seen.has(target)) continue;
+    seen.add(target);
+    try {
+      const next = await fetchText(target);
+      const feedUrl = next.finalUrl || target;
+      if (!looksLikeFeed(next.body, next.contentType)) continue;
+      if (seen.has(feedUrl) && feedUrl !== target) continue;
+      seen.add(feedUrl);
+      found.push({
+        url: feedUrl,
+        title: "",
+        type: next.contentType || "application/rss+xml",
+      });
+      if (found.length >= 3) break;
+    } catch {
+      // Try the next common path.
+    }
+  }
+  return found;
 }
 
 export const RSS_ACCEPT = "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8, */*;q=0.1";
@@ -373,14 +416,68 @@ const POPULAR_FEED_IDS = [
   "the-hill",
 ];
 
+const SUBJECT_TO_TOPIC = {
+  cybersecurity: "tech",
+  security: "tech",
+  hacking: "tech",
+  gadgets: "tech",
+  startups: "tech",
+  gardening: "science",
+  garden: "science",
+  space: "science",
+  astronomy: "science",
+  climate: "science",
+  "indie games": "gaming",
+  games: "gaming",
+  gaming: "gaming",
+  film: "movies",
+  cinema: "movies",
+  hollywood: "movies",
+  movies: "movies",
+  finance: "business",
+  markets: "business",
+  business: "business",
+  football: "sports",
+  soccer: "sports",
+  sports: "sports",
+  politics: "politics",
+  apple: "apple",
+  ai: "ai",
+  "artificial intelligence": "ai",
+  news: "news",
+};
+
 export function popularFeedCatalog() {
   const byId = new Map(FEED_CATALOG.map((feed) => [feed.id, feed]));
   return POPULAR_FEED_IDS.map((id) => byId.get(id)).filter(Boolean);
 }
 
+function subjectTopicForQuery(query) {
+  const text = String(query || "").toLowerCase().replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (SUBJECT_TO_TOPIC[text]) return SUBJECT_TO_TOPIC[text];
+  const hit = Object.keys(SUBJECT_TO_TOPIC)
+    .sort((a, b) => b.length - a.length)
+    .find((alias) => text.includes(alias));
+  return hit ? SUBJECT_TO_TOPIC[hit] : "";
+}
+
+function catalogScore(feed, words, popularRank) {
+  const haystack = [feed.title, feed.site, feed.blurb, ...(feed.topics || [])].join(" ").toLowerCase();
+  let score = 0;
+  words.forEach((word) => {
+    if (feed.title.toLowerCase().includes(word)) score += 8;
+    if ((feed.topics || []).some((topic) => topic.includes(word))) score += 5;
+    if (haystack.includes(word)) score += 2;
+  });
+  if (popularRank >= 0) score += Math.max(0, 20 - popularRank);
+  return score;
+}
+
 export function searchFeedCatalog({ query = "", topic = "" } = {}) {
   const selected = String(topic || "").trim().toLowerCase();
   const words = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+  const popularRank = new Map(POPULAR_FEED_IDS.map((id, index) => [id, index]));
   if (selected === "popular") {
     return popularFeedCatalog().filter((feed) => {
       if (!words.length) return true;
@@ -388,13 +485,23 @@ export function searchFeedCatalog({ query = "", topic = "" } = {}) {
       return words.every((word) => haystack.includes(word));
     });
   }
+  const mapped = !selected ? subjectTopicForQuery(query) : "";
+  const topicFilter = selected && TOPIC_IDS.has(selected) ? selected : mapped;
   if (selected && !TOPIC_IDS.has(selected)) return [];
-  if (!selected && !words.length) return [];
-  return FEED_CATALOG.filter((feed) => {
-    if (selected && !feed.topics.includes(selected)) return false;
-    const haystack = [feed.title, feed.site, feed.blurb, ...feed.topics].join(" ").toLowerCase();
-    return words.every((word) => haystack.includes(word));
-  });
+  if (!topicFilter && !words.length) return [];
+  return FEED_CATALOG
+    .filter((feed) => {
+      if (topicFilter && !feed.topics.includes(topicFilter)) {
+        if (!words.length) return false;
+        const haystack = [feed.title, feed.site, feed.blurb, ...feed.topics].join(" ").toLowerCase();
+        return words.every((word) => haystack.includes(word));
+      }
+      if (!words.length) return true;
+      const haystack = [feed.title, feed.site, feed.blurb, ...feed.topics].join(" ").toLowerCase();
+      if (mapped && feed.topics.includes(mapped)) return true;
+      return words.every((word) => haystack.includes(word));
+    })
+    .sort((a, b) => catalogScore(b, words, popularRank.get(b.id) ?? 99) - catalogScore(a, words, popularRank.get(a.id) ?? 99));
 }
 
 export function parseOpml(xml) {
