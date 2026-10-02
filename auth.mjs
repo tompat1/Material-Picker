@@ -91,21 +91,34 @@ export function formatYouTubeDuration(value) {
 }
 
 export async function fetchSubscriptionFeed(accessToken, fetchImpl = fetch, options = {}) {
-  const channelLimit = options.channelLimit || 15;
+  const maxChannels = options.maxChannels || options.channelLimit || 500;
   const perChannel = options.perChannel || 1;
-  const videoLimit = options.videoLimit || 12;
-  const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=${channelLimit}`, {
-    headers: { authorization: `Bearer ${accessToken}` },
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(payload.error?.message || "YouTube could not load subscriptions.");
-    error.status = response.status === 401 ? 401 : 502;
-    throw error;
-  }
-  const channels = parseYouTubeSubscriptions(payload);
+  const videoLimit = options.videoLimit || 24;
+
+  const allChannels = [];
+  let pageToken = "";
+
+  do {
+    const pageUrl = `https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=50${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
+    const response = await fetchImpl(pageUrl, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (allChannels.length > 0) break;
+      const error = new Error(payload.error?.message || "YouTube could not load subscriptions.");
+      error.status = response.status === 401 ? 401 : 502;
+      throw error;
+    }
+    const pageChannels = parseYouTubeSubscriptions(payload);
+    allChannels.push(...pageChannels);
+    pageToken = String(payload.nextPageToken || "");
+  } while (pageToken && allChannels.length < maxChannels);
+
+  const channels = allChannels;
+  const sampleChannels = channels.slice(0, Math.min(channels.length, 50));
   const videos = [];
-  await Promise.all(channels.map(async (channel) => {
+  await Promise.all(sampleChannels.map(async (channel) => {
     if (!channel.id.startsWith("UC")) return;
     const playlistId = `UU${channel.id.slice(2)}`;
     const latest = await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=${perChannel}&playlistId=${playlistId}`, {
@@ -279,7 +292,7 @@ async function attachYouTubeDurations(accessToken, videos, fetchImpl) {
 }
 
 export async function fetchYouTubeHome(accessToken, fetchImpl = fetch) {
-  const feed = await fetchSubscriptionFeed(accessToken, fetchImpl, { channelLimit: 20, perChannel: 2, videoLimit: 24 });
+  const feed = await fetchSubscriptionFeed(accessToken, fetchImpl, { maxChannels: 500, perChannel: 2, videoLimit: 24 });
   const [playlists, liked, activity] = await Promise.all([
     fetchYouTubePlaylists(accessToken, fetchImpl).catch(() => []),
     fetchPlaylistVideos(accessToken, "LL", fetchImpl).catch(() => []),

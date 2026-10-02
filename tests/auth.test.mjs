@@ -51,6 +51,30 @@ test("subscription feed keeps the latest upload from each channel", async () => 
   assert.equal(feed.videos[0].speaker, "Studio North");
 });
 
+test("subscription feed paginates to fetch all subscribed channels", async () => {
+  const feed = await fetchSubscriptionFeed("token", async (url) => {
+    const href = String(url);
+    if (href.includes("/subscriptions") && !href.includes("pageToken=page2")) {
+      return new Response(JSON.stringify({
+        nextPageToken: "page2",
+        items: [{ snippet: { title: "Channel 1", resourceId: { channelId: "UCchan1" } } }],
+      }));
+    }
+    if (href.includes("/subscriptions") && href.includes("pageToken=page2")) {
+      return new Response(JSON.stringify({
+        items: [{ snippet: { title: "Channel 2", resourceId: { channelId: "UCchan2" } } }],
+      }));
+    }
+    if (href.includes("playlistId=UUchan")) {
+      return new Response(JSON.stringify({ items: [] }));
+    }
+    throw new Error(`Unexpected fetch ${href}`);
+  });
+  assert.equal(feed.channels.length, 2);
+  assert.equal(feed.channels[0].title, "Channel 1");
+  assert.equal(feed.channels[1].title, "Channel 2");
+});
+
 test("channel uploads return a longer slider of recent videos", async () => {
   const videos = await fetchChannelUploads("token", "UCstudio1234", async (url) => {
     const href = String(url);
