@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-109" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-110" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -886,6 +886,16 @@
       </article>
     </template>
 
+    <div id="pickerLoader" class="picker-loader" role="status" aria-live="polite">
+      <div class="picker-loader-card">
+        <div class="amber-throbber amber-throbber--lg" aria-hidden="true">
+          <span class="amber-throbber-track"></span>
+          <span class="amber-throbber-spokes"></span>
+        </div>
+        <p id="pickerLoaderText">Loading</p>
+      </div>
+    </div>
+
     <aside class="play-bubble" id="playBubble" hidden aria-label="Playing video">
       <div class="play-bubble-stage" id="playBubbleStage"></div>
       <div class="play-bubble-scrim" id="playBubbleScrim">
@@ -901,7 +911,7 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-118" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-18" defer></script>
+    <script src="./app.js?v=picker-nav-119" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-19" defer></script>
   </body>
 </html>

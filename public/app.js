@@ -347,7 +347,106 @@ let thumbnailPausedUntil = 0;
 let thumbnailPauseTimer = 0;
 let thumbnailNoticeSent = false;
 
+const pickerWaits = new Map();
+let pickerLoaderHide = 0;
+
+function paintPickerLoader() {
+  const node = document.querySelector("#pickerLoader");
+  if (!node) return;
+  const active = pickerWaits.size > 0;
+  if (active) {
+    window.clearTimeout(pickerLoaderHide);
+    const label = [...pickerWaits.values()].at(-1)?.label || "Loading";
+    const text = document.querySelector("#pickerLoaderText");
+    if (text) text.textContent = label;
+    node.hidden = false;
+    node.setAttribute("aria-hidden", "false");
+    document.body.setAttribute("aria-busy", "true");
+    return;
+  }
+  window.clearTimeout(pickerLoaderHide);
+  pickerLoaderHide = window.setTimeout(() => {
+    if (pickerWaits.size) return;
+    node.hidden = true;
+    node.setAttribute("aria-hidden", "true");
+    document.body.removeAttribute("aria-busy");
+  }, 160);
+}
+
+function pickerWait(key, label = "Loading") {
+  const current = pickerWaits.get(key) || { label, count: 0 };
+  current.count += 1;
+  current.label = label || current.label;
+  pickerWaits.set(key, current);
+  paintPickerLoader();
+  let closed = false;
+  return () => {
+    if (closed) return;
+    closed = true;
+    const row = pickerWaits.get(key);
+    if (!row) return;
+    row.count -= 1;
+    if (row.count <= 0) pickerWaits.delete(key);
+    paintPickerLoader();
+  };
+}
+
+function pickerWaitUntil(key, label, task) {
+  if (!task || typeof task.then !== "function") return task;
+  const done = pickerWait(key, label);
+  task.finally(done);
+  return task;
+}
+
+function requestPath(input) {
+  const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input?.url || "";
+  try {
+    return new URL(raw, location.origin).pathname;
+  } catch {
+    return "";
+  }
+}
+
+function waitLabelFor(path) {
+  if (path === "/api/youtube/home") return "Loading your YouTube";
+  if (path === "/api/youtube/channel") return "Loading channel";
+  if (path === "/api/youtube/playlist") return "Loading playlist";
+  if (path === "/api/rss/opml") return "Reading your feed list";
+  if (path === "/api/rss" || path === "/api/feeds/library") return "Loading feeds";
+  if (path === "/api/video-search") return "Searching";
+  if (path === "/api/transcript") return "Loading transcript";
+  if (path === "/api/transcribe") return "Transcribing";
+  if (path === "/api/translate") return "Translating";
+  if (path === "/api/proofread") return "Proofreading";
+  if (path === "/api/chapters") return "Loading chapters";
+  if (path.startsWith("/api/scrape") || path.startsWith("/api/scan-folder")) return "Reading the page";
+  if (path.startsWith("/api/auth/")) return "Loading your account";
+  if (path.startsWith("/api/cms")) return "Loading";
+  if (path.startsWith("/api/offline")) return "Saving";
+  if (path === "/api/thumbnail") return "Making a thumbnail";
+  return "Loading";
+}
+
+function shouldTrackRequest(path) {
+  if (!path.startsWith("/api/")) return false;
+  if (path === "/api/rss/catalog" || path === "/api/offline/status" || path === "/api/stream") return false;
+  if (path === "/api/media-proxy" || path === "/api/media-plan" || path === "/api/offline/files") return false;
+  if (path.startsWith("/api/youtube/")) return Boolean(document.querySelector("#desk-youtube")?.checked);
+  if (path === "/api/rss" || path === "/api/feeds/library") return Boolean(document.querySelector("#desk-feeds")?.checked);
+  return true;
+}
+
+const nativeFetch = window.fetch.bind(window);
+window.fetch = function pickerFetch(input, init) {
+  const path = requestPath(input);
+  const done = shouldTrackRequest(path) ? pickerWait(waitLabelFor(path), waitLabelFor(path)) : null;
+  return nativeFetch(input, init).finally(() => done?.());
+};
+window.pickerWait = pickerWait;
+window.pickerWaitUntil = pickerWaitUntil;
+
 function init() {
+  const releaseBoot = pickerWait("boot", "Loading");
   repairDuplicateArchives();
   bindEvents();
   syncNavSearch();
@@ -359,31 +458,36 @@ function init() {
     selectedVideoIds.add(video.id);
   });
   saveState();
-  void loadCms();
-  void loadAccount().then(() => {
+  const accountReady = loadAccount().then(() => {
     const params = new URLSearchParams(location.search);
     if (youtubeConnected && params.get("feed") === "subscriptions") {
       libraryFeed = "youtube-subscriptions";
     }
     if (youtubeConnected && params.get("desk") === "youtube") {
       const desk = document.querySelector("#desk-youtube");
-      if (desk) desk.checked = true;
-      void loadYouTubeHome();
+      if (desk) {
+        desk.checked = true;
+        desk.dispatchEvent(new Event("change", { bubbles: true }));
+      }
     }
     if (params.get("desk") === "feeds" || params.get("feedly")) {
-      const desk = document.querySelector("#desk-feeds");
-      if (desk) desk.checked = true;
       if (params.get("feedly") === "error") document.querySelector("#feedsHome")?.setAttribute("data-feedly-error", "1");
       if (params.get("feedly") === "signin") {
         document.querySelector("#accountDialog")?.showModal();
         const status = document.querySelector("#accountFormStatus");
         if (status) status.textContent = "Sign in with Google, then connect Feedly.";
       }
-      void loadFeedlyHome();
+      const desk = document.querySelector("#desk-feeds");
+      if (desk) {
+        desk.checked = true;
+        desk.dispatchEvent(new Event("change", { bubbles: true }));
+      }
       history.replaceState(null, "", location.pathname);
     }
+    if (youtubeConnected) void loadYouTubeHome();
     return loadLibraryFeed();
   });
+  void Promise.allSettled([loadCms(), accountReady]).finally(releaseBoot);
   void restorePersistedFolders().then(() => loadFolderScript(selectedVideo()));
   void reconcileOfflineLibrary();
   void repairLegacyPageRecords({ automatic: true });
@@ -545,7 +649,9 @@ function bindEvents() {
     document.querySelector("#navMore")?.setAttribute("aria-expanded", open ? "true" : "false");
   });
   document.querySelector("#desk-youtube")?.addEventListener("change", () => {
-    if (document.querySelector("#desk-youtube")?.checked) void loadYouTubeHome();
+    if (!document.querySelector("#desk-youtube")?.checked) return;
+    const task = loadYouTubeHome();
+    if (task) pickerWaitUntil("youtube-home", "Loading your YouTube", task);
   });
   document.querySelector("#desk-feeds")?.addEventListener("change", () => {
     if (document.querySelector("#desk-feeds")?.checked) void loadFeedlyHome();
@@ -1959,7 +2065,8 @@ async function loadFeedlyHome(streamId = feedlyStreamId) {
     mount.innerHTML = `<div class="feed-connect"><p>${failed ? "Feedly did not finish signing in. " : ""}Connect Feedly and choose Google. Use the same Google account as Picker.</p><a class="primary-button" href="/api/feedly/start">Connect Feedly</a></div>`;
     return;
   }
-  mount.innerHTML = `<p class="hint">Loading your feeds…</p>`;
+  const releaseFeeds = pickerWait("feedly", "Loading feeds");
+  mount.innerHTML = "";
   let data = {};
   try {
     const response = await fetch(`/api/feedly/home?feed=${encodeURIComponent(feedlyStreamId)}`);
@@ -1968,6 +2075,8 @@ async function loadFeedlyHome(streamId = feedlyStreamId) {
   } catch (error) {
     mount.innerHTML = `<p class="hint">${escapeHtml(error.message || "Feedly could not be loaded.")}</p>`;
     return;
+  } finally {
+    releaseFeeds();
   }
   renderFeedlyHome(data);
 }
@@ -1992,20 +2101,49 @@ function renderFeedlyHome(data) {
   mount.innerHTML = `<div class="feed-layout"><div class="feed-sources">${sources.join("")}</div><div class="feed-articles">${items || `<p class="hint">No articles in this feed.</p>`}</div></div>`;
 }
 
-async function loadYouTubeHome() {
-  const mount = document.querySelector("#youtubeHome");
-  if (!mount || !youtubeConnected) return;
-  mount.innerHTML = `<p class="hint">Loading your YouTube…</p>`;
-  let data = {};
-  try {
-    const response = await fetch("/api/youtube/home");
-    data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "YouTube could not be loaded.");
-  } catch (error) {
-    mount.innerHTML = `<p class="hint">${escapeHtml(error.message || "YouTube could not be loaded.")}</p>`;
+let youtubeHomeData = null;
+let youtubeHomeAt = 0;
+let youtubeHomeTask = null;
+const YOUTUBE_HOME_FRESH_MS = 15 * 60 * 1000;
+
+function applyYouTubeHome(data) {
+  youtubeHomeData = data;
+  youtubeHomeAt = Date.now();
+  const onDesk = document.querySelector("#desk-youtube")?.checked;
+  const idle = youtubeShelf.view === "all" && !youtubeShelf.channelId && !youtubeShelf.playlistId;
+  if (!onDesk || idle || !document.querySelector("#youtubeGrid")) {
+    renderYouTubeHome(data);
     return;
   }
-  renderYouTubeHome(data);
+  youtubeShelf.channels = Array.isArray(data.channels) ? data.channels : [];
+  youtubeShelf.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+  youtubeShelf.playlists = Array.isArray(data.playlists) ? data.playlists : [];
+  youtubeShelf.liked = Array.isArray(data.liked) ? data.liked : [];
+  paintYouTubeGrid();
+}
+
+function loadYouTubeHome() {
+  const mount = document.querySelector("#youtubeHome");
+  if (!mount || !youtubeConnected) return null;
+  const fresh = youtubeHomeData && Date.now() - youtubeHomeAt < YOUTUBE_HOME_FRESH_MS;
+  if (fresh) {
+    if (!document.querySelector("#youtubeGrid")) renderYouTubeHome(youtubeHomeData);
+    return null;
+  }
+  if (youtubeHomeTask) return youtubeHomeTask;
+  youtubeHomeTask = (async () => {
+    const response = await fetch("/api/youtube/home");
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "YouTube could not be loaded.");
+    applyYouTubeHome(data);
+  })().catch((error) => {
+    if (document.querySelector("#desk-youtube")?.checked && !document.querySelector("#youtubeGrid")) {
+      mount.innerHTML = `<p class="hint">${escapeHtml(error.message || "YouTube could not be loaded.")}</p>`;
+    }
+  }).finally(() => {
+    youtubeHomeTask = null;
+  });
+  return youtubeHomeTask;
 }
 
 let youtubeChannelLoad = 0;
@@ -2038,7 +2176,7 @@ async function loadYouTubeChannel(channelId) {
     paintYouTubeGrid();
     return;
   }
-  paintYouTubeGrid(`Loading ${channel?.title || "this channel"}…`);
+  paintYouTubeGrid();
   try {
     const response = await fetch(`/api/youtube/channel?id=${encodeURIComponent(channelId)}`);
     const data = await response.json().catch(() => ({}));
@@ -2067,7 +2205,8 @@ async function loadYouTubePlaylist(playlistId) {
   youtubeShelf.playlistId = playlistId;
   youtubeShelf.playlistTitle = playlist?.title || "Playlist";
   youtubeShelf.channelId = "";
-  paintYouTubeGrid(`Loading ${youtubeShelf.playlistTitle}…`);
+  youtubeShelf.playlistVideos = [];
+  paintYouTubeGrid();
   try {
     const response = await fetch(`/api/youtube/playlist?id=${encodeURIComponent(playlistId)}`);
     const data = await response.json().catch(() => ({}));

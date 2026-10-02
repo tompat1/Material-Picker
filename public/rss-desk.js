@@ -835,7 +835,7 @@ function paintIncomingFeeds() {
   applyPane();
 }
 
-async function refreshFeeds(options = {}) {
+function refreshFeeds(options = {}) {
   if (feedRefreshTask) return feedRefreshTask;
   if (!feedState.feeds.length) return;
   if (!options.force && lastFeedRefreshAt && Date.now() - lastFeedRefreshAt < FEED_REFRESH_MS) return;
@@ -1245,7 +1245,8 @@ function bindFeedsDesk() {
   document.querySelector("#desk-feeds")?.addEventListener("change", () => {
     if (!document.querySelector("#desk-feeds")?.checked) return;
     renderFeeds();
-    void refreshFeeds();
+    const task = refreshFeeds();
+    if (task) window.pickerWaitUntil?.("feeds", "Loading feeds", task);
   });
   window.addEventListener("resize", applyPane);
   renderFeeds();

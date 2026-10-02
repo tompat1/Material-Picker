@@ -461,6 +461,38 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
   --throbber-border: 4.5px;
 }
 
+.picker-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: color-mix(in srgb, var(--bg) 42%, transparent);
+  pointer-events: none;
+}
+
+.picker-loader[hidden] {
+  display: none;
+}
+
+.picker-loader-card {
+  display: grid;
+  justify-items: center;
+  gap: 0.8rem;
+  min-width: 8.5rem;
+  padding: 1.15rem 1.35rem 1rem;
+  border-radius: 1.15rem;
+  background: color-mix(in srgb, var(--bg) 94%, #fff);
+  box-shadow: 0 18px 48px rgba(20, 12, 8, 0.28);
+}
+
+.picker-loader-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 /* Inline progress feedback card / badge */
 .amber-progress-card {
   display: flex;
