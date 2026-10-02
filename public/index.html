@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-99" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-104" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -91,10 +91,10 @@
         <div class="nav-group">
           <input class="sr-only" type="radio" name="desk" id="desk-library" checked />
           <label for="desk-library"><span class="nav-icon nav-icon--library" aria-hidden="true"></span><svg class="nav-glyph nav-glyph--fill" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7.2" height="7.2" rx="1.6"/><rect x="13.8" y="3" width="7.2" height="7.2" rx="1.6"/><rect x="3" y="13.8" width="7.2" height="7.2" rx="1.6"/><rect x="13.8" y="13.8" width="7.2" height="7.2" rx="1.6"/></svg><span>Library</span></label>
-          <input class="sr-only" type="radio" name="desk" id="desk-downloads" />
-          <label for="desk-downloads"><span class="nav-icon nav-icon--downloads" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg><span>Downloads</span></label>
-          <input class="sr-only" type="radio" name="desk" id="desk-transcripts" />
-          <label for="desk-transcripts"><span class="nav-icon nav-icon--transcripts" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7.5A1.5 1.5 0 0 0 6 4.5v15A1.5 1.5 0 0 0 7.5 21h9a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3v5h5"/><path d="M8.5 13h7M8.5 17h4.5"/></svg><span>Transcripts</span></label>
+          <input class="sr-only" type="radio" name="desk" id="desk-youtube" />
+          <label for="desk-youtube" id="youtubeNav" hidden><span class="nav-icon nav-icon--youtube" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="17" height="11" rx="2.5"/><path d="m10.5 9.5 4.5 2.5-4.5 2.5z"/></svg><span>My YouTube</span></label>
+          <input class="sr-only" type="radio" name="desk" id="desk-feeds" />
+          <label for="desk-feeds" id="feedsNav"><span class="nav-icon" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.2" cy="17.2" r="1.5"/><path d="M5 11a8 8 0 0 1 8 8"/><path d="M5 6a13 13 0 0 1 13 13"/></svg><span>Feeds</span></label>
           <button class="nav-more" id="navMore" type="button" aria-expanded="false" aria-controls="moreSheet">
             <svg class="nav-glyph nav-glyph--fill" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>
             <span>More</span>
@@ -102,16 +102,16 @@
         </div>
         <div class="nav-rule" aria-hidden="true"></div>
         <div class="nav-group nav-sub" id="moreSheet">
-          <input class="sr-only" type="radio" name="desk" id="desk-youtube" />
-          <label for="desk-youtube" id="youtubeNav" hidden><span class="nav-icon nav-icon--youtube" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="17" height="11" rx="2.5"/><path d="m10.5 9.5 4.5 2.5-4.5 2.5z"/></svg><span>My YouTube</span></label>
+          <input class="sr-only" type="radio" name="desk" id="desk-downloads" />
+          <label for="desk-downloads"><span class="nav-icon nav-icon--downloads" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg><span>Downloads</span></label>
+          <input class="sr-only" type="radio" name="desk" id="desk-transcripts" />
+          <label for="desk-transcripts"><span class="nav-icon nav-icon--transcripts" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7.5A1.5 1.5 0 0 0 6 4.5v15A1.5 1.5 0 0 0 7.5 21h9a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3v5h5"/><path d="M8.5 13h7M8.5 17h4.5"/></svg><span>Transcripts</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-history" />
           <label for="desk-history"><span class="nav-icon nav-icon--history" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 2"/></svg><span>History</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-playlists" />
           <label for="desk-playlists"><span class="nav-icon nav-icon--playlists" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg><span>Playlists</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-favourites" />
           <label for="desk-favourites"><span class="nav-icon nav-icon--favourites" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/></svg><span>Favourites</span></label>
-          <input class="sr-only" type="radio" name="desk" id="desk-feeds" />
-          <label for="desk-feeds" id="feedsNav"><span class="nav-icon" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6.2" cy="17.2" r="1.5"/><path d="M5 11a8 8 0 0 1 8 8"/><path d="M5 6a13 13 0 0 1 13 13"/></svg><span>Feeds</span></label>
           <input class="sr-only" type="radio" name="desk" id="desk-shop" />
           <label for="desk-shop" id="shopNav"><span class="nav-icon" aria-hidden="true"></span><svg class="nav-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 8.5h11l-.8 11.2a1.5 1.5 0 0 1-1.5 1.3H8.8a1.5 1.5 0 0 1-1.5-1.3z"/><path d="M9 8.5a3 3 0 0 1 6 0"/></svg><span>Shop</span></label>
           <button class="more-action" id="moreSignOut" type="button" hidden>Sign out</button>
@@ -831,6 +831,7 @@
       </form>
       <div class="account-session" id="accountSession" hidden>
         <p id="accountSessionName"></p>
+        <p class="account-session-email" id="accountSessionEmail" hidden></p>
         <button class="primary-button account-sign-out-action" id="accountDialogSignOut" type="button">Sign out</button>
       </div>
       <a class="account-google" id="accountGoogle" href="/api/auth/google/start">Continue with Google</a>
@@ -896,7 +897,7 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-110" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-14" defer></script>
+    <script src="./app.js?v=picker-nav-114" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-15" defer></script>
   </body>
 </html>

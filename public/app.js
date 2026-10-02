@@ -562,7 +562,7 @@ function bindEvents() {
     paintYouTubeGrid();
   });
   bindMerchShop();
-  document.querySelectorAll(".nav-sub label, #desk-library, #desk-downloads, #desk-transcripts").forEach((control) => {
+  document.querySelectorAll(".nav-sub label, #desk-library, #desk-youtube, #desk-feeds").forEach((control) => {
     control.addEventListener("change", closeMobileMenus);
     control.addEventListener("click", closeMobileMenus);
   });
@@ -1651,6 +1651,8 @@ async function loadAccount() {
     if (library) library.checked = true;
   }
   const signedIn = Boolean(data.user);
+  document.body.dataset.pickerSignedIn = signedIn ? "true" : "false";
+  document.dispatchEvent(new CustomEvent("picker-account"));
   if (google) google.hidden = signedIn || data.configured === false;
   if (session) session.hidden = !signedIn;
   if (moreSignOut) moreSignOut.hidden = !signedIn;
@@ -1663,7 +1665,13 @@ async function loadAccount() {
     link.removeAttribute("aria-disabled");
     link.dataset.signedIn = "true";
     link.title = data.user.youtubeConnected ? `${label} · YouTube connected` : label;
-    if (sessionName) sessionName.textContent = label;
+    if (sessionName) sessionName.textContent = `Signed in as ${label}`;
+    const sessionEmail = document.querySelector("#accountSessionEmail");
+    const email = data.user.email && data.user.email !== label ? data.user.email : "";
+    if (sessionEmail) {
+      sessionEmail.hidden = !email;
+      sessionEmail.textContent = email;
+    }
     if (signOut) signOut.hidden = false;
     if (document.querySelector("#desk-feeds")?.checked) void loadFeedlyHome();
     return;
@@ -1674,6 +1682,11 @@ async function loadAccount() {
   delete link.dataset.signedIn;
   link.title = "Sign in or create a Picker account";
   if (sessionName) sessionName.textContent = "";
+  const sessionEmail = document.querySelector("#accountSessionEmail");
+  if (sessionEmail) {
+    sessionEmail.hidden = true;
+    sessionEmail.textContent = "";
+  }
   if (signOut) signOut.hidden = true;
   cmsUserAdmin = false;
   cmsEditing = false;
@@ -3322,18 +3335,27 @@ function formatActivityTime(iso) {
   });
 }
 
+function activityDetailHtml(detail) {
+  const text = String(detail || "").trim();
+  if (!text) return "";
+  if (/^https?:\/\//i.test(text)) {
+    return `<a class="activity-link" href="${escapeHtml(text)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
+  }
+  return `<span class="activity-detail">${escapeHtml(text)}</span>`;
+}
+
 function renderActivity() {
   const list = document.querySelector("#activityList");
   if (!list) return;
   const items = state.activity || [];
   list.innerHTML = items.map((item) => {
-    const detail = item.detail ? `<span class="activity-detail">${escapeHtml(item.detail)}</span>` : "";
     return `<li>
-      <button type="button" data-video-id="${escapeHtml(item.videoId || "")}">
-        <span class="activity-action">${escapeHtml(item.action || "Saved")}</span>
-        <span class="activity-title">${escapeHtml(item.title || "Untitled video")}${detail}</span>
-        <time datetime="${escapeHtml(item.at || "")}">${escapeHtml(formatActivityTime(item.at))}</time>
-      </button>
+      <span class="activity-action">${escapeHtml(item.action || "Saved")}</span>
+      <div class="activity-body">
+        <button class="activity-title" type="button" data-video-id="${escapeHtml(item.videoId || "")}">${escapeHtml(item.title || "Untitled video")}</button>
+        ${activityDetailHtml(item.detail)}
+      </div>
+      <time datetime="${escapeHtml(item.at || "")}">${escapeHtml(formatActivityTime(item.at))}</time>
     </li>`;
   }).join("");
   list.querySelectorAll("button").forEach((button) => {

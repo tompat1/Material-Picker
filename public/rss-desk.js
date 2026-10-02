@@ -519,22 +519,41 @@ function removeFolder(id) {
   renderFeeds();
 }
 
+function pickerIsSignedIn() {
+  return document.body.dataset.pickerSignedIn === "true";
+}
+
+function feedsWelcome() {
+  const marks = `<img class="feeds-welcome-mark feeds-welcome-mark--dark" src="/brand/logos/picker-mark-dark.svg" alt="Picker" />
+          <img class="feeds-welcome-mark feeds-welcome-mark--light" src="/brand/logos/picker-mark-light.svg" alt="" />`;
+  if (!pickerIsSignedIn()) {
+    return `<div class="feeds-welcome">
+          ${marks}
+          <p>Sign in or create an account to see your feeds and start following sites.</p>
+          <button class="primary-button" type="button" data-feeds-signin>Sign in or create an account</button>
+        </div>`;
+  }
+  return `<div class="feeds-welcome">
+          ${marks}
+          <p>Click the + button in the corner to follow a site, or upload the Feedly list you downloaded.</p>
+        </div>`;
+}
+
 function renderList() {
   const river = document.querySelector("#feedRiver");
   if (!river) return;
   const items = itemsForSource().sort((a, b) => feedTime(b) - feedTime(a));
   if (!items.length) {
     river.innerHTML = feedState.feeds.length
-      ? `<p class="feeds-river-empty">Nothing unread in this view.</p>`
-      : `<div class="feeds-welcome">
-          <img class="feeds-welcome-mark feeds-welcome-mark--dark" src="/brand/logos/picker-mark-dark.svg" alt="Picker" />
-          <img class="feeds-welcome-mark feeds-welcome-mark--light" src="/brand/logos/picker-mark-light.svg" alt="" />
-          <p>Click the + button in the corner to follow a site, or upload the Feedly list you downloaded.</p>
-        </div>`;
+      ? `<p class="feeds-river-empty">Nothing unread in this view.</p>${pickerIsSignedIn() ? "" : `<p class="feeds-signin-note">Sign in or create an account to add feeds. <button type="button" data-feeds-signin>Sign in or create an account</button></p>`}`
+      : feedsWelcome();
     return;
   }
+  const signedOutNote = pickerIsSignedIn()
+    ? ""
+    : `<p class="feeds-signin-note">Sign in or create an account to add feeds. <button type="button" data-feeds-signin>Sign in or create an account</button></p>`;
   let lastDay = "";
-  river.innerHTML = items.map((item) => {
+  river.innerHTML = signedOutNote + items.map((item) => {
     const feed = feedRecord(item.feedId);
     const day = dayKey(item.publishedAt);
     const heading = day === lastDay ? "" : `<h3 class="feeds-day">${escapeFeedText(dayLabel(item.publishedAt))}</h3>`;
@@ -886,9 +905,18 @@ function bindFeedsDesk() {
   });
   bindSwipe();
   document.querySelector("#feedsAdd")?.addEventListener("click", () => {
+    if (!pickerIsSignedIn()) {
+      document.querySelector("#accountDialog")?.showModal();
+      return;
+    }
     document.querySelector("#feedsAddDialog")?.showModal();
     void loadDirectory();
   });
+  panel.addEventListener("click", (event) => {
+    if (!event.target.closest("[data-feeds-signin]")) return;
+    document.querySelector("#accountDialog")?.showModal();
+  });
+  document.addEventListener("picker-account", () => renderFeeds());
   document.querySelector("#feedsBack")?.addEventListener("click", () => showPane(0));
   document.querySelector("#followFeedForm")?.addEventListener("submit", (event) => {
     event.preventDefault();

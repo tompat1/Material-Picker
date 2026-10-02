@@ -633,6 +633,7 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
   color: var(--ink);
   background: transparent;
   font: inherit;
+  font-size: 16px;
   letter-spacing: 0;
   text-transform: none;
 }
@@ -693,15 +694,25 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
   list-style: none;
 }
 
-.activity-list button {
+.activity-list li {
   display: grid;
   grid-template-columns: 7.5rem minmax(0, 1fr) auto;
-  gap: 12px;
+  gap: 2px 12px;
   align-items: baseline;
-  width: 100%;
   padding: 10px 0;
-  border: 0;
   border-bottom: 1px solid var(--line);
+}
+
+.activity-body {
+  min-width: 0;
+}
+
+.activity-list button {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
   color: inherit;
   background: transparent;
   text-align: left;
@@ -720,12 +731,23 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
   white-space: nowrap;
 }
 
-.activity-detail {
+.activity-detail,
+.activity-link {
   display: block;
   margin-top: 2px;
-  color: var(--muted);
   font-size: 0.78rem;
-  white-space: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.activity-detail {
+  color: var(--muted);
+}
+
+.activity-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .activity-list time {
@@ -745,7 +767,7 @@ body:has(#activityList:not(:empty)) .activity-empty {
 }
 
 @media (max-width: 720px) {
-  .activity-list button {
+  .activity-list li {
     grid-template-columns: 7.5rem minmax(0, 1fr);
   }
 
@@ -2561,6 +2583,16 @@ html[data-picker-theme="new-age"] .account-google {
 .account-session p {
   margin: 0;
   font: 560 0.95rem/1.4 var(--sans);
+}
+
+.account-session-email {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+#accountDialog [hidden] {
+  display: none !important;
 }
 
 .account-sign-out-action {
@@ -4663,8 +4695,8 @@ button.is-busy .amber-throbber {
   }
 
   body:has(#desk-library:checked) .workspace-nav label[for="desk-library"],
-  body:has(#desk-downloads:checked) .workspace-nav label[for="desk-downloads"],
-  body:has(#desk-transcripts:checked) .workspace-nav label[for="desk-transcripts"] {
+  body:has(#desk-youtube:checked) .workspace-nav label[for="desk-youtube"],
+  body:has(#desk-feeds:checked) .workspace-nav label[for="desk-feeds"] {
     background: var(--accent);
     color: var(--accent-ink);
   }
@@ -5341,6 +5373,10 @@ html[data-picker-theme="new-age"] .history-list {
     background: var(--rail);
   }
 
+  .nav-group:not(.nav-sub) #youtubeNav[hidden] {
+    display: none;
+  }
+
   .nav-more,
   .workspace-nav .nav-group:not(.nav-sub) label {
     display: flex;
@@ -5380,14 +5416,13 @@ html[data-picker-theme="new-age"] .history-list {
   }
 
   body:has(#desk-library:checked) .workspace-nav label[for="desk-library"],
-  body:has(#desk-downloads:checked) .workspace-nav label[for="desk-downloads"],
-  body:has(#desk-transcripts:checked) .workspace-nav label[for="desk-transcripts"],
-  body:has(#desk-youtube:checked) .nav-more,
-  body:has(#desk-feeds:checked) .nav-more,
+  body:has(#desk-youtube:checked) .workspace-nav label[for="desk-youtube"],
+  body:has(#desk-feeds:checked) .workspace-nav label[for="desk-feeds"],
+  body:has(#desk-downloads:checked) .nav-more,
+  body:has(#desk-transcripts:checked) .nav-more,
   body:has(#desk-history:checked) .nav-more,
   body:has(#desk-playlists:checked) .nav-more,
   body:has(#desk-shop:checked) .nav-more,
-  body:has(#desk-feeds:checked) .nav-more,
   body:has(#desk-favourites:checked) .nav-more {
     background: color-mix(in srgb, var(--accent) 18%, transparent);
     color: var(--accent);
@@ -6561,6 +6596,29 @@ html[data-picker-theme="new-age"] .feeds-add-button {
   line-height: 1.45;
 }
 
+.feeds-welcome .primary-button {
+  min-width: min(100%, 18rem);
+}
+
+.feeds-signin-note {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.feeds-signin-note button {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 .feeds-welcome-mark {
   width: 4.5rem;
   height: auto;
@@ -7062,5 +7120,13 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 
   .feeds-track[data-pane="1"] {
     transform: translateX(-50%);
+  }
+
+  .nav-search input,
+  .yt-search input,
+  .feeds-discover input,
+  .transcript-search-field input,
+  input[type="search"] {
+    font-size: 16px;
   }
 }
