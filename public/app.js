@@ -2309,6 +2309,8 @@ function chooseSearchSuggest(button) {
   hideSearchSuggest();
   if (els.searchLibrary) els.searchLibrary.value = title;
   syncNavSearch();
+  queueLibraryTopicSearch();
+  renderLibrary();
   document.dispatchEvent(new CustomEvent("picker-follow-feed", { detail: { url, title, topics } }));
 }
 
