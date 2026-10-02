@@ -104,6 +104,7 @@ let playlistMenuVideoId = "";
 let playlistMenuVideoIds = [];
 let playingPlaylistId = "";
 let pendingPlaylistPlay = false;
+let startPlaybackOnLoad = false;
 let playlistAddOpenId = "";
 let playlistAddQuery = "";
 const playlistAddSelection = new Set();
@@ -2010,7 +2011,7 @@ function renderYouTubeHome(data) {
 function onYouTubeHomeClick(event) {
   const open = event.target.closest("[data-youtube-open]");
   if (open) {
-    openTopicResult(document.querySelector("#youtubeGrid"), open.dataset.youtubeOpen);
+    openTopicResult(document.querySelector("#youtubeGrid"), open.dataset.youtubeOpen, { autoplay: true });
     return;
   }
   const playlist = event.target.closest("[data-youtube-playlist]");
@@ -2652,13 +2653,14 @@ function ensureTopicVideo(item) {
   }, { reveal: false });
 }
 
-function openTopicResult(list, index) {
+function openTopicResult(list, index, options = {}) {
   const item = topicItem(list, index);
   if (!item) return;
   document.querySelector("#addVideoDialog")?.close();
+  if (options.autoplay) startPlaybackOnLoad = true;
   const id = ensureTopicVideo(item);
   if (!id) return;
-  selectVideo(id);
+  selectVideo(id, options);
 }
 
 function queueTopicDownload(list, index) {
@@ -3463,6 +3465,7 @@ function selectVideo(id, options = {}) {
   if (fromDesk !== "library") playerOriginDesk = fromDesk;
   if (current && current.id !== id) void flushFolderMetadata(current);
   state.selectedId = id;
+  startPlaybackOnLoad = Boolean(options.autoplay);
   const video = selectedVideo();
   recordActivity({
     action: "Watched",
@@ -5581,7 +5584,23 @@ function activeEmbedKey(video) {
   return embedUrl ? `${video.id}|${embedUrl}` : "";
 }
 
+function autoplayEmbedUrl(url, autoplay) {
+  if (!url || !autoplay) return url;
+  const next = new URL(url, location.href);
+  next.searchParams.set("autoplay", "1");
+  return next.href;
+}
+
+function startLoadedVideo(autoplay) {
+  if (!autoplay || !els.videoPlayer) return;
+  const play = () => els.videoPlayer.play()?.catch(() => {});
+  els.videoPlayer.addEventListener("loadeddata", play, { once: true });
+  play();
+}
+
 function renderPlayer(options = {}) {
+  const autoplay = startPlaybackOnLoad;
+  startPlaybackOnLoad = false;
   const video = selectedVideo();
   const localUrl = localPlaybackUrl(video);
   const nextEmbedKey = activeEmbedKey(video);
@@ -5594,7 +5613,7 @@ function renderPlayer(options = {}) {
     setReconnectFolderButton(false);
     els.openVideoButton.disabled = !video?.url;
     els.retryPlaybackButton.disabled = !video?.url;
-    if (pendingPlaylistPlay) {
+    if (pendingPlaylistPlay || autoplay) {
       pendingPlaylistPlay = false;
       void ensurePlayerPlaying();
     }
@@ -5604,7 +5623,7 @@ function renderPlayer(options = {}) {
     setReconnectFolderButton(false);
     els.openVideoButton.disabled = !video?.url;
     els.retryPlaybackButton.disabled = !video?.url;
-    if (pendingPlaylistPlay) {
+    if (pendingPlaylistPlay || autoplay) {
       pendingPlaylistPlay = false;
       void ensurePlayerPlaying();
     }
@@ -5669,6 +5688,7 @@ function renderPlayer(options = {}) {
       els.videoPlayer.onerror = () => setPlayerStatus("The browser could not load this saved video copy.");
       els.videoPlayer.src = localUrl;
       setPlayerStatus("Loading the saved disk copy...");
+      startLoadedVideo(autoplay);
       armPlaylistAutoplay();
     }
     return;
@@ -5683,6 +5703,7 @@ function renderPlayer(options = {}) {
       els.videoPlayer.onerror = () => setPlayerStatus("This media server blocked browser playback.");
       els.videoPlayer.src = video.streamUrl;
       setPlayerStatus("Loading direct video...");
+      startLoadedVideo(autoplay);
       armPlaylistAutoplay();
     }
     return;
@@ -5701,10 +5722,11 @@ function renderPlayer(options = {}) {
         embedPlaybackKey = `${videoId}|${embedUrl}`;
         els.embedPlayer.onload = () => {
           postEmbedCommand("listening");
+          if (autoplay) postEmbedCommand("playVideo");
           markSelectedPlaybackReady(videoId, "The provider player loaded successfully.");
         };
         armPlaylistAutoplay();
-        els.embedPlayer.src = embedUrl;
+        els.embedPlayer.src = autoplayEmbedUrl(embedUrl, autoplay);
         els.playerShell.dataset.mode = "embed";
         setPlayerStatus("Loading the provider's embedded player.");
       }
@@ -5717,10 +5739,11 @@ function renderPlayer(options = {}) {
     embedPlaybackKey = `${video.id}|${embedUrl}`;
     els.embedPlayer.onload = () => {
       postEmbedCommand("listening");
+      if (autoplay) postEmbedCommand("playVideo");
       markSelectedPlaybackReady(video.id, "The provider player loaded successfully.");
     };
     armPlaylistAutoplay();
-    els.embedPlayer.src = embedUrl;
+    els.embedPlayer.src = autoplayEmbedUrl(embedUrl, autoplay);
     els.playerShell.dataset.mode = "embed";
     setPlayerStatus("Loading the provider's secure embedded player. Use Open original if access requires sign-in.");
     return;
@@ -5737,6 +5760,7 @@ function renderPlayer(options = {}) {
     setPlayerStatus("This media server blocked browser playback. Try Open original or verify that the link is still public.");
   els.videoPlayer.src = video.url;
   setPlayerStatus("Loading direct video...");
+  startLoadedVideo(autoplay);
   armPlaylistAutoplay();
 }
 
