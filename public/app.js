@@ -3964,6 +3964,10 @@ function syncNavSearch() {
   const value = els.searchLibrary?.value || "";
   document.body.classList.toggle("is-nav-searching", Boolean(value.trim()));
   els.searchLibrary?.closest(".nav-search")?.classList.toggle("has-value", value.length > 0);
+  if (typeof youtubeShelf !== "undefined") {
+    youtubeShelf.query = value;
+    paintYouTubeGrid();
+  }
   syncPlayBubble();
 }
 
