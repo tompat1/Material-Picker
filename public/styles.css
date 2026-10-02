@@ -613,6 +613,7 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
 }
 
 .workspace-nav .nav-search {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -623,6 +624,53 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
   border-radius: 10px;
   color: var(--muted);
   background: var(--bg);
+}
+
+.search-suggest {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--ink) 14%, transparent);
+  max-height: 16rem;
+  overflow: auto;
+}
+
+#searchFeedSuggest[hidden] {
+  display: none;
+}
+
+.search-suggest button {
+  display: grid;
+  width: 100%;
+  gap: 0.1rem;
+  margin: 0;
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: 560 0.92rem/1.2 var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-suggest button span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.search-suggest button:hover,
+.search-suggest button[aria-selected="true"] {
+  background: var(--library);
 }
 
 .nav-search input {
@@ -5191,11 +5239,16 @@ html[data-picker-theme="new-age"] .history-list {
   }
 
   body:not(:has(#desk-library:checked)) .phone-library-head,
-  body:not(:has(#desk-library:checked)) .nav-search,
+  body:not(:has(#desk-library:checked)):not(:has(#desk-youtube:checked)) .nav-search,
   body.is-mobile-player .phone-library-head,
   body.is-mobile-player .nav-search,
   body.is-mobile-player .bench {
     display: none;
+  }
+
+  .search-suggest {
+    top: calc(100% + 6px);
+    bottom: auto;
   }
 
   .workspace-nav .nav-search {

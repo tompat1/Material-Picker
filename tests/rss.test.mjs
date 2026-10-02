@@ -128,6 +128,11 @@ test("searchFeedCatalog filters by topic and words", () => {
 
   assert.equal(searchFeedCatalog({}).length, 0);
   assert.equal(searchFeedCatalog({ topic: "cooking" }).length, 0);
+  assert.ok(searchFeedCatalog({ query: "marques" }).some((feed) => feed.id === "mkbhd"));
+  assert.ok(searchFeedCatalog({ query: "mkbhd" }).some((feed) => feed.id === "mkbhd"));
+  assert.ok(searchFeedCatalog({ query: "matt wolfe" }).some((feed) => feed.id === "matt-wolfe"));
+  assert.ok(searchFeedCatalog({ query: "engadget" }).some((feed) => feed.id === "engadget"));
+  assert.ok(searchFeedCatalog({ query: "guardian" }).some((feed) => feed.id === "guardian-world"));
 });
 
 test("loadFeed reports when a page has no feed", async () => {

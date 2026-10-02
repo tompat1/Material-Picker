@@ -556,11 +556,6 @@ function bindEvents() {
   });
   bindPlayBubble();
   document.querySelector("#youtubeHome")?.addEventListener("click", onYouTubeHomeClick);
-  document.querySelector("#youtubeHome")?.addEventListener("input", (event) => {
-    if (event.target.id !== "youtubeSearch") return;
-    youtubeShelf.query = event.target.value;
-    paintYouTubeGrid();
-  });
   bindMerchShop();
   document.querySelectorAll(".nav-sub label, #desk-library, #desk-youtube, #desk-feeds").forEach((control) => {
     control.addEventListener("change", closeMobileMenus);
@@ -591,8 +586,21 @@ function bindEvents() {
   els.searchLibrary.addEventListener("input", () => {
     syncNavSearch();
     queueLibraryTopicSearch();
+    queueSearchSuggest();
     renderLibrary();
     renderCollectionManager();
+  });
+  els.searchLibrary.addEventListener("keydown", onSearchSuggestKey);
+  els.searchLibrary.addEventListener("blur", () => {
+    window.setTimeout(hideSearchSuggest, 150);
+  });
+  document.querySelector("#searchFeedSuggest")?.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  document.querySelector("#searchFeedSuggest")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-feed-suggest]");
+    if (!button) return;
+    chooseSearchSuggest(button);
   });
   document.querySelector("#clearLibrarySearch")?.addEventListener("click", () => {
     if (!els.searchLibrary) return;
@@ -1874,10 +1882,6 @@ function renderYouTubeHome(data) {
           <button type="button" data-youtube-view="all" aria-pressed="true">All</button>
           <button type="button" data-youtube-view="playlists" aria-pressed="false">Playlists</button>
           <button type="button" data-youtube-view="liked" aria-pressed="false">Liked videos</button>
-          <label class="yt-search">
-            <span class="sr-only">Search YouTube</span>
-            <input id="youtubeSearch" type="search" placeholder="Search" autocomplete="off" enterkeyhint="search" />
-          </label>
         </div>
         <div class="yt-grid" id="youtubeGrid"></div>
       </div>
@@ -2230,6 +2234,109 @@ async function loadLibraryFeed() {
     ? `${libraryFeedResults.length} videos · ${libraryFeedLabel()}${libraryFeedResults.length < libraryFeedFetched.length ? " · personalized" : ""}`
     : `No videos in ${libraryFeedLabel()} right now.`;
   renderLibrary();
+}
+
+let searchFeedTimer = 0;
+let searchFeedRequest = 0;
+let searchFeedIndex = -1;
+
+function searchSuggestList() {
+  return document.querySelector("#searchFeedSuggest");
+}
+
+function hideSearchSuggest() {
+  const list = searchSuggestList();
+  if (!list || list.hidden) return;
+  list.hidden = true;
+  list.innerHTML = "";
+  searchFeedIndex = -1;
+  els.searchLibrary?.setAttribute("aria-expanded", "false");
+}
+
+function paintSearchSuggest(feeds) {
+  const list = searchSuggestList();
+  if (!list) return;
+  const shown = feeds.slice(0, 6);
+  if (!shown.length) {
+    hideSearchSuggest();
+    return;
+  }
+  searchFeedIndex = -1;
+  list.innerHTML = shown.map((feed) => `
+    <li role="option">
+      <button type="button" data-feed-suggest="${escapeHtml(feed.url)}" data-feed-title="${escapeHtml(feed.title)}" data-feed-topics="${escapeHtml((feed.topics || []).join(","))}">
+        <strong>${escapeHtml(feed.title)}</strong>
+        <span>${escapeHtml(feed.blurb || feed.site || "")}</span>
+      </button>
+    </li>
+  `).join("");
+  list.hidden = false;
+  els.searchLibrary?.setAttribute("aria-expanded", "true");
+}
+
+function queueSearchSuggest() {
+  window.clearTimeout(searchFeedTimer);
+  const query = els.searchLibrary?.value.trim() || "";
+  if (query.length < 2) {
+    searchFeedRequest += 1;
+    hideSearchSuggest();
+    return;
+  }
+  searchFeedTimer = window.setTimeout(() => {
+    const requestId = ++searchFeedRequest;
+    void loadSearchSuggest(query, requestId);
+  }, 180);
+}
+
+async function loadSearchSuggest(query, requestId) {
+  let response;
+  try {
+    response = await fetch(`/api/rss/catalog?q=${encodeURIComponent(query)}`);
+  } catch {
+    if (requestId === searchFeedRequest) hideSearchSuggest();
+    return;
+  }
+  if (requestId !== searchFeedRequest) return;
+  const data = await response.json().catch(() => ({}));
+  paintSearchSuggest(Array.isArray(data.feeds) ? data.feeds : []);
+}
+
+function chooseSearchSuggest(button) {
+  if (!button) return;
+  const url = button.dataset.feedSuggest || "";
+  const title = button.dataset.feedTitle || "";
+  const topics = (button.dataset.feedTopics || "").split(",").filter(Boolean);
+  hideSearchSuggest();
+  if (els.searchLibrary) els.searchLibrary.value = title;
+  syncNavSearch();
+  document.dispatchEvent(new CustomEvent("picker-follow-feed", { detail: { url, title, topics } }));
+}
+
+function onSearchSuggestKey(event) {
+  const list = searchSuggestList();
+  const options = list && !list.hidden ? [...list.querySelectorAll("button")] : [];
+  if (event.key === "Escape") {
+    hideSearchSuggest();
+    return;
+  }
+  if (!options.length) return;
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    searchFeedIndex = (searchFeedIndex + 1) % options.length;
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    searchFeedIndex = (searchFeedIndex - 1 + options.length) % options.length;
+  } else if (event.key === "Enter" && searchFeedIndex >= 0) {
+    event.preventDefault();
+    chooseSearchSuggest(options[searchFeedIndex]);
+    return;
+  } else {
+    return;
+  }
+  options.forEach((option, index) => {
+    option.setAttribute("aria-selected", index === searchFeedIndex ? "true" : "false");
+  });
+  options[searchFeedIndex]?.scrollIntoView({ block: "nearest" });
 }
 
 function queueLibraryTopicSearch({ immediate = false } = {}) {

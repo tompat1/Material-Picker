@@ -917,6 +917,20 @@ function bindFeedsDesk() {
     document.querySelector("#accountDialog")?.showModal();
   });
   document.addEventListener("picker-account", () => renderFeeds());
+  document.addEventListener("picker-follow-feed", (event) => {
+    const detail = event.detail || {};
+    if (!detail.url) return;
+    if (!pickerIsSignedIn()) {
+      document.querySelector("#accountDialog")?.showModal();
+      return;
+    }
+    const desk = document.querySelector("#desk-feeds");
+    if (desk && !desk.checked) {
+      desk.checked = true;
+      desk.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    void followUrl(detail.url, { title: detail.title || "", topics: detail.topics || [] });
+  });
   document.querySelector("#feedsBack")?.addEventListener("click", () => showPane(0));
   document.querySelector("#followFeedForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
