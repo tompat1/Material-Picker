@@ -351,11 +351,39 @@ let thumbnailNoticeSent = false;
 const pickerWaits = new Map();
 let pickerLoaderHide = 0;
 
+function hasInlineSpinner() {
+  const selectors = [
+    "#feedsStatus .amber-throbber",
+    "#feedsStatus .status-throbber",
+    "#feedsStatus .feeds-status-line",
+    "#statusLine.is-running",
+    ".status-line.is-running",
+    ".status-line .status-throbber",
+    ".amber-throbber:not(#pickerLoader .amber-throbber)",
+    "button.is-busy .amber-throbber",
+  ];
+  for (const selector of selectors) {
+    const nodes = document.querySelectorAll(selector);
+    for (const node of nodes) {
+      if (node.closest("#pickerLoader")) continue;
+      if (node.offsetWidth > 0 && node.offsetHeight > 0) {
+        const style = window.getComputedStyle(node);
+        if (style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0") {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 function paintPickerLoader() {
   const node = document.querySelector("#pickerLoader");
   if (!node) return;
   const active = pickerWaits.size > 0;
-  if (active) {
+  const suppressBigSpinner = active && hasInlineSpinner();
+
+  if (active && !suppressBigSpinner) {
     window.clearTimeout(pickerLoaderHide);
     const label = [...pickerWaits.values()].at(-1)?.label || "Loading";
     const text = document.querySelector("#pickerLoaderText");
@@ -367,7 +395,7 @@ function paintPickerLoader() {
   }
   window.clearTimeout(pickerLoaderHide);
   pickerLoaderHide = window.setTimeout(() => {
-    if (pickerWaits.size) return;
+    if (pickerWaits.size && !hasInlineSpinner()) return;
     node.hidden = true;
     node.setAttribute("aria-hidden", "true");
     document.body.removeAttribute("aria-busy");
@@ -447,6 +475,24 @@ if (typeof window.fetch === "function") {
 }
 window.pickerWait = pickerWait;
 window.pickerWaitUntil = pickerWaitUntil;
+window.paintPickerLoader = paintPickerLoader;
+
+if (typeof MutationObserver === "function" && typeof document !== "undefined") {
+  const spinnerObserver = new MutationObserver(() => {
+    paintPickerLoader();
+  });
+  const setupSpinnerObserver = () => {
+    ["#feedsStatus", "#statusLine", ".mast"].forEach((selector) => {
+      const el = document.querySelector(selector);
+      if (el) spinnerObserver.observe(el, { childList: true, subtree: true, attributes: true });
+    });
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setupSpinnerObserver, { once: true });
+  } else {
+    setupSpinnerObserver();
+  }
+}
 
 function init() {
   const releaseBoot = pickerWait("boot", "Loading");

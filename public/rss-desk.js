@@ -540,6 +540,7 @@ function setFeedStatus(message) {
     node.classList.remove("is-warn");
     const throbberHtml = `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"></span>`;
     node.innerHTML = `<p class="feeds-status-line">${throbberHtml}<span>${escapeFeedText(message)}</span></p>`;
+    window.paintPickerLoader?.();
     if (!isUpdating && message) {
       feedStatusTimer = window.setTimeout(() => {
         if (brokenFeeds().length || deadFeeds().length) {
@@ -547,11 +548,13 @@ function setFeedStatus(message) {
         } else {
           node.innerHTML = "";
         }
+        window.paintPickerLoader?.();
       }, 3000);
     }
     return;
   }
   paintFeedHealth(message || "");
+  window.paintPickerLoader?.();
 }
 
 async function requestFeed(url) {
