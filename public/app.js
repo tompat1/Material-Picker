@@ -1869,7 +1869,13 @@ function youtubeShelfVideos() {
       ? youtubeShelf.channelVideos
       : youtubeShelf.subscriptions.filter((video) => video.channelId === youtubeShelf.channelId))
     : youtubeShelf.subscriptions;
-  return videos.filter((video) => video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
+  const filtered = videos.filter((video) => video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
+  if (youtubeShelf.view === "all") {
+    const regular = filtered.filter((v) => !v?.short);
+    const shorts = filtered.filter((v) => v?.short === true);
+    return [...regular, ...shorts];
+  }
+  return filtered;
 }
 
 function youtubeChannelMark(thumbnail, title) {
