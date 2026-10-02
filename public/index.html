@@ -82,6 +82,9 @@
           <button class="account-sign-out cms-edit" id="cmsEdit" type="button" hidden>Edit</button>
           <button class="account-sign-out" id="accountSignOut" type="button" hidden>Sign out</button>
         </div>
+        <button class="global-search-trigger" id="globalSearchTrigger" type="button" aria-label="Search everything" title="Search everything (videos, feeds, playlists, shop)">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
         <button class="primary-button" id="addVideoButton" type="button">
           <svg class="phone-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           <span class="add-video-label">Add video</span>
@@ -908,6 +911,22 @@
         <button class="ghost-button" value="close" aria-label="Close">✕</button>
       </form>
       <div id="addVideoMount"></div>
+    </dialog>
+
+    <dialog id="globalSearchDialog" class="global-search-dialog">
+      <div class="global-search-container">
+        <header class="global-search-head">
+          <div class="global-search-input-box">
+            <svg class="global-search-input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" id="globalSearchInput" placeholder="Search videos, feeds, playlists, shop..." autocomplete="off" spellcheck="false" aria-label="Search everything in Picker" />
+            <button type="button" class="global-search-clear" id="globalSearchClear" hidden aria-label="Clear search">✕</button>
+          </div>
+          <form method="dialog" class="global-search-close-form">
+            <button class="ghost-button global-search-close" value="close" aria-label="Close">✕</button>
+          </form>
+        </header>
+        <div class="global-search-body" id="globalSearchBody"></div>
+      </div>
     </dialog>
 
     <template id="videoCardTemplate">

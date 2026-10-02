@@ -565,6 +565,7 @@ function repairDuplicateArchives() {
 }
 
 function bindEvents() {
+  bindGlobalSearch();
   els.folderScanForm?.addEventListener("submit", handleFolderScan);
   els.browseFolderButton?.addEventListener("click", handleBrowseFolder);
   els.localFolderInput?.addEventListener("change", handleLocalFolderInput);
@@ -9624,6 +9625,361 @@ function renderShopDrawer() {
     ? "Free shipping in Sweden."
     : `Add ${MERCH_FREE_SHIPPING - total} SEK for free shipping.`;
   body.innerHTML = `<ul class="shop-lines">${lines}</ul><div class="shop-drawer-foot"><div class="shop-total"><span>Subtotal</span><strong>${merchMoney(total)}</strong></div><p class="shop-ship">${escapeHtml(shipping)}</p><button class="primary-button" type="button" data-shop-checkout>Keep this order</button><p class="shop-ship">Preview shop. Orders stay on this device and are not charged.</p></div>`;
+}
+
+/* --- Global Search Engine & Panel --- */
+const GLOBAL_RECENT_SEARCHES_KEY = "picker:recent-searches";
+
+function getRecentGlobalSearches() {
+  try {
+    const data = localStorage.getItem(GLOBAL_RECENT_SEARCHES_KEY);
+    return Array.isArray(JSON.parse(data)) ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentGlobalSearch(query) {
+  const trimmed = String(query || "").trim();
+  if (!trimmed || trimmed.length < 2) return;
+  const current = getRecentGlobalSearches().filter((q) => q.toLowerCase() !== trimmed.toLowerCase());
+  current.unshift(trimmed);
+  localStorage.setItem(GLOBAL_RECENT_SEARCHES_KEY, JSON.stringify(current.slice(0, 10)));
+}
+
+function removeRecentGlobalSearch(query) {
+  const current = getRecentGlobalSearches().filter((q) => q.toLowerCase() !== query.toLowerCase());
+  localStorage.setItem(GLOBAL_RECENT_SEARCHES_KEY, JSON.stringify(current));
+  renderGlobalSearchBody();
+}
+
+function clearRecentGlobalSearches() {
+  localStorage.removeItem(GLOBAL_RECENT_SEARCHES_KEY);
+  renderGlobalSearchBody();
+}
+
+function buildGlobalAppIndex() {
+  const index = [];
+
+  // 1. Local & Offline Library Videos
+  const libraryVideos = Array.isArray(state?.videos) ? state.videos : [];
+  for (const video of libraryVideos) {
+    const title = video.title || video.id || "Untitled Video";
+    const speaker = video.speaker || "";
+    const folder = video.subfolder || "";
+    const tags = Array.isArray(video.tags) ? video.tags.join(" ") : String(video.tags || "");
+    const transcript = String(video.transcript || "").slice(0, 300);
+    const notes = String(video.notes || "").slice(0, 200);
+
+    index.push({
+      id: `lib:${video.id || video.url}`,
+      category: "Library Videos",
+      badge: "Library",
+      icon: "🎬",
+      title,
+      subtitle: [speaker, folder, video.duration].filter(Boolean).join(" · ") || "Local video",
+      text: `${title} ${speaker} ${folder} ${tags} ${transcript} ${notes}`.toLowerCase(),
+      action: () => {
+        openVideoModal(video);
+      },
+    });
+  }
+
+  // 2. RSS Feeds & Discover Topics
+  const feeds = Array.isArray(feedState?.feeds) ? feedState.feeds : [];
+  for (const feed of feeds) {
+    const title = feed.title || feed.url || "RSS Feed";
+    const topics = Array.isArray(feed.topics) ? feed.topics.join(" ") : "";
+    index.push({
+      id: `rss:${feed.url}`,
+      category: "RSS Feeds",
+      badge: "RSS",
+      icon: "📰",
+      title,
+      subtitle: feed.url,
+      text: `${title} ${feed.url} ${topics}`.toLowerCase(),
+      action: () => {
+        const deskFeeds = document.querySelector("#desk-feeds");
+        if (deskFeeds) {
+          deskFeeds.checked = true;
+          deskFeeds.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        if (typeof selectFeedByUrl === "function") selectFeedByUrl(feed.url);
+      },
+    });
+  }
+
+  // 3. YouTube Subscriptions, Channels & Playlists
+  const ytSubs = Array.isArray(youtubeShelf?.subscriptions) ? youtubeShelf.subscriptions : [];
+  for (const item of ytSubs) {
+    const title = item.title || "YouTube Video";
+    const speaker = item.speaker || item.channelTitle || "";
+    index.push({
+      id: `yt:${item.url || item.id}`,
+      category: "YouTube",
+      badge: "YouTube",
+      icon: "▶️",
+      title,
+      subtitle: speaker,
+      text: `${title} ${speaker}`.toLowerCase(),
+      action: () => {
+        const deskYt = document.querySelector("#desk-youtube");
+        if (deskYt) {
+          deskYt.checked = true;
+          deskYt.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        if (item.url) openTopicResult(document.querySelector("#youtubeGrid"), item.url, { autoplay: true });
+      },
+    });
+  }
+
+  const ytChannels = Array.isArray(youtubeShelf?.channels) ? youtubeShelf.channels : [];
+  for (const channel of ytChannels) {
+    const title = channel.title || "Channel";
+    index.push({
+      id: `ytchan:${channel.id}`,
+      category: "YouTube Channels",
+      badge: "Channel",
+      icon: "🔴",
+      title,
+      subtitle: "Subscribed Channel",
+      text: `${title}`.toLowerCase(),
+      action: () => {
+        const deskYt = document.querySelector("#desk-youtube");
+        if (deskYt) {
+          deskYt.checked = true;
+          deskYt.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        if (typeof loadYouTubeChannel === "function") loadYouTubeChannel(channel.id);
+      },
+    });
+  }
+
+  const ytPlaylists = Array.isArray(youtubeShelf?.playlists) ? youtubeShelf.playlists : [];
+  for (const pl of ytPlaylists) {
+    const title = pl.title || "Playlist";
+    index.push({
+      id: `ytpl:${pl.id}`,
+      category: "Playlists",
+      badge: "Playlist",
+      icon: "🎵",
+      title,
+      subtitle: `${pl.count || 0} videos`,
+      text: `${title}`.toLowerCase(),
+      action: () => {
+        const deskYt = document.querySelector("#desk-youtube");
+        if (deskYt) {
+          deskYt.checked = true;
+          deskYt.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        if (typeof loadYouTubePlaylist === "function") loadYouTubePlaylist(pl.id);
+      },
+    });
+  }
+
+  // 4. Shop Goods
+  const shopCatalog = merchCatalog();
+  for (const piece of shopCatalog) {
+    const title = piece.name || piece.title || "Picker Goods";
+    const lead = piece.description || piece.lead || "";
+    const price = piece.priceSek ? `${piece.priceSek} SEK` : "";
+    index.push({
+      id: `shop:${piece.id}`,
+      category: "Shop Goods",
+      badge: "Shop",
+      icon: "🛍️",
+      title,
+      subtitle: [price, lead].filter(Boolean).join(" · "),
+      text: `${title} ${lead} merch shop`.toLowerCase(),
+      action: () => {
+        if (typeof openShopDrawer === "function") openShopDrawer();
+      },
+    });
+  }
+
+  return index;
+}
+
+function renderGlobalSearchBody() {
+  const body = document.querySelector("#globalSearchBody");
+  const input = document.querySelector("#globalSearchInput");
+  const clearBtn = document.querySelector("#globalSearchClear");
+  if (!body || !input) return;
+
+  const query = String(input.value || "").trim();
+  if (clearBtn) clearBtn.hidden = !query;
+
+  if (!query) {
+    const recent = getRecentGlobalSearches();
+    const suggestions = ["Role-Playing Games", "Vocal Music", "Mixes", "Supercar", "Podcasts", "Electrical Engineering"];
+
+    body.innerHTML = `
+      <div class="global-search-recent-section">
+        <div class="global-search-section-title">
+          <span>Recent Searches</span>
+          ${recent.length ? `<button type="button" class="global-search-clear-all" id="globalSearchClearRecent">Clear history</button>` : ""}
+        </div>
+        ${recent.length
+          ? `<div class="global-search-recent-list">
+              ${recent.map((q) => `
+                <span class="global-search-recent-chip" data-search-term="${escapeHtml(q)}">
+                  🔍 ${escapeHtml(q)}
+                  <button type="button" class="global-search-recent-del" data-del-search="${escapeHtml(q)}" title="Remove">✕</button>
+                </span>
+              `).join("")}
+            </div>`
+          : `<p class="hint">No recent searches yet.</p>`}
+      </div>
+
+      <div class="global-search-suggest-section">
+        <div class="global-search-section-title"><span>Suggested Topics</span></div>
+        <div class="global-search-recent-list">
+          ${suggestions.map((s) => `
+            <button type="button" class="global-search-recent-chip" data-search-term="${escapeHtml(s)}">✨ ${escapeHtml(s)}</button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+
+    document.querySelector("#globalSearchClearRecent")?.addEventListener("click", clearRecentGlobalSearches);
+    return;
+  }
+
+  const index = buildGlobalAppIndex();
+  const qLower = query.toLowerCase();
+  const matches = index.filter((item) => item.text.includes(qLower));
+
+  // Autocomplete terms extracted from matching item titles
+  const termSet = new Set();
+  for (const item of matches) {
+    const words = item.title.split(/\s+/);
+    for (const w of words) {
+      if (w.toLowerCase().startsWith(qLower) && w.length > query.length) {
+        termSet.add(w.replace(/[^\w\s-]/g, ""));
+      }
+    }
+  }
+  const autocompleteTerms = Array.from(termSet).slice(0, 5);
+
+  if (!matches.length) {
+    body.innerHTML = `<p class="hint" style="text-align:center; padding: 2rem 0;">No items found matching “${escapeHtml(query)}”.</p>`;
+    return;
+  }
+
+  const groups = new Map();
+  for (const item of matches) {
+    const cat = item.category;
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat).push(item);
+  }
+
+  let html = "";
+
+  if (autocompleteTerms.length) {
+    html += `
+      <div class="global-search-autocomplete">
+        ${autocompleteTerms.map((term) => `
+          <button type="button" class="global-search-autocomplete-chip" data-search-term="${escapeHtml(term)}">💡 ${escapeHtml(term)}</button>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  for (const [cat, items] of groups.entries()) {
+    html += `
+      <div class="global-search-group">
+        <div class="global-search-section-title"><span>${escapeHtml(cat)} (${items.length})</span></div>
+        ${items.slice(0, 8).map((item) => {
+          const highlightedTitle = highlightSearchMatch(item.title, query);
+          return `
+            <button type="button" class="global-search-item" data-search-index-id="${escapeHtml(item.id)}">
+              <span class="global-search-item-icon">${item.icon}</span>
+              <div class="global-search-item-info">
+                <p class="global-search-item-title">${highlightedTitle}</p>
+                <p class="global-search-item-sub">${escapeHtml(item.subtitle)}</p>
+              </div>
+              <span class="global-search-badge">${escapeHtml(item.badge)}</span>
+            </button>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  body.innerHTML = html;
+
+  body.querySelectorAll("[data-search-index-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.searchIndexId;
+      const targetItem = index.find((it) => it.id === id);
+      if (targetItem) {
+        saveRecentGlobalSearch(query);
+        document.querySelector("#globalSearchDialog")?.close();
+        targetItem.action();
+      }
+    });
+  });
+}
+
+function highlightSearchMatch(text, query) {
+  if (!query) return escapeHtml(text);
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+  return escapeHtml(text).replace(regex, "<mark>$1</mark>");
+}
+
+function openGlobalSearch() {
+  const dialog = document.querySelector("#globalSearchDialog");
+  const input = document.querySelector("#globalSearchInput");
+  if (!dialog) return;
+  dialog.showModal();
+  renderGlobalSearchBody();
+  if (input) {
+    input.value = "";
+    input.focus();
+  }
+}
+
+function bindGlobalSearch() {
+  const trigger = document.querySelector("#globalSearchTrigger");
+  const dialog = document.querySelector("#globalSearchDialog");
+  const input = document.querySelector("#globalSearchInput");
+  const clearBtn = document.querySelector("#globalSearchClear");
+  const body = document.querySelector("#globalSearchBody");
+
+  trigger?.addEventListener("click", openGlobalSearch);
+
+  input?.addEventListener("input", () => {
+    renderGlobalSearchBody();
+  });
+
+  clearBtn?.addEventListener("click", () => {
+    if (input) input.value = "";
+    renderGlobalSearchBody();
+    input?.focus();
+  });
+
+  body?.addEventListener("click", (event) => {
+    const termBtn = event.target.closest("[data-search-term]");
+    if (termBtn) {
+      const term = termBtn.dataset.searchTerm || "";
+      if (input) input.value = term;
+      renderGlobalSearchBody();
+      return;
+    }
+
+    const delBtn = event.target.closest("[data-del-search]");
+    if (delBtn) {
+      event.stopPropagation();
+      const term = delBtn.dataset.delSearch || "";
+      removeRecentGlobalSearch(term);
+    }
+  });
+
+  dialog?.addEventListener("click", (event) => {
+    const rect = dialog.getBoundingClientRect();
+    const outside = event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
+    if (outside) dialog.close();
+  });
 }
 
 function escapeHtml(value) {
