@@ -5831,20 +5831,12 @@ html[data-picker-theme="new-age"] .history-list {
     z-index: 1000;
   }
 
-  .workspace-nav .nav-search {
-    position: relative;
-    top: auto;
-    right: auto;
-    left: auto;
-    z-index: 1;
-    margin: 0.7rem 1rem 0.85rem;
-    border-radius: 12px;
-    background: var(--field);
-  }
-
-  .workspace-nav .nav-search:focus-within,
-  .workspace-nav .nav-search:has(.search-suggest:not([hidden])) {
-    z-index: 100 !important;
+  .nav-search,
+  .workspace-nav .nav-search,
+  .topic-search,
+  .yt-search,
+  #feedTopicSearch {
+    display: none !important;
   }
 
   .bench {
