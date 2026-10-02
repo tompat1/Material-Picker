@@ -1912,7 +1912,7 @@ function startServer() {
       return response.end();
     }
     const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
-    if (requestUrl.pathname.startsWith("/api/auth") || requestUrl.pathname.startsWith("/api/youtube/")) {
+    if (requestUrl.pathname.startsWith("/api/auth") || requestUrl.pathname.startsWith("/api/youtube/") || requestUrl.pathname === "/api/feeds/library") {
       return handleAccount(request, response);
     }
     if (request.method === "POST" && requestUrl.pathname === "/api/rss/opml") {

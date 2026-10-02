@@ -315,6 +315,7 @@ export function createMemoryAccountStore() {
   const states = new Map();
   const tokens = new Map();
   const feedlyTokens = new Map();
+  const feedLibraries = new Map();
   return {
     async putState(id, expiresAt) {
       states.set(id, expiresAt);
@@ -424,6 +425,14 @@ export function createMemoryAccountStore() {
         accessToken: tokenSet.accessToken || "",
         accessExpiresAt: tokenSet.accessExpiresAt || "",
       });
+    },
+    async feedLibraryForUser(userId) {
+      return feedLibraries.get(userId) || emptyFeedLibrary();
+    },
+    async saveFeedLibrary(userId, library) {
+      const merged = mergeFeedLibraries(feedLibraries.get(userId), library);
+      feedLibraries.set(userId, merged);
+      return merged;
     },
   };
 }
@@ -575,7 +584,96 @@ export function createD1AccountStore(db) {
         )
         .run();
     },
+    async feedLibraryForUser(userId) {
+      try {
+        const row = await db.prepare("SELECT library_json FROM user_feeds WHERE user_id = ?").bind(userId).first();
+        if (!row?.library_json) return emptyFeedLibrary();
+        return normalizeFeedLibrary(JSON.parse(row.library_json));
+      } catch {
+        return null;
+      }
+    },
+    async saveFeedLibrary(userId, library) {
+      const current = await this.feedLibraryForUser(userId);
+      if (!current) {
+        const error = new Error("Feed library storage is not ready yet.");
+        error.status = 503;
+        throw error;
+      }
+      const merged = mergeFeedLibraries(current, library);
+      await db.prepare(`INSERT INTO user_feeds (user_id, library_json, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          library_json = excluded.library_json,
+          updated_at = excluded.updated_at`)
+        .bind(userId, JSON.stringify(merged), merged.updatedAt)
+        .run();
+      return merged;
+    },
   };
+}
+
+function emptyFeedLibrary() {
+  return { feeds: [], folders: [], updatedAt: "" };
+}
+
+function feedKey(value) {
+  try {
+    const url = new URL(String(value || ""));
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    const path = url.pathname.replace(/\/+$/, "");
+    return `${url.protocol.toLowerCase()}//${host}${path}`;
+  } catch {
+    return String(value || "").trim().toLowerCase();
+  }
+}
+
+function normalizeFeedLibrary(value) {
+  const feeds = Array.isArray(value?.feeds) ? value.feeds : [];
+  const folders = Array.isArray(value?.folders) ? value.folders : [];
+  return {
+    feeds: feeds.slice(0, 400).flatMap((feed) => {
+      const url = String(feed?.url || "").trim();
+      if (!/^https?:\/\//i.test(url)) return [];
+      return [{
+        id: String(feed.id || "").slice(0, 80),
+        url: url.slice(0, 500),
+        title: String(feed.title || "").slice(0, 200),
+        siteUrl: String(feed.siteUrl || "").slice(0, 500),
+        topics: Array.isArray(feed.topics) ? feed.topics.map((topic) => String(topic)).slice(0, 8) : [],
+        folderIds: Array.isArray(feed.folderIds) ? feed.folderIds.map((id) => String(id)).slice(0, 12) : [],
+        addedAt: String(feed.addedAt || "").slice(0, 40),
+      }];
+    }),
+    folders: folders.slice(0, 80).flatMap((folder) => {
+      const id = String(folder?.id || "").slice(0, 80);
+      const name = String(folder?.name || "").slice(0, 80);
+      if (!id || !name) return [];
+      return [{ id, name }];
+    }),
+    updatedAt: String(value?.updatedAt || ""),
+  };
+}
+
+function mergeFeedLibraries(current, incoming) {
+  const base = normalizeFeedLibrary(current);
+  const next = normalizeFeedLibrary(incoming);
+  const feeds = [...base.feeds];
+  const seen = new Set(feeds.map((feed) => feedKey(feed.url)));
+  next.feeds.forEach((feed) => {
+    const key = feedKey(feed.url);
+    if (seen.has(key)) return;
+    seen.add(key);
+    feeds.push(feed);
+  });
+  const folders = [...base.folders];
+  const folderIds = new Set(folders.map((folder) => folder.id));
+  next.folders.forEach((folder) => {
+    if (folderIds.has(folder.id)) return;
+    folderIds.add(folder.id);
+    folders.push(folder);
+  });
+  return { feeds, folders, updatedAt: new Date().toISOString() };
 }
 
 async function feedlyRow(db, userId) {
@@ -588,7 +686,7 @@ async function feedlyRow(db, userId) {
 
 export async function handleAuthRequest(request, options) {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/auth") && !url.pathname.startsWith("/api/youtube/")) return null;
+  if (!url.pathname.startsWith("/api/auth") && !url.pathname.startsWith("/api/youtube/") && url.pathname !== "/api/feeds/library") return null;
   const store = options.store;
   if (!store) {
     return json(503, {
@@ -650,6 +748,9 @@ export async function handleAuthRequest(request, options) {
       return json(error.status || 502, { error: error.message || "That channel could not be loaded." });
     }
   }
+  if (url.pathname === "/api/feeds/library" && (request.method === "GET" || request.method === "PUT")) {
+    return handleFeedLibrary(request, store);
+  }
   if (request.method === "GET" && url.pathname === "/api/youtube/playlist") {
     try {
       return await handleYouTubePlaylist(request, url, store, options);
@@ -658,6 +759,25 @@ export async function handleAuthRequest(request, options) {
     }
   }
   return json(404, { error: "Unknown account route." });
+}
+
+async function handleFeedLibrary(request, store) {
+  const user = await currentUser(request, store);
+  if (!user) return json(401, { error: "Sign in to use feeds on your other devices." });
+  if (typeof store.feedLibraryForUser !== "function" || typeof store.saveFeedLibrary !== "function") {
+    return json(503, { error: "Feed library storage is not ready yet." });
+  }
+  if (request.method === "GET") {
+    const library = await store.feedLibraryForUser(user.id);
+    if (!library) return json(503, { error: "Feed library storage is not ready yet." });
+    return json(200, library);
+  }
+  const body = await request.json().catch(() => ({}));
+  try {
+    return json(200, await store.saveFeedLibrary(user.id, body));
+  } catch (error) {
+    return json(error.status || 500, { error: error.message || "The feed list could not be saved." });
+  }
 }
 
 async function handlePasswordAuth(request, url, store, creating) {

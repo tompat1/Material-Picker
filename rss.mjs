@@ -133,19 +133,66 @@ function enclosureUrl(block, base) {
   return "";
 }
 
+function looksLikeImage(url) {
+  const path = String(url || "").split("?")[0];
+  return /\.(?:avif|gif|jpe?g|png|webp)$/i.test(path) || /(?:i\.guim\.co\.uk|wp-content\/uploads|\/img\/media\/)/i.test(url);
+}
+
+function imageFromHtml(block, base) {
+  const raw = innerRaw(block, ["encoded", "description", "summary", "content"]);
+  if (!raw || !/<img\b/i.test(raw)) return "";
+  const tag = decodeXml(raw).match(/<img\b[^>]*>/i);
+  if (!tag) return "";
+  const src = attrValue(tag[0], "src") || attrValue(tag[0], "data-src") || attrValue(tag[0], "data-original");
+  if (!src || /^data:/i.test(src)) return "";
+  return absoluteHttp(src, base);
+}
+
 function imageUrl(block, base) {
-  for (const tag of tagsOf(block, "thumbnail")) {
-    const url = absoluteHttp(attrValue(tag[1], "url"), base);
+  for (const tag of [...tagsOf(block, "thumbnail"), ...tagsOf(block, "image")]) {
+    const url = absoluteHttp(attrValue(tag[1], "url") || attrValue(tag[1], "href"), base);
     if (url) return url;
   }
-  for (const tag of tagsOf(block, "content")) {
+  for (const tag of [...tagsOf(block, "content"), ...tagsOf(block, "enclosure")]) {
     const type = attrValue(tag[1], "type").toLowerCase();
     const medium = attrValue(tag[1], "medium").toLowerCase();
-    if (!type.startsWith("image/") && medium !== "image") continue;
+    if (type.startsWith("video/") || type.startsWith("audio/") || medium === "video" || medium === "audio") continue;
     const url = absoluteHttp(attrValue(tag[1], "url"), base);
+    if (!url) continue;
+    if (type.startsWith("image/") || medium === "image" || looksLikeImage(url)) return url;
+  }
+  return imageFromHtml(block, base);
+}
+
+function openGraphImage(html, base) {
+  for (const tag of tagsOf(html, "meta")) {
+    const prop = (attrValue(tag[1], "property") || attrValue(tag[1], "name")).toLowerCase();
+    if (prop !== "og:image" && prop !== "twitter:image") continue;
+    const url = absoluteHttp(attrValue(tag[1], "content"), base);
     if (url) return url;
   }
   return "";
+}
+
+async function fillMissingImages(feed, fetchText) {
+  if (!feed?.items?.length || feed.items.some((item) => item.image)) return feed;
+  const targets = feed.items.filter((item) => item.link && !item.image).slice(0, 12);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < targets.length) {
+      const item = targets[cursor];
+      cursor += 1;
+      try {
+        const page = await fetchText(item.link);
+        const image = openGraphImage(page.body, page.finalUrl || item.link);
+        if (image) item.image = image;
+      } catch {
+        // A page without a preview image should not fail the feed.
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(4, targets.length) }, () => worker()));
+  return feed;
 }
 
 function authorOf(block) {
@@ -229,7 +276,7 @@ export async function loadFeed(value, fetchText) {
   const first = await fetchText(value);
   const pageUrl = first.finalUrl || value;
   if (looksLikeFeed(first.body, first.contentType)) {
-    return { kind: "feed", feed: parseFeed(first.body, pageUrl) };
+    return { kind: "feed", feed: await fillMissingImages(parseFeed(first.body, pageUrl), fetchText) };
   }
   const feeds = discoverFeeds(first.body, pageUrl);
   if (!feeds.length) throw fail(404, "No RSS or Atom feed was found.");
@@ -239,7 +286,7 @@ export async function loadFeed(value, fetchText) {
   if (!looksLikeFeed(next.body, next.contentType)) throw fail(404, "No RSS or Atom feed was found.");
   const feed = parseFeed(next.body, feedUrl);
   if (feed.title === "Untitled feed" && feeds[0].title) feed.title = feeds[0].title;
-  return { kind: "feed", feed };
+  return { kind: "feed", feed: await fillMissingImages(feed, fetchText) };
 }
 
 export const RSS_ACCEPT = "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.8, */*;q=0.1";

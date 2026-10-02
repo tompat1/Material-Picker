@@ -49,9 +49,103 @@ function loadFeedState() {
   }
 }
 
+let librarySignature = "";
+let librarySyncTimer = 0;
+
+function feedLibrarySignature() {
+  const feeds = feedState.feeds
+    .map((feed) => `${canonicalFeedUrl(feed.url)}|${feed.title}|${(feed.folderIds || []).join(",")}`)
+    .sort();
+  const folders = feedState.folders.map((folder) => `${folder.id}|${folder.name}`).sort();
+  return JSON.stringify([feeds, folders]);
+}
+
+function libraryPayload() {
+  return {
+    feeds: feedState.feeds.map((feed) => ({
+      id: feed.id,
+      url: feed.url,
+      title: feed.title,
+      siteUrl: feed.siteUrl || "",
+      topics: feed.topics || [],
+      folderIds: feed.folderIds || [],
+      addedAt: feed.addedAt || "",
+    })),
+    folders: feedState.folders.map((folder) => ({ id: folder.id, name: folder.name })),
+  };
+}
+
+function scheduleLibraryPush() {
+  if (!pickerIsSignedIn()) return;
+  window.clearTimeout(librarySyncTimer);
+  librarySyncTimer = window.setTimeout(() => {
+    void pushFeedLibrary();
+  }, 700);
+}
+
+async function pushFeedLibrary() {
+  if (!pickerIsSignedIn()) return;
+  try {
+    await fetch("/api/feeds/library", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(libraryPayload()),
+    });
+  } catch {
+    // The list stays on this device until the next save.
+  }
+}
+
+async function syncFeedLibrary() {
+  if (!pickerIsSignedIn()) return;
+  let remote = null;
+  try {
+    const response = await fetch("/api/feeds/library");
+    if (!response.ok) return;
+    remote = await response.json();
+  } catch {
+    return;
+  }
+  const remoteFeeds = Array.isArray(remote.feeds) ? remote.feeds : [];
+  const known = new Set(feedState.feeds.map((feed) => canonicalFeedUrl(feed.url)));
+  let added = 0;
+  remoteFeeds.forEach((feed) => {
+    const key = canonicalFeedUrl(feed.url);
+    if (!key || known.has(key)) return;
+    known.add(key);
+    feedState.feeds.push({
+      id: feed.id || crypto.randomUUID(),
+      url: feed.url,
+      title: feed.title || feedHost(feed.url) || "Untitled feed",
+      siteUrl: feed.siteUrl || "",
+      topics: Array.isArray(feed.topics) ? feed.topics : [],
+      folderIds: Array.isArray(feed.folderIds) ? feed.folderIds : [],
+      addedAt: feed.addedAt || new Date().toISOString(),
+    });
+    added += 1;
+  });
+  const folderIds = new Set(feedState.folders.map((folder) => folder.id));
+  (Array.isArray(remote.folders) ? remote.folders : []).forEach((folder) => {
+    if (!folder?.id || !folder?.name || folderIds.has(folder.id)) return;
+    folderIds.add(folder.id);
+    feedState.folders.push({ id: folder.id, name: folder.name });
+  });
+  const localOnly = feedState.feeds.some((feed) => !remoteFeeds.some((item) => canonicalFeedUrl(item.url) === canonicalFeedUrl(feed.url)));
+  librarySignature = feedLibrarySignature();
+  if (added) {
+    saveFeedState();
+    renderFeeds();
+    void refreshFeeds({ force: true });
+  }
+  if (localOnly || added) scheduleLibraryPush();
+}
+
 function saveFeedState() {
-  const payload = { ...feedState };
-  localStorage.setItem(FEEDS_KEY, JSON.stringify(payload));
+  const next = feedLibrarySignature();
+  const changed = Boolean(librarySignature) && next !== librarySignature;
+  librarySignature = next;
+  localStorage.setItem(FEEDS_KEY, JSON.stringify({ ...feedState }));
+  if (changed) scheduleLibraryPush();
 }
 
 function escapeFeedText(value) {
@@ -280,7 +374,9 @@ function countLabel(count) {
 
 function setFeedStatus(message) {
   const node = document.querySelector("#feedsStatus");
-  if (node) node.textContent = message || "";
+  if (!node) return;
+  node.textContent = message || "";
+  node.classList.toggle("is-warn", /could not refresh/i.test(message || ""));
 }
 
 async function requestFeed(url) {
@@ -300,7 +396,9 @@ function assignFolderNames(record, names) {
 
 function storeFeed(feed, options = {}) {
   const key = canonicalFeedUrl(feed.url);
-  let record = feedState.feeds.find((item) => canonicalFeedUrl(item.url) === key);
+  let record = options.feedId ? feedState.feeds.find((item) => item.id === options.feedId) : null;
+  if (!record) record = feedState.feeds.find((item) => canonicalFeedUrl(item.url) === key);
+  if (record && feed.url) record.url = feed.url;
   const topicNames = (Array.isArray(options.topics) ? options.topics : []).map((topic) => TOPIC_LABELS[topic] || topic);
   if (!record) {
     record = {
@@ -365,8 +463,10 @@ function applyPane() {
   if (back) back.hidden = !isPhoneFeeds() || feedPane === 0;
   const title = document.querySelector("#feedsTitle");
   const subtitle = document.querySelector("#feedsSubtitle");
+  const kicker = document.querySelector("#feedsKicker");
   const article = itemById(selectedItemId);
   const onArticle = isPhoneFeeds() && feedPane === 1;
+  if (kicker) kicker.textContent = onArticle ? "Article" : "Feeds";
   if (title) {
     title.textContent = onArticle ? (feedRecord(article?.feedId)?.title || "Article") : sourceTitle();
   }
@@ -749,6 +849,19 @@ async function refreshFeeds(options = {}) {
   return feedRefreshTask;
 }
 
+async function recoverFeed(feed) {
+  const site = String(feed.siteUrl || "");
+  if (!site || canonicalFeedUrl(site) === canonicalFeedUrl(feed.url)) return false;
+  try {
+    const result = await requestFeed(site);
+    if (result.kind !== "feed") return false;
+    storeFeed(result.feed, { feedId: feed.id, title: feed.title });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function pullFeeds() {
   const queue = [...feedState.feeds];
   const total = queue.length;
@@ -760,9 +873,10 @@ async function pullFeeds() {
       const feed = queue.shift();
       try {
         const result = await requestFeed(feed.url);
-        if (result.kind === "feed") storeFeed(result.feed);
-      } catch {
-        failures.push(feed.title);
+        if (result.kind === "feed") storeFeed(result.feed, { feedId: feed.id });
+      } catch (error) {
+        const recovered = await recoverFeed(feed);
+        if (!recovered) failures.push(feed.title || error.message || "A feed");
       }
       done += 1;
       if (done < total) setFeedStatus(`Refreshing feeds… ${done} of ${total}`);
@@ -937,7 +1051,13 @@ function bindFeedsDesk() {
     if (!event.target.closest("[data-feeds-signin]")) return;
     document.querySelector("#accountDialog")?.showModal();
   });
-  document.addEventListener("picker-account", () => renderFeeds());
+  document.addEventListener("picker-account", () => {
+    renderFeeds();
+    void syncFeedLibrary();
+  });
+  whenAccountKnown(() => {
+    void syncFeedLibrary();
+  });
   document.addEventListener("picker-follow-feed", (event) => {
     const detail = event.detail || {};
     if (!detail.url) return;

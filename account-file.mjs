@@ -181,7 +181,60 @@ export function createFileAccountStore(filePath) {
         });
       });
     },
+    async feedLibraryForUser(userId) {
+      return update((data) => {
+        const row = (data.feedLibraries || []).find((item) => item.userId === userId);
+        if (!row?.library) return { feeds: [], folders: [], updatedAt: "" };
+        return row.library;
+      });
+    },
+    async saveFeedLibrary(userId, library) {
+      return update((data) => {
+        data.feedLibraries ||= [];
+        const current = data.feedLibraries.find((item) => item.userId === userId)?.library;
+        const merged = mergeLibraries(current, library);
+        data.feedLibraries = data.feedLibraries.filter((item) => item.userId !== userId);
+        data.feedLibraries.push({ userId, library: merged });
+        return merged;
+      });
+    },
   };
+}
+
+function feedKey(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return `${url.protocol}//${url.hostname.replace(/^www\./, "")}${url.pathname.replace(/\/+$/, "")}`.toLowerCase();
+  } catch {
+    return String(value || "").trim().toLowerCase();
+  }
+}
+
+function mergeLibraries(current, incoming) {
+  const feeds = Array.isArray(current?.feeds) ? [...current.feeds] : [];
+  const seen = new Set(feeds.map((feed) => feedKey(feed.url)));
+  (Array.isArray(incoming?.feeds) ? incoming.feeds : []).forEach((feed) => {
+    const url = String(feed?.url || "");
+    if (!/^https?:\/\//i.test(url) || seen.has(feedKey(url))) return;
+    seen.add(feedKey(url));
+    feeds.push({
+      id: String(feed.id || ""),
+      url,
+      title: String(feed.title || ""),
+      siteUrl: String(feed.siteUrl || ""),
+      topics: Array.isArray(feed.topics) ? feed.topics : [],
+      folderIds: Array.isArray(feed.folderIds) ? feed.folderIds : [],
+      addedAt: String(feed.addedAt || ""),
+    });
+  });
+  const folders = Array.isArray(current?.folders) ? [...current.folders] : [];
+  const folderIds = new Set(folders.map((folder) => folder.id));
+  (Array.isArray(incoming?.folders) ? incoming.folders : []).forEach((folder) => {
+    if (!folder?.id || !folder?.name || folderIds.has(folder.id)) return;
+    folderIds.add(folder.id);
+    folders.push({ id: String(folder.id), name: String(folder.name) });
+  });
+  return { feeds: feeds.slice(0, 400), folders: folders.slice(0, 80), updatedAt: new Date().toISOString() };
 }
 
 async function readStore(filePath) {
