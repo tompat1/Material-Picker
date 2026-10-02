@@ -6695,6 +6695,62 @@ body.is-cms [data-cms] {
   color: var(--ink);
 }
 
+.feeds-status.is-warn > p {
+  margin: 0;
+}
+
+.feeds-repair {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feeds-repair li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+}
+
+.feeds-repair li > span {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.feeds-repair button,
+.feeds-feed-resolve {
+  height: 1.85rem;
+  padding: 0 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  font: 600 0.72rem/1 var(--sans);
+  cursor: pointer;
+}
+
+.feeds-repair .is-dead > span,
+.feeds-feed-badge.is-dead {
+  color: color-mix(in srgb, var(--ink) 72%, var(--accent));
+}
+
+.feeds-feed-badge {
+  align-self: center;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  font: 650 0.7rem/1 var(--sans);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.feeds-feed-row.is-broken,
+.feeds-feed-row.is-dead {
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto auto;
+}
+
 .feeds-icon-button,
 .feeds-add-button {
   width: 2.4rem;

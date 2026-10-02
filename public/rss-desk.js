@@ -387,11 +387,138 @@ function countLabel(count) {
   return new Intl.NumberFormat(undefined).format(count);
 }
 
-function setFeedStatus(message) {
+const FEED_PATH_GUESSES = [
+  "/index.rss",
+  "/feed/",
+  "/feed",
+  "/rss.xml",
+  "/rss",
+  "/atom.xml",
+  "/feeds/all",
+  "/feeds/posts/default",
+];
+
+function hostBrand(value) {
+  try {
+    const host = new URL(value).hostname.toLowerCase().replace(/^www\./, "");
+    const parts = host.split(".").filter(Boolean);
+    if (parts.length >= 3 && ["co", "com", "org", "net", "gov", "ac"].includes(parts[parts.length - 2])) {
+      return parts[parts.length - 3] || "";
+    }
+    return parts[parts.length - 2] || parts[0] || "";
+  } catch {
+    return "";
+  }
+}
+
+function feedLooksRelated(candidate, original) {
+  const feedBrand = hostBrand(original.url);
+  const siteBrand = hostBrand(original.siteUrl);
+  const candidateBrand = hostBrand(candidate.url) || hostBrand(candidate.siteUrl);
+  if (!candidateBrand) return false;
+  if (feedBrand && candidateBrand === feedBrand) return true;
+  if (siteBrand && candidateBrand === siteBrand && (!feedBrand || siteBrand === feedBrand)) return true;
+  return false;
+}
+
+function feedIsCurrent(feed) {
+  const times = (feed.items || []).map((item) => Date.parse(item.publishedAt || "")).filter(Number.isFinite);
+  if (!times.length) return (feed.items || []).length > 0;
+  return Date.now() - Math.max(...times) < 730 * 24 * 60 * 60 * 1000;
+}
+
+function feedResolveCandidates(feed) {
+  const seen = new Set();
+  const out = [];
+  const add = (value) => {
+    const url = String(value || "").trim();
+    if (!/^https?:\/\//i.test(url)) return;
+    const key = canonicalFeedUrl(url);
+    if (!key || seen.has(key) || key === canonicalFeedUrl(feed.url)) return;
+    seen.add(key);
+    out.push(url);
+  };
+  try {
+    const current = new URL(feed.url);
+    if (current.protocol === "http:") {
+      current.protocol = "https:";
+      add(current.href);
+    }
+  } catch {
+    // Keep going with site and path guesses.
+  }
+  add(feed.siteUrl);
+  [feed.siteUrl, feed.url].forEach((base) => {
+    try {
+      const origin = new URL(base);
+      FEED_PATH_GUESSES.forEach((path) => add(`${origin.origin}${path}`));
+      if (origin.hostname.startsWith("www.")) {
+        const bare = new URL(origin.href);
+        bare.hostname = origin.hostname.slice(4);
+        FEED_PATH_GUESSES.forEach((path) => add(`${bare.origin}${path}`));
+      }
+    } catch {
+      // Skip bad origins.
+    }
+  });
+  return out;
+}
+
+function brokenFeeds() {
+  return feedState.feeds.filter((feed) => feed.status === "broken");
+}
+
+function deadFeeds() {
+  return feedState.feeds.filter((feed) => feed.status === "dead");
+}
+
+function setFeedHealth(feed, status) {
+  if (!feed) return;
+  if (!status || status === "ok") delete feed.status;
+  else feed.status = status;
+}
+
+function paintFeedHealth(message = "") {
   const node = document.querySelector("#feedsStatus");
   if (!node) return;
-  node.textContent = message || "";
-  node.classList.toggle("is-warn", /could not refresh/i.test(message || ""));
+  const broken = brokenFeeds();
+  const dead = deadFeeds();
+  if (!broken.length && !dead.length) {
+    node.classList.toggle("is-warn", /could not refresh|dead|remove/i.test(message || ""));
+    node.textContent = message || "";
+    return;
+  }
+  node.classList.add("is-warn");
+  const lead = message
+    || (broken.length
+      ? "Some feeds need a new address. Resolve the ones that are still alive, or remove the rest."
+      : "These feeds look dead. Remove them from your list.");
+  const rows = [
+    ...broken.map((feed) => `<li>
+      <span>${escapeFeedText(feed.title)}</span>
+      <button type="button" data-resolve-feed="${escapeFeedText(feed.id)}">Resolve</button>
+      <button type="button" data-delete-feed="${escapeFeedText(feed.id)}">Remove</button>
+    </li>`),
+    ...dead.map((feed) => `<li class="is-dead">
+      <span>Dead · ${escapeFeedText(feed.title)} — remove this subscription</span>
+      <button type="button" data-delete-feed="${escapeFeedText(feed.id)}">Remove</button>
+    </li>`),
+  ];
+  if (broken.length > 1) {
+    rows.push(`<li class="feeds-repair-all"><button type="button" data-resolve-all>Resolve all</button></li>`);
+  }
+  node.innerHTML = `<p>${escapeFeedText(lead)}</p><ul class="feeds-repair">${rows.join("")}</ul>`;
+}
+
+function setFeedStatus(message) {
+  if (/^Refreshing|^Looking for/i.test(message || "")) {
+    const node = document.querySelector("#feedsStatus");
+    if (!node) return;
+    node.classList.remove("is-warn");
+    node.textContent = message || "";
+    return;
+  }
+  paintFeedHealth(message || "");
 }
 
 async function requestFeed(url) {
@@ -399,6 +526,54 @@ async function requestFeed(url) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "The feed could not be loaded.");
   return data;
+}
+
+async function tryLoadFeed(url) {
+  const result = await requestFeed(url);
+  if (result.kind === "feed" && result.feed) return result.feed;
+  if (result.kind === "choices") {
+    for (const choice of (result.feeds || []).slice(0, 4)) {
+      try {
+        const next = await requestFeed(choice.url);
+        if (next.kind === "feed" && next.feed) return next.feed;
+      } catch {
+        // Try the next discovered feed.
+      }
+    }
+  }
+  return null;
+}
+
+async function resolveFeed(feedId) {
+  const feed = feedRecord(feedId);
+  if (!feed) return false;
+  setFeedStatus(`Looking for a working address for ${feed.title}…`);
+  for (const url of feedResolveCandidates(feed)) {
+    try {
+      const found = await tryLoadFeed(url);
+      if (!found || !feedLooksRelated(found, feed) || !feedIsCurrent(found)) continue;
+      storeFeed(found, { feedId: feed.id, title: feed.title });
+      setFeedHealth(feed, "ok");
+      saveFeedState();
+      setFeedStatus(`Updated ${feed.title} to a working address.`);
+      renderFeeds();
+      return true;
+    } catch {
+      // Keep probing candidates.
+    }
+  }
+  setFeedHealth(feed, "dead");
+  saveFeedState();
+  setFeedStatus(`${feed.title} looks dead. Remove it from your list.`);
+  renderFeeds();
+  return false;
+}
+
+async function resolveBrokenFeeds() {
+  const queue = brokenFeeds();
+  for (const feed of queue) {
+    await resolveFeed(feed.id);
+  }
 }
 
 function assignFolderNames(record, names) {
@@ -464,6 +639,7 @@ function storeFeed(feed, options = {}) {
     .forEach((item) => kept.set(item.id, item));
   const merged = [...kept.values()].sort((a, b) => feedTime(b) - feedTime(a)).slice(0, FEED_ITEM_CAP);
   feedState.items = feedState.items.filter((item) => item.feedId !== record.id).concat(merged);
+  if ((feed.items || []).length) setFeedHealth(record, "ok");
   saveFeedState();
   return record;
 }
@@ -500,12 +676,18 @@ function feedSourceRow(feed, options = {}) {
   const checked = selectedFeedIds.has(feed.id) ? "checked" : "";
   const folders = (feed.folderIds || []).map((id) => feedState.folders.find((folder) => folder.id === id)?.name).filter(Boolean);
   const folderNote = options.showFolder && folders.length ? `<small>${escapeFeedText(folders.join(", "))}</small>` : "";
+  const health = feed.status === "dead"
+    ? `<span class="feeds-feed-badge is-dead">Dead</span>`
+    : feed.status === "broken"
+      ? `<button class="feeds-feed-resolve" type="button" data-resolve-feed="${escapeFeedText(feed.id)}">Resolve</button>`
+      : "";
   const remove = options.showDelete
     ? `<button class="feeds-feed-delete" type="button" data-delete-feed="${escapeFeedText(feed.id)}" aria-label="Delete ${escapeFeedText(feed.title)}">Delete</button>`
     : "";
-  return `<li class="feeds-feed-row">
+  return `<li class="feeds-feed-row${feed.status ? ` is-${escapeFeedText(feed.status)}` : ""}">
     <label class="feeds-select"><input type="checkbox" data-select-feed="${escapeFeedText(feed.id)}" ${checked} aria-label="Select ${escapeFeedText(feed.title)}" /></label>
     <button type="button" data-source="feed:${escapeFeedText(feed.id)}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span>${escapeFeedText(feed.title)}${folderNote}</span><em>${unread ? countLabel(unread) : ""}</em></button>
+    ${health}
     ${remove}
   </li>`;
 }
@@ -803,6 +985,7 @@ function renderFeeds() {
   renderFeedChoices();
   renderFolderPicker();
   applyPane();
+  if (brokenFeeds().length || deadFeeds().length) paintFeedHealth();
 }
 
 async function loadDirectory() {
@@ -885,9 +1068,9 @@ async function recoverFeed(feed) {
   const site = String(feed.siteUrl || "");
   if (!site || canonicalFeedUrl(site) === canonicalFeedUrl(feed.url)) return false;
   try {
-    const result = await requestFeed(site);
-    if (result.kind !== "feed") return false;
-    storeFeed(result.feed, { feedId: feed.id, title: feed.title });
+    const found = await tryLoadFeed(site);
+    if (!found || !feedLooksRelated(found, feed) || !feedIsCurrent(found)) return false;
+    storeFeed(found, { feedId: feed.id, title: feed.title });
     return true;
   } catch {
     return false;
@@ -905,10 +1088,18 @@ async function pullFeeds() {
       const feed = queue.shift();
       try {
         const result = await requestFeed(feed.url);
-        if (result.kind === "feed") storeFeed(result.feed, { feedId: feed.id });
+        if (result.kind === "feed") {
+          storeFeed(result.feed, { feedId: feed.id });
+          setFeedHealth(feed, "ok");
+        }
       } catch (error) {
         const recovered = await recoverFeed(feed);
-        if (!recovered) failures.push(feed.title || error.message || "A feed");
+        if (!recovered) {
+          setFeedHealth(feed, feed.status === "dead" ? "dead" : "broken");
+          failures.push(feed.title || error.message || "A feed");
+        } else {
+          setFeedHealth(feed, "ok");
+        }
       }
       done += 1;
       if (done < total) setFeedStatus(`Refreshing feeds… ${done} of ${total}`);
@@ -917,7 +1108,14 @@ async function pullFeeds() {
   });
   await Promise.all(workers);
   dedupeFeedLibrary();
-  setFeedStatus(failures.length ? `Some feeds could not refresh: ${failures.slice(0, 3).join(", ")}` : "Feeds are up to date.");
+  saveFeedState();
+  if (failures.length) {
+    setFeedStatus(`Some feeds could not refresh: ${failures.slice(0, 3).join(", ")}${failures.length > 3 ? "…" : ""}`);
+  } else if (deadFeeds().length) {
+    setFeedStatus("Feeds are up to date. Remove the dead subscriptions below.");
+  } else {
+    setFeedStatus("Feeds are up to date.");
+  }
   if (selectedItemId) paintIncomingFeeds();
   else renderFeeds();
 }
@@ -1207,6 +1405,20 @@ function bindFeedsDesk() {
       saveFeedState();
       renderFeeds();
       document.querySelector("#feedsAddDialog")?.close();
+      return;
+    }
+    const resolveAll = event.target.closest("[data-resolve-all]");
+    if (resolveAll) {
+      const task = resolveBrokenFeeds();
+      window.pickerWaitUntil?.("feeds-resolve", "Finding working feeds", task);
+      void task;
+      return;
+    }
+    const resolveOne = event.target.closest("[data-resolve-feed]");
+    if (resolveOne) {
+      const task = resolveFeed(resolveOne.dataset.resolveFeed);
+      window.pickerWaitUntil?.("feeds-resolve", "Finding a working feed", task);
+      void task;
       return;
     }
     const deleteButton = event.target.closest("[data-delete-feeds]");
