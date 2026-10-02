@@ -115,7 +115,9 @@ export async function fetchSubscriptionFeed(accessToken, fetchImpl = fetch, opti
     pageToken = String(payload.nextPageToken || "");
   } while (pageToken && allChannels.length < maxChannels);
 
-  const channels = allChannels;
+  const channels = allChannels.slice().sort((left, right) =>
+    String(left.title || "").localeCompare(String(right.title || ""), undefined, { sensitivity: "base" })
+  );
   const sampleChannels = channels.slice(0, Math.min(channels.length, 50));
   const videos = [];
   await Promise.all(sampleChannels.map(async (channel) => {

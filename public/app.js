@@ -2181,8 +2181,12 @@ function checkYouTubeSwipeHint() {
 function renderYouTubeHome(data) {
   const mount = document.querySelector("#youtubeHome");
   if (!mount) return;
+  const rawChannels = Array.isArray(data.channels) ? data.channels : [];
+  const sortedChannels = rawChannels.slice().sort((left, right) =>
+    String(left.title || "").localeCompare(String(right.title || ""), undefined, { sensitivity: "base" })
+  );
   youtubeShelf = {
-    channels: Array.isArray(data.channels) ? data.channels : [],
+    channels: sortedChannels,
     subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions : [],
     playlists: Array.isArray(data.playlists) ? data.playlists : [],
     liked: Array.isArray(data.liked) ? data.liked : [],
@@ -2196,10 +2200,18 @@ function renderYouTubeHome(data) {
     channelVideosId: "",
     channelCache: {},
   };
-  const channels = youtubeShelf.channels.map((channel) => `<button class="yt-channel" type="button" data-youtube-channel="${escapeHtml(channel.id)}" aria-pressed="false" title="${escapeHtml(channel.title)}">
-    ${youtubeChannelMark(channel.thumbnail, channel.title)}
-    <span class="yt-channel-name">${escapeHtml(channel.title)}</span>
-  </button>`).join("");
+  const channelsWithNewPosts = new Set(
+    youtubeShelf.subscriptions.map((video) => video.channelId || video.speaker).filter(Boolean)
+  );
+  const channels = youtubeShelf.channels.map((channel) => {
+    const hasNew = channelsWithNewPosts.has(channel.id) || channelsWithNewPosts.has(channel.title);
+    const badge = hasNew ? `<span class="yt-channel-badge" title="New videos" aria-label="New videos"></span>` : "";
+    return `<button class="yt-channel" type="button" data-youtube-channel="${escapeHtml(channel.id)}" aria-pressed="false" title="${escapeHtml(channel.title)}">
+      ${youtubeChannelMark(channel.thumbnail, channel.title)}
+      <span class="yt-channel-name">${escapeHtml(channel.title)}</span>
+      ${badge}
+    </button>`;
+  }).join("");
   mount.innerHTML = `
     <div class="yt-home">
       <aside class="yt-rail" aria-label="Your YouTube">

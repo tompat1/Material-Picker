@@ -1041,6 +1041,15 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   white-space: nowrap;
 }
 
+.yt-channel-badge {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 999px;
+  background: #38bdf8;
+  box-shadow: 0 0 6px color-mix(in srgb, #38bdf8 65%, transparent);
+}
+
 .yt-channel[aria-pressed="true"],
 .yt-rail-link[aria-pressed="true"] {
   background: color-mix(in srgb, var(--ink) 10%, transparent);
