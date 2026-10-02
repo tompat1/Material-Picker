@@ -932,10 +932,12 @@ function feedsSignInNote() {
 
 function feedsDiscoverInvite() {
   if (!pickerIsSignedIn()) return "";
+  if (feedState.dismissedDiscoverInvite) return "";
   const fewFeeds = feedState.feeds.length < 12;
   const allWithUnread = selectedSource === "all" && unreadItems().length > 0;
   if (!fewFeeds && !allWithUnread) return "";
   return `<aside class="feeds-discover-invite">
+    <button class="feeds-discover-dismiss" type="button" data-dismiss-discover-invite aria-label="Close" title="Close">✕</button>
     <div>
       <strong>Want more interesting feeds?</strong>
       <p>Browse popular topics and add them to a folder in one go.</p>
@@ -1819,6 +1821,13 @@ function bindFeedsDesk() {
         feedPane = 0;
         renderFeeds();
       }
+      return;
+    }
+    const dismissInvite = event.target.closest("[data-dismiss-discover-invite]");
+    if (dismissInvite) {
+      feedState.dismissedDiscoverInvite = true;
+      saveFeedState();
+      renderFeeds();
       return;
     }
     const startFolder = event.target.closest("[data-start-folder]");
