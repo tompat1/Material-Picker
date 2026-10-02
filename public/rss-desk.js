@@ -1055,7 +1055,7 @@ function paintDiscoverBar() {
   const tools = document.querySelector("#feedsDirectoryTools");
   const pack = document.querySelector("#discoverTopicPack");
   if (bar && count && add) {
-    const size = catalogPicks.size;
+    const { size } = catalogPicks;
     bar.hidden = size === 0;
     bar.classList.toggle("is-sticky", size > 0);
     count.textContent = size === 1 ? "1 feed selected" : `${size} feeds selected`;
