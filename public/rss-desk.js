@@ -485,14 +485,25 @@ function setFeedHealth(feed, status) {
   else feed.status = status;
 }
 
+let feedStatusTimer = 0;
+
 function paintFeedHealth(message = "") {
   const node = document.querySelector("#feedsStatus");
   if (!node) return;
   const broken = brokenFeeds();
   const dead = deadFeeds();
   if (!broken.length && !dead.length) {
-    node.classList.toggle("is-warn", /could not refresh|dead|remove/i.test(message || ""));
-    node.textContent = message || "";
+    node.classList.remove("is-warn");
+    if (message) {
+      const throbberHtml = `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"></span>`;
+      node.innerHTML = `<p class="feeds-status-line">${throbberHtml}<span>${escapeFeedText(message)}</span></p>`;
+      window.clearTimeout(feedStatusTimer);
+      feedStatusTimer = window.setTimeout(() => {
+        node.innerHTML = "";
+      }, 3000);
+    } else {
+      node.innerHTML = "";
+    }
     return;
   }
   node.classList.add("is-warn");
@@ -507,7 +518,7 @@ function paintFeedHealth(message = "") {
       <button type="button" data-delete-feed="${escapeFeedText(feed.id)}">Remove</button>
     </li>`),
     ...dead.map((feed) => `<li class="is-dead">
-      <span>Dead · ${escapeFeedText(feed.title)} — remove this subscription</span>
+      <span>Could not resolve ${escapeFeedText(feed.title)} — remove this subscription</span>
       <button type="button" data-delete-feed="${escapeFeedText(feed.id)}">Remove</button>
     </li>`),
   ];
@@ -518,11 +529,26 @@ function paintFeedHealth(message = "") {
 }
 
 function setFeedStatus(message) {
-  if (/^Refreshing|^Looking for/i.test(message || "")) {
-    const node = document.querySelector("#feedsStatus");
-    if (!node) return;
+  const node = document.querySelector("#feedsStatus");
+  if (!node) return;
+  window.clearTimeout(feedStatusTimer);
+  const isUpdating = /^Refreshing|^Looking for|^Adding|^Reading|^Loading/i.test(message || "");
+  const broken = brokenFeeds();
+  const dead = deadFeeds();
+
+  if (message && (isUpdating || (!broken.length && !dead.length))) {
     node.classList.remove("is-warn");
-    node.textContent = message || "";
+    const throbberHtml = `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"></span>`;
+    node.innerHTML = `<p class="feeds-status-line">${throbberHtml}<span>${escapeFeedText(message)}</span></p>`;
+    if (!isUpdating && message) {
+      feedStatusTimer = window.setTimeout(() => {
+        if (brokenFeeds().length || deadFeeds().length) {
+          paintFeedHealth();
+        } else {
+          node.innerHTML = "";
+        }
+      }, 3000);
+    }
     return;
   }
   paintFeedHealth(message || "");
@@ -571,7 +597,7 @@ async function resolveFeed(feedId) {
   }
   setFeedHealth(feed, "dead");
   saveFeedState();
-  setFeedStatus(`${feed.title} looks dead. Remove it from your list.`);
+  setFeedStatus(`Could not resolve ${feed.title}. It looks dead — remove it from your list.`);
   renderFeeds();
   return false;
 }

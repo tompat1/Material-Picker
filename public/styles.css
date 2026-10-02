@@ -7024,6 +7024,25 @@ body.is-cms [data-cms] {
   margin: 0;
 }
 
+.feeds-status-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 0.85rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--field) 65%, transparent);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 500;
+  animation: fadeInStatusLine 0.22s var(--ease);
+}
+
+@keyframes fadeInStatusLine {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .feeds-status.is-warn {
   margin: 0 0 0.85rem;
   padding: 0.6rem 0.75rem;
