@@ -1060,6 +1060,9 @@ function paintDiscoverBar() {
     bar.classList.toggle("is-sticky", size > 0);
     count.textContent = size === 1 ? "1 feed selected" : `${size} feeds selected`;
     add.disabled = size === 0;
+    const folderNames = discoverFolderNames();
+    const folderLabel = folderNames.length ? ` to "${folderNames[0]}"` : "";
+    add.textContent = size === 1 ? `Add 1 feed${folderLabel}` : `Add ${size} feeds${folderLabel}`;
   }
   if (tools && pack) {
     const available = directoryFeeds.filter((feed) => !feedState.feeds.some((item) => canonicalFeedUrl(item.url) === canonicalFeedUrl(feed.url)));
@@ -1068,7 +1071,7 @@ function paintDiscoverBar() {
     const label = topicLabel(selectedTopic);
     pack.textContent = selectedTopic === "popular"
       ? `Select popular pack (${available.length})`
-      : `Add ${label} pack to a folder (${available.length})`;
+      : `Select ${label} pack (${available.length})`;
   }
   paintDiscoverSteps();
 }
@@ -1712,7 +1715,10 @@ function bindFeedsDesk() {
         nameInput.hidden = event.target.value !== "__new";
         if (!nameInput.hidden) nameInput.focus();
       }
-      if (event.target.id === "discoverFolder") paintDiscoverSteps();
+      if (event.target.id === "discoverFolder") {
+        paintDiscoverBar();
+        paintDiscoverSteps();
+      }
     }
     const catalogPick = event.target.closest("[data-catalog-pick]");
     if (catalogPick) {
@@ -1731,7 +1737,10 @@ function bindFeedsDesk() {
   });
   panel.addEventListener("input", (event) => {
     if (event.target.id === "newFolderInput") folderDraftName = event.target.value;
-    if (event.target.id === "discoverFolderName") paintDiscoverSteps();
+    if (event.target.id === "discoverFolderName") {
+      paintDiscoverBar();
+      paintDiscoverSteps();
+    }
   });
   panel.addEventListener("submit", (event) => {
     const form = event.target.closest("[data-new-folder-form]");
