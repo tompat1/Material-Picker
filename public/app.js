@@ -1645,6 +1645,7 @@ async function loadAccount() {
   const login = document.querySelector("#accountLoginForm");
   const register = document.querySelector("#accountRegisterForm");
   if (!link) return;
+  document.body.dataset.pickerSignedIn = "pending";
   let data = { configured: false, user: null };
   try {
     const response = await fetch("/api/auth/me");

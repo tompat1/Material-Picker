@@ -519,13 +519,34 @@ function removeFolder(id) {
   renderFeeds();
 }
 
+function pickerAccountKnown() {
+  const value = document.body.dataset.pickerSignedIn;
+  return value === "true" || value === "false";
+}
+
 function pickerIsSignedIn() {
   return document.body.dataset.pickerSignedIn === "true";
+}
+
+function whenAccountKnown(action) {
+  if (pickerAccountKnown()) {
+    action();
+    return;
+  }
+  document.addEventListener("picker-account", () => action(), { once: true });
+}
+
+function feedsSignInNote() {
+  if (!pickerAccountKnown() || pickerIsSignedIn()) return "";
+  return `<p class="feeds-signin-note">Sign in or create an account to add feeds. <button type="button" data-feeds-signin>Sign in or create an account</button></p>`;
 }
 
 function feedsWelcome() {
   const marks = `<img class="feeds-welcome-mark feeds-welcome-mark--dark" src="/brand/logos/picker-mark-dark.svg" alt="Picker" />
           <img class="feeds-welcome-mark feeds-welcome-mark--light" src="/brand/logos/picker-mark-light.svg" alt="" />`;
+  if (!pickerAccountKnown()) {
+    return `<div class="feeds-welcome">${marks}</div>`;
+  }
   if (!pickerIsSignedIn()) {
     return `<div class="feeds-welcome">
           ${marks}
@@ -545,13 +566,11 @@ function renderList() {
   const items = itemsForSource().sort((a, b) => feedTime(b) - feedTime(a));
   if (!items.length) {
     river.innerHTML = feedState.feeds.length
-      ? `<p class="feeds-river-empty">Nothing unread in this view.</p>${pickerIsSignedIn() ? "" : `<p class="feeds-signin-note">Sign in or create an account to add feeds. <button type="button" data-feeds-signin>Sign in or create an account</button></p>`}`
+      ? `<p class="feeds-river-empty">Nothing unread in this view.</p>${feedsSignInNote()}`
       : feedsWelcome();
     return;
   }
-  const signedOutNote = pickerIsSignedIn()
-    ? ""
-    : `<p class="feeds-signin-note">Sign in or create an account to add feeds. <button type="button" data-feeds-signin>Sign in or create an account</button></p>`;
+  const signedOutNote = feedsSignInNote();
   let lastDay = "";
   river.innerHTML = signedOutNote + items.map((item) => {
     const feed = feedRecord(item.feedId);
@@ -905,12 +924,14 @@ function bindFeedsDesk() {
   });
   bindSwipe();
   document.querySelector("#feedsAdd")?.addEventListener("click", () => {
-    if (!pickerIsSignedIn()) {
-      document.querySelector("#accountDialog")?.showModal();
-      return;
-    }
-    document.querySelector("#feedsAddDialog")?.showModal();
-    void loadDirectory();
+    whenAccountKnown(() => {
+      if (!pickerIsSignedIn()) {
+        document.querySelector("#accountDialog")?.showModal();
+        return;
+      }
+      document.querySelector("#feedsAddDialog")?.showModal();
+      void loadDirectory();
+    });
   });
   panel.addEventListener("click", (event) => {
     if (!event.target.closest("[data-feeds-signin]")) return;
@@ -920,16 +941,18 @@ function bindFeedsDesk() {
   document.addEventListener("picker-follow-feed", (event) => {
     const detail = event.detail || {};
     if (!detail.url) return;
-    if (!pickerIsSignedIn()) {
-      document.querySelector("#accountDialog")?.showModal();
-      return;
-    }
-    const desk = document.querySelector("#desk-feeds");
-    if (desk && !desk.checked) {
-      desk.checked = true;
-      desk.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    void followUrl(detail.url, { title: detail.title || "", topics: detail.topics || [] });
+    whenAccountKnown(() => {
+      if (!pickerIsSignedIn()) {
+        document.querySelector("#accountDialog")?.showModal();
+        return;
+      }
+      const desk = document.querySelector("#desk-feeds");
+      if (desk && !desk.checked) {
+        desk.checked = true;
+        desk.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      void followUrl(detail.url, { title: detail.title || "", topics: detail.topics || [] });
+    });
   });
   document.querySelector("#feedsBack")?.addEventListener("click", () => showPane(0));
   document.querySelector("#followFeedForm")?.addEventListener("submit", (event) => {
