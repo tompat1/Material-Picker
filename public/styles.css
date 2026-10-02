@@ -2116,23 +2116,26 @@ html[data-picker-theme="new-age"] .topic-vote-down[aria-pressed="true"] {
 dialog {
   width: min(640px, calc(100vw - 32px));
   max-height: calc(100dvh - 48px);
-  padding: 16px 20px 24px;
+  padding: 1.5rem 1.75rem 2rem;
   border: 0;
-  border-radius: var(--radius-panel);
+  border-radius: 18px;
   color: var(--ink);
   background: var(--bg);
+  box-shadow: var(--shadow);
 }
 
 dialog::backdrop {
-  background: rgba(40, 30, 25, 0.72);
+  background: rgba(30, 22, 18, 0.78);
+  backdrop-filter: blur(4px);
 }
 
 .dialog-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
+  gap: 16px;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.5rem;
 }
 
 .import-panel {
@@ -2715,42 +2718,73 @@ select {
 
 .account-form {
   display: grid;
-  gap: 0.65rem;
-  margin: 0 0 1rem;
+  gap: 1.15rem;
+  margin: 0 0 1.85rem;
+}
+
+.account-form:last-child {
+  margin-bottom: 0;
 }
 
 .account-form h3 {
-  margin: 0;
-  font-size: 1rem;
+  margin: 0 0 0.4rem 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .account-form label {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.45rem;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .account-form input {
-  min-height: 2.4rem;
-  padding: 0.35rem 0.65rem;
+  min-height: 2.85rem;
+  padding: 0.6rem 0.95rem;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--field);
   color: var(--ink);
+  font-size: 0.95rem;
+  transition: border-color 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+
+.account-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.account-form button[type="submit"] {
+  min-height: 2.85rem;
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
 }
 
 .account-google {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.75rem;
-  margin: 0 0 1rem;
+  min-height: 3rem;
+  margin: 0 0 1.75rem;
   border-radius: 999px;
   background: var(--accent);
   color: #281e19;
   font-weight: 650;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
   text-decoration: none;
+  box-shadow: 0 4px 14px rgba(255, 122, 61, 0.22);
+  transition: transform 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+
+.account-google:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(255, 122, 61, 0.32);
 }
 
 html[data-picker-theme="new-age"] .account-google {
@@ -2759,18 +2793,20 @@ html[data-picker-theme="new-age"] .account-google {
 
 .account-session {
   display: grid;
-  gap: 0.75rem;
-  margin: 0 0 1rem;
+  gap: 1.15rem;
+  margin: 0 0 1.75rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .account-session p {
   margin: 0;
-  font: 560 0.95rem/1.4 var(--sans);
+  font: 560 1rem/1.5 var(--sans);
 }
 
 .account-session-email {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.88rem;
   font-weight: 500;
 }
 
@@ -2780,18 +2816,20 @@ html[data-picker-theme="new-age"] .account-google {
 
 .account-sign-out-action {
   width: 100%;
-  min-height: 2.75rem;
+  min-height: 2.85rem;
+  font-size: 0.95rem;
 }
 
 #accountDialog {
-  width: min(28rem, calc(100vw - 2rem));
-  max-height: min(80dvh, 720px);
+  width: min(30rem, calc(100vw - 2.5rem));
+  max-height: min(85dvh, 760px);
   overflow: auto;
-  padding: 1rem 1.1rem 1.2rem;
+  padding: 1.75rem 2rem 2.25rem;
   border: 1px solid var(--line);
-  border-radius: var(--radius-panel);
+  border-radius: 20px;
   background: var(--stage);
   color: var(--ink);
+  box-shadow: 0 24px 60px rgba(20, 12, 8, 0.42);
 }
 
 .primary-button,
@@ -2801,19 +2839,20 @@ html[data-picker-theme="new-age"] .account-google {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  min-height: 44px;
-  padding: 0 18px;
+  gap: 0.5rem;
+  min-height: 46px;
+  padding: 0 22px;
   border-radius: var(--radius-control);
   border: 1px solid transparent;
-  font-size: 0.86rem;
-  font-weight: 560;
+  font-size: 0.9rem;
+  font-weight: 600;
   letter-spacing: 0.01em;
   transition:
     background 160ms var(--ease),
     border-color 160ms var(--ease),
     color 160ms var(--ease),
-    transform 160ms var(--ease);
+    transform 160ms var(--ease),
+    box-shadow 160ms var(--ease);
 }
 
 .primary-button:hover,
