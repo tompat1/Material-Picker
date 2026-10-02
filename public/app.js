@@ -2071,7 +2071,7 @@ function bindYouTubeSwipe() {
   mount.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     const card = event.target.closest(".yt-card");
-    if (!card) return;
+    if (!card || card.closest(".yt-carousel-frame, .yt-carousel-track")) return;
     if (event.target.closest("button, input, textarea, a")) {
       if (!event.target.closest(".yt-thumb")) return;
     }
