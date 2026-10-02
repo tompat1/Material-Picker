@@ -7630,6 +7630,8 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   display: grid;
   gap: 0.55rem;
   max-width: 42rem;
+  touch-action: pan-y;
+  will-change: transform;
 }
 
 .feed-article h3 {

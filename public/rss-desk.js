@@ -997,13 +997,14 @@ function renderReader() {
   }
   const feed = feedRecord(item.feedId);
   const when = item.publishedAt ? new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(item.publishedAt)) : "";
-  reader.innerHTML = `<article class="feed-article">
+  const targetUrl = item.link || item.videoUrl || "";
+  reader.innerHTML = `<article class="feed-article" data-article-link="${escapeFeedText(targetUrl)}">
     ${when ? `<p class="feed-article-date">${escapeFeedText(when)}</p>` : ""}
     <h3>${escapeFeedText(item.title)}</h3>
     ${item.author ? `<p class="feed-article-by">${escapeFeedText(item.author)}</p>` : ""}
     <p class="feed-article-source">${escapeFeedText(feed?.title || "")}</p>
     ${item.image ? `<img src="${escapeFeedText(item.image)}" alt="" />` : ""}
-    ${item.link ? `<a class="feed-article-link" href="${escapeFeedText(item.link)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(item.link) || "Open")} →</a>` : ""}
+    ${targetUrl ? `<a class="feed-article-link" href="${escapeFeedText(targetUrl)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(targetUrl) || "Open")} →</a>` : ""}
     ${item.summary ? `<p class="feed-article-body">${escapeFeedText(item.summary)}</p>` : ""}
     <div class="feed-article-actions">
       <button class="ghost-button" type="button" data-star-item="${escapeFeedText(item.id)}">${feedState.starred[item.id] ? "Starred" : "Star"}</button>
@@ -1502,25 +1503,77 @@ function bindSwipe() {
     }, 400);
   };
   swipe.addEventListener("pointerdown", (event) => {
-    if (!isPhoneFeeds() || event.button !== 0) return;
-    if (event.target.closest("input, textarea, a")) return;
-    touchStart = { x: event.clientX, y: event.clientY, id: event.pointerId, captured: false };
+    if (event.button !== 0) return;
+    if (event.target.closest("input, textarea, button, a")) return;
+    const article = event.target.closest(".feed-article");
+    touchStart = {
+      x: event.clientX,
+      y: event.clientY,
+      id: event.pointerId,
+      captured: false,
+      article,
+    };
   });
   swipe.addEventListener("pointermove", (event) => {
-    if (!touchStart || event.pointerId !== touchStart.id || touchStart.captured) return;
+    if (!touchStart || event.pointerId !== touchStart.id) return;
     const dx = event.clientX - touchStart.x;
     const dy = event.clientY - touchStart.y;
-    if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy)) return;
-    swipe.setPointerCapture(event.pointerId);
-    touchStart.captured = true;
+    if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy)) return;
+    if (!touchStart.captured) {
+      try {
+        swipe.setPointerCapture(event.pointerId);
+      } catch {
+        // Fallback for browsers without pointer capture support
+      }
+      touchStart.captured = true;
+    }
+    if (touchStart.article) {
+      touchStart.article.style.transition = "none";
+      touchStart.article.style.transform = `translateX(${dx * 0.55}px)`;
+    }
   });
   swipe.addEventListener("pointerup", (event) => {
     if (!touchStart || event.pointerId !== touchStart.id) return;
     const dx = event.clientX - touchStart.x;
     const dy = event.clientY - touchStart.y;
+    const article = touchStart.article;
     touchStart = null;
-    if (Math.abs(dx) < 64 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+
+    if (article) {
+      article.style.transition = "transform 220ms var(--ease)";
+    }
+
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.2) {
+      if (article) article.style.transform = "";
+      return;
+    }
+
     suppressNextClick();
+
+    if (article || feedPane === 1) {
+      if (dx < 0) {
+        // Swiped LEFT on post -> Open original post
+        const item = itemById(selectedItemId);
+        const originalUrl = item?.link || item?.videoUrl || article?.dataset.articleLink;
+        if (article) article.style.transform = "translateX(-100%)";
+        setTimeout(() => {
+          if (article) article.style.transform = "";
+        }, 300);
+        if (originalUrl) {
+          window.open(originalUrl, "_blank", "noopener,noreferrer");
+          return;
+        }
+      } else if (dx > 0) {
+        // Swiped RIGHT on post -> Back to list view
+        if (article) article.style.transform = "translateX(100%)";
+        setTimeout(() => {
+          showPane(0);
+          if (article) article.style.transform = "";
+        }, 200);
+        return;
+      }
+    }
+
     const next = feedPane + (dx < 0 ? 1 : -1);
     if (next > 0 && !selectedItemId) return;
     showPane(next);
@@ -1533,6 +1586,7 @@ function bindSwipe() {
     event.stopPropagation();
   }, true);
   swipe.addEventListener("pointercancel", () => {
+    if (touchStart?.article) touchStart.article.style.transform = "";
     touchStart = null;
   });
 }
