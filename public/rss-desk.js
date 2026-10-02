@@ -1563,7 +1563,7 @@ function bindSwipe() {
           if (article) article.style.transform = "";
         }, 300);
         if (originalUrl) {
-          window.open(originalUrl, "_blank", "noopener,noreferrer");
+          window.location.href = originalUrl;
           return;
         }
       } else if (dx > 0) {
