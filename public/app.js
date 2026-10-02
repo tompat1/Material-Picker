@@ -2157,7 +2157,7 @@ function checkYouTubeSwipeHint() {
     const hint = document.createElement("div");
     hint.className = "yt-swipe-hint";
     hint.id = "ytSwipeHint";
-    hint.innerHTML = `<span><span class="yt-swipe-hint-icon" aria-hidden="true">👈</span> Swipe a video to remove it</span><button class="yt-swipe-hint-close" type="button" aria-label="Dismiss hint">✕</button>`;
+    hint.innerHTML = `<span><svg class="yt-swipe-hint-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Swipe a video to remove it</span><button class="yt-swipe-hint-close" type="button" aria-label="Dismiss hint">✕</button>`;
     hint.querySelector(".yt-swipe-hint-close")?.addEventListener("click", () => {
       hint.remove();
       localStorage.setItem(HINT_KEY, "true");
@@ -2165,13 +2165,17 @@ function checkYouTubeSwipeHint() {
     grid.prepend(hint);
   }
 
-  setTimeout(() => {
-    firstCard.classList.add("yt-card-nudge");
-    setTimeout(() => {
-      firstCard.classList.remove("yt-card-nudge");
-      localStorage.setItem(HINT_KEY, "true");
-    }, 1200);
-  }, 400);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        firstCard.classList.add("yt-card-nudge");
+        setTimeout(() => {
+          firstCard.classList.remove("yt-card-nudge");
+          localStorage.setItem(HINT_KEY, "true");
+        }, 1500);
+      }, 300);
+    });
+  });
 }
 
 function renderYouTubeHome(data) {

@@ -5371,8 +5371,11 @@ html[data-picker-theme="new-age"] .history-list {
 
   .yt-swipe-hint-icon {
     display: inline-block;
+    width: 0.95rem;
+    height: 0.95rem;
     margin-right: 0.35rem;
-    animation: pulseHand 1.2s ease-in-out infinite;
+    vertical-align: -0.15rem;
+    animation: pulseChevron 1.2s ease-in-out infinite;
   }
 
   .yt-swipe-hint-close {
@@ -5394,20 +5397,30 @@ html[data-picker-theme="new-age"] .history-list {
     color: var(--ink);
   }
 
-  @keyframes pulseHand {
+  @keyframes pulseChevron {
     0%, 100% { transform: translateX(0); }
     50% { transform: translateX(-4px); }
   }
 
   @keyframes ytNudgeCard {
     0% { transform: translateX(0); }
-    35% { transform: translateX(-38px); }
-    65% { transform: translateX(-38px); }
+    35% { transform: translateX(-64px); }
+    65% { transform: translateX(-64px); }
     100% { transform: translateX(0); }
   }
 
+  @keyframes ytNudgeBg {
+    0% { opacity: 0; }
+    25%, 75% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
   .yt-card-nudge .yt-card-content {
-    animation: ytNudgeCard 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: ytNudgeCard 1.4s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+  }
+
+  .yt-card-nudge .yt-card-swipe-bg {
+    animation: ytNudgeBg 1.4s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
   }
 
   body.is-mobile-player .mobile-back {
