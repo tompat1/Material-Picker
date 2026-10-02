@@ -44,6 +44,35 @@ const STATIC_CACHE_CONTROL = IS_DEV ? "no-store, must-revalidate" : "no-cache";
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36";
 const offlineJobs = new Map();
+const devReloadClients = new Set();
+let devWatchDebounce = null;
+let devWatcher = null;
+
+function notifyDevReload() {
+  if (devWatchDebounce) clearTimeout(devWatchDebounce);
+  devWatchDebounce = setTimeout(() => {
+    for (const client of devReloadClients) {
+      try {
+        client.write("data: reload\n\n");
+      } catch (err) {
+        devReloadClients.delete(client);
+      }
+    }
+  }, 100);
+}
+
+function initDevWatcher() {
+  if (!IS_DEV || devWatcher) return;
+  try {
+    devWatcher = fs.watch(PUBLIC_ROOT, { recursive: true }, (eventType, filename) => {
+      if (filename && !filename.startsWith(".")) {
+        notifyDevReload();
+      }
+    });
+  } catch (err) {
+    // If recursive watch fails, ignore error
+  }
+}
 
 const CONTENT_TYPES = {
   ".3gp": "video/3gpp",
@@ -1320,8 +1349,27 @@ function serveStatic(response, pathname) {
   if (!filePath.startsWith(`${PUBLIC_ROOT}${path.sep}`)) return sendJson(response, 403, { error: "Forbidden." });
   fs.stat(filePath, (error, stats) => {
     if (error || !stats.isFile()) return sendJson(response, 404, { error: "Not found." });
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = CONTENT_TYPES[ext] || "application/octet-stream";
+
+    if (IS_DEV && ext === ".html") {
+      return fs.readFile(filePath, "utf8", (readErr, htmlContent) => {
+        if (readErr) return sendJson(response, 500, { error: "Failed to read file." });
+        const script = `\n<script id="__live_reload_script__">(function(){if(location.hostname!=='localhost'&&location.hostname!=='127.0.0.1')return;var es;function connect(){es=new EventSource('/api/dev-livereload');es.onmessage=function(e){if(e.data==='reload')location.reload();};es.onerror=function(){es.close();var check=function(){fetch('/api/dev-livereload?ping=1').then(function(r){if(r.ok)location.reload();else setTimeout(check,500);}).catch(function(){setTimeout(check,500);});};setTimeout(check,500);};}connect();})();</script>\n`;
+        const injected = htmlContent.includes("</body>")
+          ? htmlContent.replace("</body>", `${script}</body>`)
+          : htmlContent + script;
+        response.writeHead(200, {
+          "Content-Type": contentType,
+          "Cache-Control": STATIC_CACHE_CONTROL,
+          "Pragma": "no-cache",
+        });
+        response.end(injected);
+      });
+    }
+
     response.writeHead(200, {
-      "Content-Type": CONTENT_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream",
+      "Content-Type": contentType,
       "Cache-Control": STATIC_CACHE_CONTROL,
       ...(IS_DEV ? { Pragma: "no-cache" } : {}),
     });
@@ -1996,6 +2044,23 @@ function startServer() {
     if (request.method === "GET" && requestUrl.pathname === "/api/choose-folder") {
       return handleChooseFolder(response);
     }
+    if (IS_DEV && request.method === "GET" && requestUrl.pathname === "/api/dev-livereload") {
+      if (requestUrl.searchParams.has("ping")) {
+        return sendJson(response, 200, { status: "ok" });
+      }
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+      });
+      response.write("retry: 1000\n\n");
+      devReloadClients.add(response);
+      request.on("close", () => {
+        devReloadClients.delete(response);
+      });
+      return;
+    }
     if ((request.method === "GET" || request.method === "HEAD") && (requestUrl.pathname === "/api/local-media" || requestUrl.pathname.startsWith("/local-media/"))) {
       return serveLocalMedia(request, response, requestUrl);
     }
@@ -2017,7 +2082,8 @@ function startServer() {
     const mode = IS_DEV ? "development" : "production";
     console.log(`Material Picker running at http://localhost:${PORT} (${mode}, serving ${PUBLIC_ROOT})`);
     if (IS_DEV) {
-      console.log("Local UI changes in public/ apply on refresh. picker.rynell.org is a separate deploy (npm run deploy).");
+      initDevWatcher();
+      console.log("Hot reload active: Local UI changes auto-refresh the browser. picker.rynell.org is a separate deploy (npm run deploy).");
     }
   });
   return server;
