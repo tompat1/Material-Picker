@@ -2115,6 +2115,7 @@ function paintYouTubeGrid(message = "") {
   if (youtubeShelf.view !== "channel") {
     grid.className = youtubeShelf.view === "shorts" ? "yt-grid is-shorts" : "yt-grid";
     grid.innerHTML = videos.map(card).join("");
+    checkYouTubeSwipeHint();
     return;
   }
   const channel = youtubeShelf.channels.find((item) => item.id === youtubeShelf.channelId);
@@ -2138,6 +2139,39 @@ function paintYouTubeGrid(message = "") {
     ${carousel}
   `;
   syncYouTubeCarousel(grid);
+  checkYouTubeSwipeHint();
+}
+
+function checkYouTubeSwipeHint() {
+  const isMobile = window.matchMedia("(max-width: 760px)").matches;
+  if (!isMobile) return;
+  const HINT_KEY = "picker:yt-swipe-hint-shown";
+  if (localStorage.getItem(HINT_KEY)) return;
+
+  const grid = document.querySelector("#youtubeGrid");
+  if (!grid) return;
+  const firstCard = grid.querySelector(".yt-card");
+  if (!firstCard) return;
+
+  if (!grid.querySelector(".yt-swipe-hint")) {
+    const hint = document.createElement("div");
+    hint.className = "yt-swipe-hint";
+    hint.id = "ytSwipeHint";
+    hint.innerHTML = `<span><span class="yt-swipe-hint-icon" aria-hidden="true">👈</span> Swipe a video to remove it</span><button class="yt-swipe-hint-close" type="button" aria-label="Dismiss hint">✕</button>`;
+    hint.querySelector(".yt-swipe-hint-close")?.addEventListener("click", () => {
+      hint.remove();
+      localStorage.setItem(HINT_KEY, "true");
+    });
+    grid.prepend(hint);
+  }
+
+  setTimeout(() => {
+    firstCard.classList.add("yt-card-nudge");
+    setTimeout(() => {
+      firstCard.classList.remove("yt-card-nudge");
+      localStorage.setItem(HINT_KEY, "true");
+    }, 1200);
+  }, 400);
 }
 
 function renderYouTubeHome(data) {

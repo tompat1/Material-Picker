@@ -5334,6 +5334,82 @@ html[data-picker-theme="new-age"] .history-list {
     padding-inline: 0.55rem;
   }
 
+  .yt-card-body {
+    position: relative;
+    padding-bottom: 0.35rem;
+  }
+
+  .yt-hide-button {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 1.85rem;
+    height: 1.85rem;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--field) 85%, transparent);
+    color: var(--muted);
+    opacity: 0.9;
+    z-index: 2;
+  }
+
+  .yt-swipe-hint {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin: 0 0 0.85rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 15%, var(--field));
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    color: var(--ink);
+    font-size: 0.84rem;
+    font-weight: 550;
+    animation: fadeInHint 0.3s var(--ease);
+  }
+
+  .yt-swipe-hint-icon {
+    display: inline-block;
+    margin-right: 0.35rem;
+    animation: pulseHand 1.2s ease-in-out infinite;
+  }
+
+  .yt-swipe-hint-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .yt-swipe-hint-close:hover {
+    color: var(--ink);
+  }
+
+  @keyframes pulseHand {
+    0%, 100% { transform: translateX(0); }
+    50% { transform: translateX(-4px); }
+  }
+
+  @keyframes ytNudgeCard {
+    0% { transform: translateX(0); }
+    35% { transform: translateX(-38px); }
+    65% { transform: translateX(-38px); }
+    100% { transform: translateX(0); }
+  }
+
+  .yt-card-nudge .yt-card-content {
+    animation: ytNudgeCard 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   body.is-mobile-player .mobile-back {
     display: grid;
     grid-column: 1;
