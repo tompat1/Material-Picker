@@ -437,12 +437,14 @@ function shouldTrackRequest(path) {
   return true;
 }
 
-const nativeFetch = window.fetch.bind(window);
-window.fetch = function pickerFetch(input, init) {
-  const path = requestPath(input);
-  const done = shouldTrackRequest(path) ? pickerWait(waitLabelFor(path), waitLabelFor(path)) : null;
-  return nativeFetch(input, init).finally(() => done?.());
-};
+if (typeof window.fetch === "function") {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = function pickerFetch(input, init) {
+    const path = requestPath(input);
+    const done = shouldTrackRequest(path) ? pickerWait(waitLabelFor(path), waitLabelFor(path)) : null;
+    return nativeFetch(input, init).finally(() => done?.());
+  };
+}
 window.pickerWait = pickerWait;
 window.pickerWaitUntil = pickerWaitUntil;
 
