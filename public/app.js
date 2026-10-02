@@ -1878,9 +1878,124 @@ function youtubeChannelMark(thumbnail, title) {
   return `<span class="yt-avatar yt-avatar-fallback" aria-hidden="true">${escapeHtml(letter)}</span>`;
 }
 
+function hideYouTubeVideoByUrl(url, card) {
+  if (!url) return;
+  const videos = youtubeShelfVideos();
+  const video = videos.find((v) => v.url === url) || { url };
+  core.recordFeedVote(state, video, -1);
+  saveState();
+  if (card) {
+    card.classList.add("is-hiding");
+    setTimeout(() => {
+      paintYouTubeGrid();
+    }, 280);
+  } else {
+    paintYouTubeGrid();
+  }
+}
+
+let ytTouchStart = null;
+let ytSuppressClickTimer = null;
+
+function bindYouTubeSwipe() {
+  const mount = document.querySelector("#youtubeHome");
+  if (!mount || mount.dataset.swipeBound === "true") return;
+  mount.dataset.swipeBound = "true";
+
+  const suppressClick = () => {
+    mount.dataset.suppressClick = "true";
+    clearTimeout(ytSuppressClickTimer);
+    ytSuppressClickTimer = setTimeout(() => {
+      delete mount.dataset.suppressClick;
+    }, 400);
+  };
+
+  mount.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    const card = event.target.closest(".yt-card");
+    if (!card) return;
+    if (event.target.closest("button, input, textarea, a")) {
+      if (!event.target.closest(".yt-thumb")) return;
+    }
+    const content = card.querySelector(".yt-card-content") || card;
+    ytTouchStart = {
+      x: event.clientX,
+      y: event.clientY,
+      id: event.pointerId,
+      card,
+      content,
+      captured: false,
+      url: card.dataset.youtubeUrl || "",
+    };
+  });
+
+  mount.addEventListener("pointermove", (event) => {
+    if (!ytTouchStart || event.pointerId !== ytTouchStart.id) return;
+    const dx = event.clientX - ytTouchStart.x;
+    const dy = event.clientY - ytTouchStart.y;
+    if (!ytTouchStart.captured) {
+      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+      ytTouchStart.captured = true;
+      try {
+        ytTouchStart.card.setPointerCapture(event.pointerId);
+      } catch (err) {}
+      ytTouchStart.card.classList.add("is-swiping");
+    }
+    event.preventDefault();
+    ytTouchStart.content.style.transform = `translateX(${dx}px)`;
+    const bg = ytTouchStart.card.querySelector(".yt-card-swipe-bg");
+    if (bg) {
+      const progress = Math.min(Math.abs(dx) / 80, 1);
+      bg.style.opacity = String(progress);
+    }
+  });
+
+  const endSwipe = (event) => {
+    if (!ytTouchStart || event.pointerId !== ytTouchStart.id) return;
+    const { card, content, captured, url, x } = ytTouchStart;
+    ytTouchStart = null;
+    if (!captured) return;
+
+    const dx = event.clientX - x;
+    const cardWidth = card.clientWidth || 300;
+    card.classList.remove("is-swiping");
+
+    if (Math.abs(dx) > Math.min(cardWidth * 0.28, 80)) {
+      suppressClick();
+      content.style.transition = "transform 0.25s ease, opacity 0.25s ease";
+      content.style.transform = `translateX(${dx > 0 ? cardWidth : -cardWidth}px)`;
+      content.style.opacity = "0";
+      setTimeout(() => {
+        hideYouTubeVideoByUrl(url, card);
+      }, 250);
+    } else {
+      content.style.transition = "transform 0.2s ease";
+      content.style.transform = "translateX(0)";
+      const bg = card.querySelector(".yt-card-swipe-bg");
+      if (bg) bg.style.opacity = "0";
+      setTimeout(() => {
+        content.style.transition = "";
+      }, 200);
+    }
+  };
+
+  mount.addEventListener("pointerup", endSwipe);
+  mount.addEventListener("pointercancel", endSwipe);
+
+  mount.addEventListener("click", (event) => {
+    if (mount.dataset.suppressClick === "true") {
+      delete mount.dataset.suppressClick;
+      clearTimeout(ytSuppressClickTimer);
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
+}
+
 function paintYouTubeGrid(message = "") {
   const grid = document.querySelector("#youtubeGrid");
   if (!grid) return;
+  bindYouTubeSwipe();
   document.querySelectorAll("[data-youtube-view], [data-youtube-channel]").forEach((button) => {
     const view = button.dataset.youtubeView;
     const channel = button.dataset.youtubeChannel;
@@ -1923,17 +2038,25 @@ function paintYouTubeGrid(message = "") {
     grid.innerHTML = `<p class="hint yt-empty">${empty}</p>`;
     return;
   }
-  const card = (video, index) => `<article class="yt-card">
-    <button class="yt-thumb" type="button" data-youtube-open="${index}">
-      ${video.thumbnail ? `<img alt="" src="${escapeHtml(video.thumbnail)}" />` : `<span class="yt-thumb-fallback"></span>`}
-      ${video.duration ? `<span class="yt-duration">${escapeHtml(video.duration)}</span>` : ""}
-    </button>
-    <div class="yt-card-body">
-      ${youtubeChannelMark(video.channelThumbnail, video.speaker)}
-      <div class="yt-card-copy">
-        <h3>${escapeHtml(video.title || "Untitled video")}</h3>
-        <p>${escapeHtml(video.speaker || "")}</p>
-        <p>${escapeHtml(youtubeWhen(video.publishedAt))}</p>
+  const card = (video, index) => `<article class="yt-card" data-youtube-card-index="${index}" data-youtube-url="${escapeHtml(video.url || "")}">
+    <div class="yt-card-swipe-bg" aria-hidden="true">
+      <span class="yt-card-hide-label"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> Hide</span>
+    </div>
+    <div class="yt-card-content">
+      <button class="yt-thumb" type="button" data-youtube-open="${index}">
+        ${video.thumbnail ? `<img alt="" src="${escapeHtml(video.thumbnail)}" />` : `<span class="yt-thumb-fallback"></span>`}
+        ${video.duration ? `<span class="yt-duration">${escapeHtml(video.duration)}</span>` : ""}
+      </button>
+      <div class="yt-card-body">
+        ${youtubeChannelMark(video.channelThumbnail, video.speaker)}
+        <div class="yt-card-copy">
+          <h3>${escapeHtml(video.title || "Untitled video")}</h3>
+          <p>${escapeHtml(video.speaker || "")}</p>
+          <p>${escapeHtml(youtubeWhen(video.publishedAt))}</p>
+        </div>
+        <button class="yt-hide-button" type="button" data-youtube-hide="${escapeHtml(video.url || index)}" title="Hide video from feed" aria-label="Hide video">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
       </div>
     </div>
   </article>`;
@@ -2011,6 +2134,15 @@ function renderYouTubeHome(data) {
 }
 
 function onYouTubeHomeClick(event) {
+  const hide = event.target.closest("[data-youtube-hide]");
+  if (hide) {
+    const card = hide.closest(".yt-card");
+    const url = card?.dataset.youtubeUrl || hide.dataset.youtubeHide;
+    if (url) {
+      hideYouTubeVideoByUrl(url, card);
+    }
+    return;
+  }
   const open = event.target.closest("[data-youtube-open]");
   if (open) {
     openTopicResult(document.querySelector("#youtubeGrid"), open.dataset.youtubeOpen, { autoplay: true });

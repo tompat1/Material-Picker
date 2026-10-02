@@ -1249,9 +1249,59 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 }
 
 .yt-card {
+  position: relative;
+  display: block;
+  min-width: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.3s ease, margin 0.3s ease;
+}
+
+.yt-card.is-hiding {
+  opacity: 0;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none;
+}
+
+.yt-card-swipe-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.2rem;
+  background: linear-gradient(135deg, #e53935, #c62828);
+  color: #ffffff;
+  border-radius: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.yt-card-hide-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.yt-card-content {
+  position: relative;
   display: grid;
   gap: 0.7rem;
-  min-width: 0;
+  width: 100%;
+  background: var(--bg, #ffffff);
+  border-radius: 14px;
+  will-change: transform;
+  touch-action: pan-y;
+}
+
+.yt-card.is-swiping .yt-card-content {
+  transition: none !important;
+  user-select: none;
 }
 
 .yt-thumb {
@@ -1290,9 +1340,32 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 
 .yt-card-body {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr) auto;
   gap: 0.7rem;
   align-items: start;
+}
+
+.yt-hide-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--muted, #666);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.yt-hide-button:hover,
+.yt-hide-button:focus-visible {
+  opacity: 1;
+  background: rgba(229, 57, 53, 0.14);
+  color: #e53935;
 }
 
 .yt-card-copy h3,
