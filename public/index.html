@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-115" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-116" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -375,9 +375,15 @@
                 <button type="button" data-feed-sort="active" aria-pressed="false">Active</button>
               </div>
             </div>
-            <button class="feeds-add-button" id="feedsAdd" type="button" aria-label="Add feeds">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
+            <div class="feeds-reeder-actions">
+              <button class="feeds-discover-cta" id="feedsDiscoverCta" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 14.2 9l5.8.5-4.4 3.8 1.4 5.7L12 16.2 6.9 19l1.4-5.7L4 9.5 9.8 9z"/></svg>
+                Discover
+              </button>
+              <button class="feeds-add-button" id="feedsAdd" type="button" aria-label="Setup feeds" title="Setup feeds">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              </button>
+            </div>
           </header>
           <div class="feeds-status" id="feedsStatus" role="status"></div>
           <div class="feeds-swipe" id="feedsSwipe">
@@ -386,13 +392,19 @@
               <section class="feeds-pane feeds-pane--reader" id="feedReader" aria-label="Article"></section>
             </div>
           </div>
-          <dialog class="feeds-add-dialog" id="feedsAddDialog">
+          <dialog class="feeds-add-dialog" id="feedsAddDialog" data-mode="discover">
             <form method="dialog" class="feeds-add-close">
               <button type="submit" aria-label="Close">Close</button>
             </form>
+            <p class="feeds-dialog-title" id="feedsDialogTitle">Find interesting feeds</p>
             <section class="feeds-discover" id="feedsDiscover" aria-labelledby="discoverTitle">
               <h3 id="discoverTitle">Find interesting feeds</h3>
-              <p class="feeds-discover-lead">Pick a topic or search a subject (cybersecurity, indie games, gardening…). Select feeds, then file them into an existing folder or a new one.</p>
+              <ol class="feeds-discover-steps" id="feedsDiscoverSteps" aria-label="Discovery steps">
+                <li data-discover-step="topic" aria-current="step">1 Topic</li>
+                <li data-discover-step="feeds">2 Feeds</li>
+                <li data-discover-step="folder">3 Folder</li>
+              </ol>
+              <p class="feeds-discover-lead">Pick a topic, select feeds you like, then file them into a folder.</p>
               <form id="feedTopicSearch" role="search">
                 <label for="feedTopicQuery">Search by subject or name</label>
                 <input id="feedTopicQuery" type="search" placeholder="cybersecurity, indie games, gardening…" />
@@ -427,34 +439,40 @@
                 </div>
               </div>
             </section>
-            <form id="followFeedForm">
-              <label for="followFeedInput">Or follow a site or feed URL</label>
-              <div class="input-row">
-                <input id="followFeedInput" type="text" inputmode="url" autocomplete="url" placeholder="https://example.com" required />
-                <button class="primary-button" type="submit">Follow</button>
+            <p class="feeds-discover-more">
+              <button class="ghost-button" type="button" id="feedsDiscoverMore">More ways to add</button>
+            </p>
+            <details class="feeds-setup-block" id="feedsSetupBlock">
+              <summary class="feeds-setup-summary">URL, Feedly import &amp; subscriptions</summary>
+              <form id="followFeedForm">
+                <label for="followFeedInput">Follow a site or feed URL</label>
+                <div class="input-row">
+                  <input id="followFeedInput" type="text" inputmode="url" autocomplete="url" placeholder="https://example.com" required />
+                  <button class="primary-button" type="submit">Follow</button>
+                </div>
+                <label for="followFeedFolder">Folder</label>
+                <div class="input-row feeds-folder-pick">
+                  <select id="followFeedFolder" aria-label="Folder">
+                    <option value="">No folder</option>
+                    <option value="__new">New folder…</option>
+                  </select>
+                  <input id="followFeedFolderName" type="text" maxlength="80" placeholder="Folder name" hidden />
+                </div>
+              </form>
+              <div id="feedChoices" hidden></div>
+              <section class="feeds-opml" aria-labelledby="opmlTitle">
+                <h3 id="opmlTitle">Bring your Feedly list</h3>
+                <p>While signed in on the web, open <a href="https://feedly.com/i/opml" target="_blank" rel="noreferrer">https://feedly.com/i/opml</a> and download the OPML file. That file is the public RSS feeds and folders. It does not include Boards, Read Later, Feedly AI feeds, or Reddit.</p>
+                <label class="feeds-opml-upload">
+                  <input id="opmlFile" type="file" accept=".opml,.xml,text/xml,application/xml" />
+                  Upload OPML
+                </label>
+              </section>
+              <section class="feeds-setup-sources" id="feedsSources" aria-label="Subscriptions"></section>
+              <div class="button-row">
+                <button class="ghost-button" id="refreshFeeds" type="button">Refresh</button>
               </div>
-              <label for="followFeedFolder">Folder</label>
-              <div class="input-row feeds-folder-pick">
-                <select id="followFeedFolder" aria-label="Folder">
-                  <option value="">No folder</option>
-                  <option value="__new">New folder…</option>
-                </select>
-                <input id="followFeedFolderName" type="text" maxlength="80" placeholder="Folder name" hidden />
-              </div>
-            </form>
-            <div id="feedChoices" hidden></div>
-            <section class="feeds-opml" aria-labelledby="opmlTitle">
-              <h3 id="opmlTitle">Bring your Feedly list</h3>
-              <p>While signed in on the web, open <a href="https://feedly.com/i/opml" target="_blank" rel="noreferrer">https://feedly.com/i/opml</a> and download the OPML file. That file is the public RSS feeds and folders. It does not include Boards, Read Later, Feedly AI feeds, or Reddit.</p>
-              <label class="feeds-opml-upload">
-                <input id="opmlFile" type="file" accept=".opml,.xml,text/xml,application/xml" />
-                Upload OPML
-              </label>
-            </section>
-            <section class="feeds-setup-sources" id="feedsSources" aria-label="Subscriptions"></section>
-            <div class="button-row">
-              <button class="ghost-button" id="refreshFeeds" type="button">Refresh</button>
-            </div>
+            </details>
           </dialog>
         </section>
         <section class="nav-panel shop-panel" id="shopPanel" data-colorway="espresso" aria-labelledby="shopTitle">
@@ -935,6 +953,6 @@
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
     <script src="./app.js?v=picker-nav-121" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-25" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-26" defer></script>
   </body>
 </html>

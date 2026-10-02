@@ -881,7 +881,9 @@ function feedsSignInNote() {
 
 function feedsDiscoverInvite() {
   if (!pickerIsSignedIn()) return "";
-  if (feedState.feeds.length >= 12) return "";
+  const fewFeeds = feedState.feeds.length < 12;
+  const allWithUnread = selectedSource === "all" && unreadItems().length > 0;
+  if (!fewFeeds && !allWithUnread) return "";
   return `<aside class="feeds-discover-invite">
     <div>
       <strong>Want more interesting feeds?</strong>
@@ -997,6 +999,25 @@ function discoverFolderNames() {
   return [select.value];
 }
 
+function paintDiscoverSteps() {
+  const steps = document.querySelector("#feedsDiscoverSteps");
+  if (!steps) return;
+  const hasTopic = Boolean(selectedTopic || catalogQuery.trim());
+  const hasPicks = catalogPicks.size > 0;
+  let current = "topic";
+  if (hasTopic && hasPicks) current = "folder";
+  else if (hasTopic) current = "feeds";
+  steps.querySelectorAll("[data-discover-step]").forEach((item) => {
+    const step = item.dataset.discoverStep;
+    const done = (step === "topic" && hasTopic)
+      || (step === "feeds" && hasPicks);
+    item.classList.toggle("is-done", done && step !== current);
+    item.classList.toggle("is-current", step === current);
+    if (step === current) item.setAttribute("aria-current", "step");
+    else item.removeAttribute("aria-current");
+  });
+}
+
 function paintDiscoverBar() {
   const bar = document.querySelector("#feedsDiscoverBar");
   const count = document.querySelector("#feedsDiscoverCount");
@@ -1006,6 +1027,7 @@ function paintDiscoverBar() {
   if (bar && count && add) {
     const size = catalogPicks.size;
     bar.hidden = size === 0;
+    bar.classList.toggle("is-sticky", size > 0);
     count.textContent = size === 1 ? "1 feed selected" : `${size} feeds selected`;
     add.disabled = size === 0;
   }
@@ -1018,6 +1040,7 @@ function paintDiscoverBar() {
       ? `Select popular pack (${available.length})`
       : `Add ${label} pack to a folder (${available.length})`;
   }
+  paintDiscoverSteps();
 }
 
 function selectTopicPack() {
@@ -1145,6 +1168,17 @@ async function loadDirectory() {
   renderDirectory();
 }
 
+function setFeedsDialogMode(mode) {
+  const dialog = document.querySelector("#feedsAddDialog");
+  const title = document.querySelector("#feedsDialogTitle");
+  const setup = document.querySelector("#feedsSetupBlock");
+  const resolved = mode === "setup" ? "setup" : "discover";
+  if (dialog) dialog.dataset.mode = resolved;
+  if (title) title.textContent = resolved === "setup" ? "Setup feeds" : "Find interesting feeds";
+  if (setup) setup.open = resolved === "setup";
+  paintDiscoverSteps();
+}
+
 function openFeedsDiscover() {
   whenAccountKnown(() => {
     if (!pickerIsSignedIn()) {
@@ -1154,9 +1188,22 @@ function openFeedsDiscover() {
     if (!selectedTopic && !catalogQuery.trim()) selectedTopic = "popular";
     const query = document.querySelector("#feedTopicQuery");
     if (query && !catalogQuery) query.value = "";
+    setFeedsDialogMode("discover");
     document.querySelector("#feedsAddDialog")?.showModal();
     document.querySelector("#feedsDiscover")?.scrollIntoView({ block: "nearest" });
     void loadDirectory();
+  });
+}
+
+function openFeedsSetup() {
+  whenAccountKnown(() => {
+    if (!pickerIsSignedIn()) {
+      document.querySelector("#accountDialog")?.showModal();
+      return;
+    }
+    setFeedsDialogMode("setup");
+    document.querySelector("#feedsAddDialog")?.showModal();
+    document.querySelector("#feedsSetupBlock")?.scrollIntoView({ block: "nearest" });
   });
 }
 
@@ -1475,7 +1522,12 @@ function bindFeedsDesk() {
     });
   });
   bindSwipe();
-  document.querySelector("#feedsAdd")?.addEventListener("click", () => openFeedsDiscover());
+  document.querySelector("#feedsDiscoverCta")?.addEventListener("click", () => openFeedsDiscover());
+  document.querySelector("#feedsAdd")?.addEventListener("click", () => openFeedsSetup());
+  document.querySelector("#feedsDiscoverMore")?.addEventListener("click", () => {
+    setFeedsDialogMode("setup");
+    document.querySelector("#feedsSetupBlock")?.scrollIntoView({ block: "nearest" });
+  });
   const addDialog = document.querySelector("#feedsAddDialog");
   addDialog?.addEventListener("click", (event) => {
     if (!window.matchMedia("(min-width: 761px)").matches) return;
@@ -1486,6 +1538,10 @@ function bindFeedsDesk() {
   panel.addEventListener("click", (event) => {
     if (event.target.closest("[data-feeds-discover]")) {
       openFeedsDiscover();
+      return;
+    }
+    if (event.target.closest("[data-feeds-setup]")) {
+      openFeedsSetup();
       return;
     }
     if (!event.target.closest("[data-feeds-signin]")) return;
@@ -1573,6 +1629,7 @@ function bindFeedsDesk() {
         nameInput.hidden = event.target.value !== "__new";
         if (!nameInput.hidden) nameInput.focus();
       }
+      if (event.target.id === "discoverFolder") paintDiscoverSteps();
     }
     const catalogPick = event.target.closest("[data-catalog-pick]");
     if (catalogPick) {
@@ -1591,6 +1648,7 @@ function bindFeedsDesk() {
   });
   panel.addEventListener("input", (event) => {
     if (event.target.id === "newFolderInput") folderDraftName = event.target.value;
+    if (event.target.id === "discoverFolderName") paintDiscoverSteps();
   });
   panel.addEventListener("submit", (event) => {
     const form = event.target.closest("[data-new-folder-form]");
