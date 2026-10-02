@@ -45,9 +45,10 @@ function loadFeedState() {
       read: saved.read && typeof saved.read === "object" ? saved.read : {},
       archived: saved.archived && typeof saved.archived === "object" ? saved.archived : {},
       starred: saved.starred && typeof saved.starred === "object" ? saved.starred : {},
+      removedUrls: new Set(Array.isArray(saved.removedUrls) ? saved.removedUrls : []),
     };
   } catch {
-    return { feeds: [], folders: [], items: [], read: {}, archived: {}, starred: {} };
+    return { feeds: [], folders: [], items: [], read: {}, archived: {}, starred: {}, removedUrls: new Set() };
   }
 }
 
@@ -110,10 +111,11 @@ async function syncFeedLibrary() {
   }
   const remoteFeeds = Array.isArray(remote.feeds) ? remote.feeds : [];
   const known = new Set(feedState.feeds.map((feed) => canonicalFeedUrl(feed.url)));
+  const removed = feedState.removedUrls || new Set();
   let added = 0;
   remoteFeeds.forEach((feed) => {
     const key = canonicalFeedUrl(feed.url);
-    if (!key || known.has(key)) return;
+    if (!key || known.has(key) || removed.has(key)) return;
     known.add(key);
     feedState.feeds.push({
       id: feed.id || crypto.randomUUID(),
@@ -146,7 +148,10 @@ function saveFeedState() {
   const next = feedLibrarySignature();
   const changed = Boolean(librarySignature) && next !== librarySignature;
   librarySignature = next;
-  localStorage.setItem(FEEDS_KEY, JSON.stringify({ ...feedState }));
+  localStorage.setItem(FEEDS_KEY, JSON.stringify({
+    ...feedState,
+    removedUrls: Array.from(feedState.removedUrls || []),
+  }));
   if (changed) scheduleLibraryPush();
 }
 
@@ -588,6 +593,9 @@ function assignFolderNames(record, names) {
 
 function storeFeed(feed, options = {}) {
   const key = canonicalFeedUrl(feed.url);
+  if (key && feedState.removedUrls) {
+    feedState.removedUrls.delete(key);
+  }
   let record = options.feedId ? feedState.feeds.find((item) => item.id === options.feedId) : null;
   if (!record) record = feedState.feeds.find((item) => canonicalFeedUrl(item.url) === key);
   if (record && feed.url) record.url = feed.url;
@@ -813,6 +821,13 @@ function moveSelectedFeeds(name) {
 function deleteSelectedFeeds() {
   if (!selectedFeedIds.size) return;
   const itemIds = feedState.items.filter((item) => selectedFeedIds.has(item.feedId)).map((item) => item.id);
+  if (!feedState.removedUrls) feedState.removedUrls = new Set();
+  feedState.feeds.forEach((feed) => {
+    if (selectedFeedIds.has(feed.id)) {
+      if (feed.url) feedState.removedUrls.add(canonicalFeedUrl(feed.url));
+      if (feed.siteUrl) feedState.removedUrls.add(canonicalFeedUrl(feed.siteUrl));
+    }
+  });
   feedState.feeds = feedState.feeds.filter((feed) => !selectedFeedIds.has(feed.id));
   feedState.items = feedState.items.filter((item) => !selectedFeedIds.has(item.feedId));
   itemIds.forEach((id) => {
@@ -827,6 +842,8 @@ function deleteSelectedFeeds() {
   }
   selectedFeedIds = new Set();
   saveFeedState();
+  void pushFeedLibrary();
+  paintFeedHealth("");
   renderFeeds();
 }
 
