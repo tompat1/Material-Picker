@@ -6627,19 +6627,20 @@ body.is-cms [data-cms] {
 
 .feeds-discover-dismiss {
   position: absolute;
-  top: 0.55rem;
-  right: 0.55rem;
+  top: 0.5rem;
+  right: 0.5rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.65rem;
-  height: 1.65rem;
+  width: 2.1rem;
+  height: 2.1rem;
   padding: 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
-  font-size: 0.9rem;
+  font-size: 1.15rem;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
@@ -7924,26 +7925,51 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   justify-content: flex-end;
 }
 
-.feeds-add-close button {
+.feeds-add-close button,
+.dialog-bar .ghost-button[value="close"],
+.dialog-bar .ghost-button[aria-label="Close"],
+.shop-drawer-head .ghost-button[aria-label="Close"],
+.shop-lightbox-close.ghost-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 2.35rem;
+  height: 2.35rem;
+  min-height: 2.35rem;
   padding: 0;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
-  font-size: 1.05rem;
+  font-size: 1.25rem;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
-.feeds-add-close button:hover {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
+.feeds-add-close button:hover,
+.dialog-bar .ghost-button[value="close"]:hover,
+.dialog-bar .ghost-button[aria-label="Close"]:hover,
+.shop-drawer-head .ghost-button[aria-label="Close"]:hover,
+.shop-lightbox-close.ghost-button:hover {
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
   color: var(--ink);
+  transform: scale(1.05);
+}
+
+@media (max-width: 768px) {
+  .feeds-add-close button,
+  .feeds-discover-dismiss,
+  .dialog-bar .ghost-button[value="close"],
+  .dialog-bar .ghost-button[aria-label="Close"],
+  .shop-drawer-head .ghost-button[aria-label="Close"],
+  .shop-lightbox-close.ghost-button {
+    width: 2.5rem;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    font-size: 1.35rem;
+  }
 }
 
 .feeds-feedly-note,
