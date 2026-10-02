@@ -26,11 +26,12 @@ let folderDraft = false;
 let folderDraftMoves = false;
 let folderDraftName = "";
 let folderDraftFocus = false;
-let selectedTopic = "";
+let selectedTopic = "popular";
 let catalogQuery = "";
 let catalogTopics = [];
 let directoryFeeds = [];
 let directoryRequest = 0;
+let catalogPicks = new Map();
 let touchStart = null;
 
 function loadFeedState() {
@@ -760,14 +761,19 @@ function renderSources() {
 }
 
 function renderFolderPicker() {
-  const select = document.querySelector("#followFeedFolder");
-  if (!select) return;
-  const current = select.value;
   const names = feedState.folders.map((folder) => folder.name);
-  select.innerHTML = [`<option value="">No folder</option>`, ...names.map((name) => `<option value="${escapeFeedText(name)}">${escapeFeedText(name)}</option>`), `<option value="__new">New folder…</option>`].join("");
-  select.value = ["", "__new", ...names].includes(current) ? current : "";
-  const nameInput = document.querySelector("#followFeedFolderName");
-  if (nameInput) nameInput.hidden = select.value !== "__new";
+  [
+    ["#followFeedFolder", "#followFeedFolderName"],
+    ["#discoverFolder", "#discoverFolderName"],
+  ].forEach(([selectId, nameId]) => {
+    const select = document.querySelector(selectId);
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = [`<option value="">No folder</option>`, ...names.map((name) => `<option value="${escapeFeedText(name)}">${escapeFeedText(name)}</option>`), `<option value="__new">New folder…</option>`].join("");
+    select.value = ["", "__new", ...names].includes(current) ? current : "";
+    const nameInput = document.querySelector(nameId);
+    if (nameInput) nameInput.hidden = select.value !== "__new";
+  });
 }
 
 function chosenFolderNames() {
@@ -855,6 +861,18 @@ function feedsSignInNote() {
   return `<p class="feeds-signin-note">Sign in or create an account to add feeds. <button type="button" data-feeds-signin>Sign in or create an account</button></p>`;
 }
 
+function feedsDiscoverInvite() {
+  if (!pickerIsSignedIn()) return "";
+  if (feedState.feeds.length >= 12) return "";
+  return `<aside class="feeds-discover-invite">
+    <div>
+      <strong>Want more interesting feeds?</strong>
+      <p>Browse popular topics and add them to a folder in one go.</p>
+    </div>
+    <button class="ghost-button" type="button" data-feeds-discover>Browse feeds</button>
+  </aside>`;
+}
+
 function feedsWelcome() {
   const marks = `<img class="feeds-welcome-mark feeds-welcome-mark--dark" src="/brand/logos/picker-mark-dark.svg" alt="Picker" />
           <img class="feeds-welcome-mark feeds-welcome-mark--light" src="/brand/logos/picker-mark-light.svg" alt="" />`;
@@ -870,7 +888,8 @@ function feedsWelcome() {
   }
   return `<div class="feeds-welcome">
           ${marks}
-          <p>Click the + button in the corner to follow a site, or upload the Feedly list you downloaded.</p>
+          <p>Want to follow interesting sites? Browse popular feeds by topic, or import the Feedly list you downloaded.</p>
+          <button class="primary-button" type="button" data-feeds-discover>Browse popular feeds</button>
         </div>`;
 }
 
@@ -880,13 +899,13 @@ function renderList() {
   const items = itemsForSource().sort((a, b) => feedTime(b) - feedTime(a));
   if (!items.length) {
     river.innerHTML = feedState.feeds.length
-      ? `<p class="feeds-river-empty">Nothing unread in this view.</p>${feedsSignInNote()}`
+      ? `${feedsDiscoverInvite()}<p class="feeds-river-empty">Nothing unread in this view.</p>${feedsSignInNote()}`
       : feedsWelcome();
     return;
   }
   const signedOutNote = feedsSignInNote();
   let lastDay = "";
-  river.innerHTML = signedOutNote + items.map((item) => {
+  river.innerHTML = feedsDiscoverInvite() + signedOutNote + items.map((item) => {
     const feed = feedRecord(item.feedId);
     const day = dayKey(item.publishedAt);
     const heading = day === lastDay ? "" : `<h3 class="feeds-day">${escapeFeedText(dayLabel(item.publishedAt))}</h3>`;
@@ -930,7 +949,29 @@ function renderReader() {
 }
 
 function topicLabel(id) {
+  if (id === "popular") return "Popular";
   return catalogTopics.find((topic) => topic.id === id)?.label || TOPIC_LABELS[id] || id;
+}
+
+function discoverFolderNames() {
+  const select = document.querySelector("#discoverFolder");
+  if (!select || !select.value) return [];
+  if (select.value === "__new") {
+    const name = document.querySelector("#discoverFolderName")?.value.trim();
+    return name ? [name] : [];
+  }
+  return [select.value];
+}
+
+function paintDiscoverBar() {
+  const bar = document.querySelector("#feedsDiscoverBar");
+  const count = document.querySelector("#feedsDiscoverCount");
+  const add = document.querySelector("#discoverAdd");
+  if (!bar || !count || !add) return;
+  const size = catalogPicks.size;
+  bar.hidden = size === 0;
+  count.textContent = size === 1 ? "1 feed selected" : `${size} feeds selected`;
+  add.disabled = size === 0;
 }
 
 function renderDirectory() {
@@ -944,22 +985,32 @@ function renderDirectory() {
   if (!box) return;
   const active = Boolean(selectedTopic || catalogQuery.trim());
   if (!active) {
-    box.innerHTML = "";
+    box.innerHTML = `<p class="feeds-directory-empty">Choose a topic to see popular feeds.</p>`;
+    paintDiscoverBar();
     return;
   }
   if (!directoryFeeds.length) {
     box.innerHTML = `<p class="feeds-directory-empty">No feeds match that search.</p>`;
+    paintDiscoverBar();
     return;
   }
   box.innerHTML = directoryFeeds.map((feed) => {
-    const following = feedState.feeds.some((item) => canonicalFeedUrl(item.url) === canonicalFeedUrl(feed.url));
-    return `<article class="feed-directory-card">
-      <p>${escapeFeedText((feed.topics || []).map(topicLabel).join(" · "))}</p>
-      <h3>${escapeFeedText(feed.title)}</h3>
-      <p>${escapeFeedText(feed.blurb)}</p>
+    const key = canonicalFeedUrl(feed.url);
+    const following = feedState.feeds.some((item) => canonicalFeedUrl(item.url) === key);
+    const picked = catalogPicks.has(key);
+    return `<article class="feed-directory-card${picked ? " is-picked" : ""}${following ? " is-following" : ""}">
+      <label class="feed-directory-pick">
+        <input type="checkbox" data-catalog-pick="${escapeFeedText(feed.url)}" data-catalog-title="${escapeFeedText(feed.title)}" data-catalog-topics="${escapeFeedText((feed.topics || []).join(","))}" ${picked ? "checked" : ""} ${following ? "disabled" : ""} />
+        <span class="feed-directory-copy">
+          <p>${escapeFeedText((feed.topics || []).map(topicLabel).join(" · "))}</p>
+          <h3>${escapeFeedText(feed.title)}</h3>
+          <p>${escapeFeedText(feed.blurb)}</p>
+        </span>
+      </label>
       <button class="ghost-button" type="button" data-catalog-url="${escapeFeedText(feed.url)}" data-catalog-title="${escapeFeedText(feed.title)}" data-catalog-topics="${escapeFeedText((feed.topics || []).join(","))}" ${following ? "disabled" : ""}>${following ? "Following" : "Follow"}</button>
     </article>`;
   }).join("");
+  paintDiscoverBar();
 }
 
 function renderFeedChoices() {
@@ -1013,34 +1064,109 @@ async function loadDirectory() {
   renderDirectory();
 }
 
+function openFeedsDiscover() {
+  whenAccountKnown(() => {
+    if (!pickerIsSignedIn()) {
+      document.querySelector("#accountDialog")?.showModal();
+      return;
+    }
+    if (!selectedTopic && !catalogQuery.trim()) selectedTopic = "popular";
+    const query = document.querySelector("#feedTopicQuery");
+    if (query && !catalogQuery) query.value = "";
+    document.querySelector("#feedsAddDialog")?.showModal();
+    document.querySelector("#feedsDiscover")?.scrollIntoView({ block: "nearest" });
+    void loadDirectory();
+  });
+}
+
 async function followUrl(value, options = {}) {
   const url = normalizeFeedInput(value);
-  if (!url) return;
-  setFeedStatus("Looking for a feed…");
+  if (!url) return null;
+  if (!options.quiet) setFeedStatus("Looking for a feed…");
   try {
     const result = await requestFeed(url);
     if (result.kind === "choices") {
       feedChoices = result.feeds || [];
       setFeedStatus("Choose which feed to follow.");
       renderFeeds();
-      return;
+      return null;
     }
     feedChoices = [];
-    const record = storeFeed(result.feed, { ...options, folderNames: [...(options.folderNames || []), ...chosenFolderNames()] });
+    const folderNames = [...(options.folderNames || [])];
+    if (!options.skipFormFolder) folderNames.push(...chosenFolderNames());
+    const record = storeFeed(result.feed, { ...options, folderNames });
     revealFolders(record);
     saveFeedState();
-    selectedSource = `feed:${record.id}`;
-    selectedItemId = "";
-    const input = document.querySelector("#followFeedInput");
-    if (input) input.value = "";
-    setFeedStatus(`Following ${record.title}.`);
-    feedPane = 0;
-    renderFeeds();
-    document.querySelector("#feedsAddDialog")?.close();
+    if (!options.quiet) {
+      selectedSource = `feed:${record.id}`;
+      selectedItemId = "";
+      const input = document.querySelector("#followFeedInput");
+      if (input) input.value = "";
+      setFeedStatus(`Following ${record.title}.`);
+      feedPane = 0;
+      renderFeeds();
+      if (!options.keepOpen) document.querySelector("#feedsAddDialog")?.close();
+    }
+    return record;
   } catch (error) {
-    setFeedStatus(error.message || "The feed could not be loaded.");
-    renderFeeds();
+    if (!options.quiet) {
+      setFeedStatus(error.message || "The feed could not be loaded.");
+      renderFeeds();
+    }
+    throw error;
   }
+}
+
+async function followCatalogPicks() {
+  const picks = [...catalogPicks.values()];
+  if (!picks.length) return;
+  const folderNames = discoverFolderNames();
+  if (document.querySelector("#discoverFolder")?.value === "__new" && !folderNames.length) {
+    setFeedStatus("Name the new folder before adding these feeds.");
+    document.querySelector("#discoverFolderName")?.focus();
+    return;
+  }
+  setFeedStatus(picks.length === 1 ? "Adding 1 feed…" : `Adding ${picks.length} feeds…`);
+  let added = 0;
+  const failures = [];
+  for (const pick of picks) {
+    try {
+      await followUrl(pick.url, {
+        title: pick.title,
+        topics: pick.topics,
+        folderNames,
+        quiet: true,
+        keepOpen: true,
+        skipFormFolder: true,
+      });
+      catalogPicks.delete(canonicalFeedUrl(pick.url));
+      added += 1;
+    } catch (error) {
+      failures.push(pick.title || error.message || "A feed");
+    }
+  }
+  feedPane = 0;
+  if (folderNames.length) {
+    const folder = ensureFolder(folderNames[0]);
+    setFolderOpen(folder, true);
+    selectedSource = `folder:${folder.id}`;
+  } else if (added === 1) {
+    selectedSource = "all";
+  }
+  renderFeeds();
+  paintDiscoverBar();
+  if (failures.length && !added) {
+    setFeedStatus(`Could not add: ${failures.slice(0, 3).join(", ")}`);
+    return;
+  }
+  if (failures.length) {
+    setFeedStatus(`Added ${added}. Could not add: ${failures.slice(0, 2).join(", ")}`);
+  } else {
+    const folderNote = folderNames.length ? ` into ${folderNames[0]}` : "";
+    setFeedStatus(added === 1 ? `Added 1 feed${folderNote}.` : `Added ${added} feeds${folderNote}.`);
+    document.querySelector("#feedsAddDialog")?.close();
+  }
+  void refreshFeeds({ force: true });
 }
 
 function paintIncomingFeeds() {
@@ -1268,16 +1394,7 @@ function bindFeedsDesk() {
     });
   });
   bindSwipe();
-  document.querySelector("#feedsAdd")?.addEventListener("click", () => {
-    whenAccountKnown(() => {
-      if (!pickerIsSignedIn()) {
-        document.querySelector("#accountDialog")?.showModal();
-        return;
-      }
-      document.querySelector("#feedsAddDialog")?.showModal();
-      void loadDirectory();
-    });
-  });
+  document.querySelector("#feedsAdd")?.addEventListener("click", () => openFeedsDiscover());
   const addDialog = document.querySelector("#feedsAddDialog");
   addDialog?.addEventListener("click", (event) => {
     if (!window.matchMedia("(min-width: 761px)").matches) return;
@@ -1286,8 +1403,17 @@ function bindFeedsDesk() {
     if (outside) addDialog.close();
   });
   panel.addEventListener("click", (event) => {
+    if (event.target.closest("[data-feeds-discover]")) {
+      openFeedsDiscover();
+      return;
+    }
     if (!event.target.closest("[data-feeds-signin]")) return;
     document.querySelector("#accountDialog")?.showModal();
+  });
+  document.querySelector("#discoverAdd")?.addEventListener("click", () => {
+    const task = followCatalogPicks();
+    window.pickerWaitUntil?.("feeds-discover", "Adding feeds", task);
+    void task;
   });
   document.addEventListener("picker-account", () => {
     renderFeeds();
@@ -1320,7 +1446,8 @@ function bindFeedsDesk() {
   document.querySelector("#feedTopicSearch")?.addEventListener("submit", (event) => event.preventDefault());
   document.querySelector("#feedTopicQuery")?.addEventListener("input", (event) => {
     catalogQuery = event.target.value || "";
-    selectedTopic = "";
+    if (catalogQuery.trim()) selectedTopic = "";
+    else if (!selectedTopic) selectedTopic = "popular";
     void loadDirectory();
   });
   document.querySelector("#opmlFile")?.addEventListener("change", (event) => {
@@ -1352,12 +1479,26 @@ function bindFeedsDesk() {
       }
       return;
     }
-    if (event.target.id === "followFeedFolder") {
-      const nameInput = document.querySelector("#followFeedFolderName");
+    if (event.target.id === "followFeedFolder" || event.target.id === "discoverFolder") {
+      const nameInput = document.querySelector(event.target.id === "discoverFolder" ? "#discoverFolderName" : "#followFeedFolderName");
       if (nameInput) {
         nameInput.hidden = event.target.value !== "__new";
         if (!nameInput.hidden) nameInput.focus();
       }
+    }
+    const catalogPick = event.target.closest("[data-catalog-pick]");
+    if (catalogPick) {
+      const key = canonicalFeedUrl(catalogPick.dataset.catalogPick);
+      if (catalogPick.checked) {
+        catalogPicks.set(key, {
+          url: catalogPick.dataset.catalogPick,
+          title: catalogPick.dataset.catalogTitle || "",
+          topics: (catalogPick.dataset.catalogTopics || "").split(",").filter(Boolean),
+        });
+      } else {
+        catalogPicks.delete(key);
+      }
+      renderDirectory();
     }
   });
   panel.addEventListener("input", (event) => {
@@ -1434,7 +1575,7 @@ function bindFeedsDesk() {
     }
     const topicButton = event.target.closest("[data-feed-topic]");
     if (topicButton) {
-      selectedTopic = selectedTopic === topicButton.dataset.feedTopic ? "" : topicButton.dataset.feedTopic;
+      selectedTopic = selectedTopic === topicButton.dataset.feedTopic ? "popular" : topicButton.dataset.feedTopic;
       catalogQuery = "";
       const query = document.querySelector("#feedTopicQuery");
       if (query) query.value = "";
@@ -1444,9 +1585,16 @@ function bindFeedsDesk() {
     const catalogButton = event.target.closest("[data-catalog-url]");
     if (catalogButton && !catalogButton.disabled) {
       catalogButton.disabled = true;
+      const folderNames = discoverFolderNames();
       void followUrl(catalogButton.dataset.catalogUrl, {
         title: catalogButton.dataset.catalogTitle,
         topics: (catalogButton.dataset.catalogTopics || "").split(",").filter(Boolean),
+        folderNames,
+        skipFormFolder: true,
+        keepOpen: true,
+      }).finally(() => {
+        catalogButton.disabled = false;
+        renderDirectory();
       });
       return;
     }

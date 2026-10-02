@@ -6395,6 +6395,96 @@ body.is-cms [data-cms] {
   font: 500 0.95rem/1.2 var(--sans);
 }
 
+.feeds-discover-invite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin: 0 0 1rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+
+.feeds-discover-invite strong {
+  display: block;
+  margin: 0 0 0.2rem;
+  font: 650 0.98rem/1.25 var(--sans);
+}
+
+.feeds-discover-invite p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.feeds-discover {
+  margin: 0 0 1.1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.feeds-discover-lead {
+  margin: 0.35rem 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.feeds-discover-bar {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+}
+
+.feeds-discover-bar[hidden] {
+  display: none !important;
+}
+
+.feeds-discover-bar > p {
+  margin: 0 0 0.45rem;
+  color: var(--ink);
+  font: 600 0.9rem/1.3 var(--sans);
+}
+
+.feeds-discover-folder {
+  display: block;
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.feed-directory-pick {
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+  cursor: pointer;
+}
+
+.feed-directory-pick input {
+  margin-top: 0.2rem;
+  accent-color: var(--accent);
+}
+
+.feed-directory-copy {
+  min-width: 0;
+}
+
+.feed-directory-card.is-picked {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+
+.feed-directory-card.is-following {
+  opacity: 0.72;
+}
+
 .feeds-topics {
   display: flex;
   flex-wrap: wrap;
@@ -6422,17 +6512,18 @@ body.is-cms [data-cms] {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 0.6rem;
+  margin-top: 0.75rem;
 }
 
 .feeds-directory-empty {
-  margin: 0;
+  margin: 0.75rem 0 0;
   color: var(--muted);
 }
 
 .feed-directory-card {
   display: grid;
   align-content: start;
-  gap: 0.3rem;
+  gap: 0.45rem;
   min-width: 0;
   padding: 0.75rem 0.8rem;
   border: 1px solid var(--line);
@@ -6456,9 +6547,8 @@ body.is-cms [data-cms] {
   line-height: 1.35;
 }
 
-.feed-directory-card button {
+.feed-directory-card > button {
   justify-self: start;
-  margin-top: 0.25rem;
 }
 
 .feeds-layout {

@@ -350,9 +350,44 @@ export const FEED_CATALOG = [
 
 const TOPIC_IDS = new Set(FEED_TOPICS.map((topic) => topic.id));
 
+const POPULAR_FEED_IDS = [
+  "bbc-news",
+  "guardian-world",
+  "npr-news",
+  "verge",
+  "ars",
+  "hn",
+  "engadget",
+  "macrumors",
+  "nineto5mac",
+  "openai",
+  "mit-ai",
+  "mkbhd",
+  "variety",
+  "indiewire",
+  "polygon",
+  "ign",
+  "nasa",
+  "sciencedaily",
+  "bbc-sport",
+  "the-hill",
+];
+
+export function popularFeedCatalog() {
+  const byId = new Map(FEED_CATALOG.map((feed) => [feed.id, feed]));
+  return POPULAR_FEED_IDS.map((id) => byId.get(id)).filter(Boolean);
+}
+
 export function searchFeedCatalog({ query = "", topic = "" } = {}) {
   const selected = String(topic || "").trim().toLowerCase();
   const words = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+  if (selected === "popular") {
+    return popularFeedCatalog().filter((feed) => {
+      if (!words.length) return true;
+      const haystack = [feed.title, feed.site, feed.blurb, ...feed.topics].join(" ").toLowerCase();
+      return words.every((word) => haystack.includes(word));
+    });
+  }
   if (selected && !TOPIC_IDS.has(selected)) return [];
   if (!selected && !words.length) return [];
   return FEED_CATALOG.filter((feed) => {

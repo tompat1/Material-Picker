@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { discoverFeeds, loadFeed, parseFeed, searchFeedCatalog } from "../rss.mjs";
+import { discoverFeeds, loadFeed, parseFeed, popularFeedCatalog, searchFeedCatalog } from "../rss.mjs";
 
 const RSS = `<?xml version="1.0"?>
 <rss version="2.0">
@@ -166,6 +166,8 @@ test("searchFeedCatalog filters by topic and words", () => {
 
   assert.equal(searchFeedCatalog({}).length, 0);
   assert.equal(searchFeedCatalog({ topic: "cooking" }).length, 0);
+  assert.ok(searchFeedCatalog({ topic: "popular" }).length >= 12);
+  assert.deepEqual(searchFeedCatalog({ topic: "popular" }).map((feed) => feed.id), popularFeedCatalog().map((feed) => feed.id));
   assert.ok(searchFeedCatalog({ query: "marques" }).some((feed) => feed.id === "mkbhd"));
   assert.ok(searchFeedCatalog({ query: "mkbhd" }).some((feed) => feed.id === "mkbhd"));
   assert.ok(searchFeedCatalog({ query: "matt wolfe" }).some((feed) => feed.id === "matt-wolfe"));
