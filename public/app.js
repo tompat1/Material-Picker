@@ -1751,6 +1751,9 @@ function youtubeTextMatches(item) {
 
 function youtubeShelfVideos() {
   if (youtubeShelf.view === "liked") return youtubeShelf.liked.filter(youtubeTextMatches);
+  if (youtubeShelf.view === "shorts") {
+    return youtubeShelf.subscriptions.filter((video) => video?.short === true && video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
+  }
   if (youtubeShelf.view === "playlist") return youtubeShelf.playlistVideos.filter(youtubeTextMatches);
   const videos = youtubeShelf.view === "channel"
     ? (youtubeShelf.channelVideosId === youtubeShelf.channelId && youtubeShelf.channelVideos.length
@@ -1806,6 +1809,7 @@ function paintYouTubeGrid(message = "") {
     grid.className = "yt-grid";
     const empty = youtubeShelf.query.trim()
       ? "No matches."
+      : youtubeShelf.view === "shorts" ? "No Shorts in this list yet."
       : youtubeShelf.view === "liked" ? "No liked videos yet." : youtubeShelf.view === "playlist" ? "This playlist has no videos." : "No subscription videos yet.";
     grid.innerHTML = `<p class="hint yt-empty">${empty}</p>`;
     return;
@@ -1825,7 +1829,7 @@ function paintYouTubeGrid(message = "") {
     </div>
   </article>`;
   if (youtubeShelf.view !== "channel") {
-    grid.className = "yt-grid";
+    grid.className = youtubeShelf.view === "shorts" ? "yt-grid is-shorts" : "yt-grid";
     grid.innerHTML = videos.map(card).join("");
     return;
   }
@@ -1886,6 +1890,7 @@ function renderYouTubeHome(data) {
       <div class="yt-main">
         <div class="yt-chips" role="group" aria-label="YouTube filters">
           <button type="button" data-youtube-view="all" aria-pressed="true">All</button>
+          <button type="button" data-youtube-view="shorts" aria-pressed="false">Shorts</button>
           <button type="button" data-youtube-view="playlists" aria-pressed="false">Playlists</button>
           <button type="button" data-youtube-view="liked" aria-pressed="false">Liked videos</button>
         </div>

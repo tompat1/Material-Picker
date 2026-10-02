@@ -1113,6 +1113,14 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   gap: 1.45rem 0.85rem;
 }
 
+.yt-grid.is-shorts {
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+}
+
+.yt-grid.is-shorts .yt-thumb {
+  aspect-ratio: 9 / 16;
+}
+
 .yt-channel-view {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

@@ -228,6 +228,33 @@ async function fetchYouTubeActivity(accessToken, fetchImpl) {
   });
 }
 
+function youtubeVideoId(url) {
+  const match = String(url || "").match(/[?&]v=([\w-]{6,})/);
+  return match?.[1] || "";
+}
+
+async function markYouTubeShorts(accessToken, videos, fetchImpl) {
+  const channelIds = [...new Set(videos.map((video) => video.channelId).filter((id) => String(id).startsWith("UC")))];
+  const shortIds = new Set();
+  await Promise.all(channelIds.map(async (channelId) => {
+    const playlistId = `UUSH${channelId.slice(2)}`;
+    try {
+      const response = await fetchImpl(`https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=10&playlistId=${encodeURIComponent(playlistId)}`, {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      if (!response.ok) return;
+      const payload = await response.json().catch(() => ({}));
+      for (const item of Array.isArray(payload.items) ? payload.items : []) {
+        const id = String(item?.contentDetails?.videoId || "");
+        if (id) shortIds.add(id);
+      }
+    } catch {
+      // A channel without a Shorts list should not drop the rest of the shelf.
+    }
+  }));
+  return videos.map((video) => ({ ...video, short: shortIds.has(youtubeVideoId(video.url)) }));
+}
+
 async function attachYouTubeDurations(accessToken, videos, fetchImpl) {
   const ids = [...new Set(videos.map((video) => {
     const match = String(video.url || "").match(/[?&]v=([\w-]{6,})/);
@@ -259,11 +286,12 @@ export async function fetchYouTubeHome(accessToken, fetchImpl = fetch) {
     fetchYouTubeActivity(accessToken, fetchImpl).catch(() => []),
   ]);
   const timed = await attachYouTubeDurations(accessToken, [...feed.videos, ...liked], fetchImpl);
+  const marked = await markYouTubeShorts(accessToken, timed, fetchImpl);
   return {
     ...feed,
-    videos: timed.slice(0, feed.videos.length),
+    videos: marked.slice(0, feed.videos.length),
     playlists,
-    liked: timed.slice(feed.videos.length),
+    liked: marked.slice(feed.videos.length),
     activity,
   };
 }

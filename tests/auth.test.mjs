@@ -109,6 +109,39 @@ test("youtube home keeps subscriptions, playlists, likes, and activity", async (
   assert.equal(home.playlists[0].title, "Kiln notes");
   assert.equal(home.liked[0].url, "https://www.youtube.com/watch?v=likedvideoid");
   assert.equal(home.activity[0].source, "Liked");
+  assert.equal(home.videos[0].short, false);
+});
+
+test("youtube home marks videos that are on the channel Shorts list", async () => {
+  const home = await fetchYouTubeHome("token", async (url) => {
+    const href = String(url);
+    if (href.includes("/subscriptions")) {
+      return new Response(JSON.stringify({
+        items: [{ snippet: { title: "Studio North", resourceId: { channelId: "UCstudio1234" } } }],
+      }));
+    }
+    if (href.includes("playlistId=UUstudio1234")) {
+      return new Response(JSON.stringify({
+        items: [
+          { snippet: { title: "Portrait clip", publishedAt: "2026-09-02T00:00:00Z", resourceId: { videoId: "shortvideo01" }, channelTitle: "Studio North" } },
+          { snippet: { title: "Kiln tour", publishedAt: "2026-09-01T00:00:00Z", resourceId: { videoId: "longvideo001" }, channelTitle: "Studio North" } },
+        ],
+      }));
+    }
+    if (href.includes("playlistId=UUSHstudio1234")) {
+      return new Response(JSON.stringify({
+        items: [{ contentDetails: { videoId: "shortvideo01" } }],
+      }));
+    }
+    if (href.includes("/playlists") || href.includes("playlistId=LL") || href.includes("/activities") || href.includes("/videos?part=contentDetails")) {
+      return new Response(JSON.stringify({ items: [] }));
+    }
+    throw new Error(`Unexpected fetch ${href}`);
+  });
+  const portrait = home.videos.find((video) => video.title === "Portrait clip");
+  const tour = home.videos.find((video) => video.title === "Kiln tour");
+  assert.equal(portrait.short, true);
+  assert.equal(tour.short, false);
 });
 
 test("email accounts can be created and signed in without Google", async () => {
