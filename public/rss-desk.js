@@ -208,10 +208,25 @@ function ensureFolder(name) {
   const id = folderSlug(label);
   let folder = feedState.folders.find((item) => item.id === id);
   if (!folder) {
-    folder = { id, name: label, collapsed: feedState.folders.length > 3 };
+    folder = { id, name: label, collapsed: feedState.folders.length >= 3 };
     feedState.folders.push(folder);
   }
   return folder;
+}
+
+function folderIsOpen(folder) {
+  return folder?.collapsed === false;
+}
+
+function setFolderOpen(folder, open) {
+  if (!folder) return;
+  folder.collapsed = !open;
+}
+
+function normalizeFolderCollapse() {
+  feedState.folders.forEach((folder, index) => {
+    if (typeof folder.collapsed !== "boolean") folder.collapsed = index >= 3;
+  });
 }
 
 function feedTime(item) {
@@ -508,9 +523,26 @@ function renderSources() {
   const allCount = unreadItems().length;
   const folders = feedState.folders.map((folder) => {
     const count = itemsForSource(`folder:${folder.id}`).length;
-    return `<li class="feeds-folder">
-      <button type="button" data-source="folder:${escapeFeedText(folder.id)}" aria-pressed="${selectedSource === `folder:${folder.id}` ? "true" : "false"}"><span>${escapeFeedText(folder.name)}</span><em>${count ? countLabel(count) : ""}</em></button>
-      <button class="feeds-folder-remove" type="button" data-remove-folder="${escapeFeedText(folder.id)}" aria-label="Remove ${escapeFeedText(folder.name)} folder">Remove</button>
+    const open = folderIsOpen(folder);
+    const id = escapeFeedText(folder.id);
+    const name = escapeFeedText(folder.name);
+    const nested = feedState.feeds
+      .filter((feed) => (feed.folderIds || []).includes(folder.id))
+      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
+      .map((feed) => {
+        const unread = itemsForSource(`feed:${feed.id}`).length;
+        const feedId = escapeFeedText(feed.id);
+        return `<li><button type="button" data-source="feed:${feedId}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span>${escapeFeedText(feed.title)}</span><em>${unread ? countLabel(unread) : ""}</em></button></li>`;
+      })
+      .join("") || `<li class="feeds-feed-empty">No feeds in this folder.</li>`;
+    return `<li class="feeds-folder${open ? "" : " is-collapsed"}${selectedSource === `folder:${folder.id}` ? " is-current" : ""}">
+      <button class="feeds-folder-toggle" type="button" data-folder-toggle="${id}" aria-expanded="${open ? "true" : "false"}" aria-label="${open ? "Collapse" : "Open"} ${name}">
+        <svg class="feeds-folder-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="feeds-folder-name"><span>${name}</span><em>${count ? countLabel(count) : ""}</em></div>
+      <button class="feeds-folder-show" type="button" data-show-folder="${id}" aria-label="Show only ${name}">Show feed</button>
+      <button class="feeds-folder-remove" type="button" data-remove-folder="${id}" aria-label="Remove ${name} folder">Remove</button>
+      ${open ? `<ul>${nested}</ul>` : ""}
     </li>`;
   }).join("");
   const allFeeds = [...feedState.feeds].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
@@ -569,13 +601,13 @@ function chosenFolderNames() {
 function revealFolders(record) {
   (record?.folderIds || []).forEach((id) => {
     const folder = feedState.folders.find((item) => item.id === id);
-    if (folder) folder.collapsed = false;
+    if (folder) setFolderOpen(folder, true);
   });
 }
 
 function moveSelectedFeeds(name) {
   const folder = ensureFolder(name);
-  folder.collapsed = false;
+  setFolderOpen(folder, true);
   feedState.feeds.forEach((feed) => {
     if (!selectedFeedIds.has(feed.id)) return;
     feed.folderIds = Array.isArray(feed.folderIds) ? feed.folderIds : [];
@@ -1029,6 +1061,7 @@ function bindFeedsDesk() {
   if (!panel || panel.dataset.bound === "true") return;
   panel.dataset.bound = "true";
   dedupeFeedLibrary();
+  normalizeFolderCollapse();
   feedState.feeds.forEach((feed) => {
     if (!Array.isArray(feed.folderIds)) feed.folderIds = [];
     (feed.topics || []).forEach((topic) => {
@@ -1143,7 +1176,7 @@ function bindFeedsDesk() {
       return;
     }
     const folder = ensureFolder(name);
-    folder.collapsed = false;
+    setFolderOpen(folder, true);
     folderDraft = false;
     folderDraftName = "";
     saveFeedState();
@@ -1162,6 +1195,18 @@ function bindFeedsDesk() {
     const removeFolderButton = event.target.closest("[data-remove-folder]");
     if (removeFolderButton) {
       removeFolder(removeFolderButton.dataset.removeFolder);
+      return;
+    }
+    const showFolder = event.target.closest("[data-show-folder]");
+    if (showFolder) {
+      const folder = feedState.folders.find((item) => item.id === showFolder.dataset.showFolder);
+      setFolderOpen(folder, true);
+      selectedSource = `folder:${showFolder.dataset.showFolder}`;
+      selectedItemId = "";
+      feedPane = 0;
+      saveFeedState();
+      renderFeeds();
+      document.querySelector("#feedsAddDialog")?.close();
       return;
     }
     const deleteButton = event.target.closest("[data-delete-feeds]");
@@ -1203,7 +1248,7 @@ function bindFeedsDesk() {
     if (folderToggle) {
       const folder = feedState.folders.find((item) => item.id === folderToggle.dataset.folderToggle);
       if (folder) {
-        folder.collapsed = !folder.collapsed;
+        setFolderOpen(folder, !folderIsOpen(folder));
         saveFeedState();
         renderFeeds();
       }

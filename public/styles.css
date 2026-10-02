@@ -6930,18 +6930,63 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 
 .feeds-folder {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1.6rem minmax(0, 1fr) auto auto;
   align-items: start;
 }
 
+.feeds-folder-name {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  min-height: 2.6rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 10px;
+  font: 560 1rem/1.2 var(--sans);
+}
+
+.feeds-folder.is-current .feeds-folder-name {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
 .feeds-folder-toggle {
+  display: grid;
+  place-items: center;
   width: 1.6rem;
   height: 2.6rem;
   border: 0;
   background: transparent;
   color: var(--muted);
-  font: 600 1.1rem/1 var(--sans);
   cursor: pointer;
+}
+
+.feeds-folder-chevron {
+  width: 0.9rem;
+  height: 0.9rem;
+  transition: transform 160ms var(--ease);
+}
+
+.feeds-folder.is-collapsed .feeds-folder-chevron {
+  transform: rotate(-90deg);
+}
+
+.feeds-folder-show {
+  align-self: center;
+  height: 1.85rem;
+  padding: 0 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+  font: 600 0.72rem/1 var(--sans);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.feeds-folder-show:hover,
+.feeds-folder-show:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .feeds-folder ul {
