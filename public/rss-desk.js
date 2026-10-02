@@ -16,6 +16,7 @@ const TOPIC_LABELS = {
 
 const feedState = loadFeedState();
 let selectedSource = "all";
+let previousSource = null;
 let selectedItemId = "";
 let feedPane = 0;
 let feedChoices = [];
@@ -690,16 +691,37 @@ function applyPane() {
     track.classList.toggle("is-reading", Boolean(selectedItemId));
   }
   const back = document.querySelector("#feedsBack");
-  if (back) back.hidden = !isPhoneFeeds() || feedPane === 0;
+  if (back) back.hidden = (!isPhoneFeeds() || feedPane === 0) && !previousSource;
   const title = document.querySelector("#feedsTitle");
   const subtitle = document.querySelector("#feedsSubtitle");
   const kicker = document.querySelector("#feedsKicker");
   const article = itemById(selectedItemId);
   const onArticle = isPhoneFeeds() && feedPane === 1;
-  if (kicker) kicker.textContent = onArticle ? "Article" : "Feeds";
-  if (title) {
-    title.textContent = onArticle ? (feedRecord(article?.feedId)?.title || "Article") : sourceTitle();
+
+  if (kicker) {
+    if (onArticle) {
+      kicker.textContent = "Article";
+    } else if (previousSource) {
+      kicker.innerHTML = `<button class="feeds-back-kicker" type="button" data-action="back-source">← Back to ${escapeFeedText(sourceTitle(previousSource))}</button>`;
+    } else {
+      kicker.textContent = "Feeds";
+    }
   }
+
+  if (title) {
+    if (onArticle && article) {
+      const feed = feedRecord(article.feedId);
+      const feedTitleText = feed?.title || "Article";
+      if (feed) {
+        title.innerHTML = `<button class="feeds-title-link" type="button" data-open-feed="${escapeFeedText(feed.id)}" title="View ${escapeFeedText(feedTitleText)} feed">${escapeFeedText(feedTitleText)} <span class="feeds-title-arrow">→</span></button>`;
+      } else {
+        title.textContent = feedTitleText;
+      }
+    } else {
+      title.textContent = sourceTitle();
+    }
+  }
+
   if (subtitle) {
     if (onArticle) {
       subtitle.textContent = article?.author || "";
@@ -998,11 +1020,15 @@ function renderReader() {
   const feed = feedRecord(item.feedId);
   const when = item.publishedAt ? new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(item.publishedAt)) : "";
   const targetUrl = item.link || item.videoUrl || "";
+  const sourceHtml = feed
+    ? `<button class="feed-article-source-btn" type="button" data-open-feed="${escapeFeedText(feed.id)}" title="View ${escapeFeedText(feed.title)} feed">${escapeFeedText(feed.title)} →</button>`
+    : (feed?.title ? `<p class="feed-article-source">${escapeFeedText(feed.title)}</p>` : "");
+
   reader.innerHTML = `<article class="feed-article" data-article-link="${escapeFeedText(targetUrl)}">
     ${when ? `<p class="feed-article-date">${escapeFeedText(when)}</p>` : ""}
     <h3>${escapeFeedText(item.title)}</h3>
     ${item.author ? `<p class="feed-article-by">${escapeFeedText(item.author)}</p>` : ""}
-    <p class="feed-article-source">${escapeFeedText(feed?.title || "")}</p>
+    ${sourceHtml}
     ${item.image ? `<img src="${escapeFeedText(item.image)}" alt="" />` : ""}
     ${targetUrl ? `<a class="feed-article-link" href="${escapeFeedText(targetUrl)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(targetUrl) || "Open")} →</a>` : ""}
     ${item.summary ? `<p class="feed-article-body">${escapeFeedText(item.summary)}</p>` : ""}
@@ -1668,7 +1694,17 @@ function bindFeedsDesk() {
       void followUrl(detail.url, { title: detail.title || "", topics: detail.topics || [] });
     });
   });
-  document.querySelector("#feedsBack")?.addEventListener("click", () => showPane(0));
+  document.querySelector("#feedsBack")?.addEventListener("click", () => {
+    if (isPhoneFeeds() && feedPane === 1) {
+      showPane(0);
+    } else if (previousSource) {
+      selectedSource = previousSource;
+      previousSource = null;
+      selectedItemId = "";
+      feedPane = 0;
+      renderFeeds();
+    }
+  });
   document.querySelector("#followFeedForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     void followUrl(document.querySelector("#followFeedInput")?.value);
@@ -1760,6 +1796,31 @@ function bindFeedsDesk() {
     renderFeeds();
   });
   panel.addEventListener("click", (event) => {
+    const openFeed = event.target.closest("[data-open-feed]");
+    if (openFeed) {
+      const feedId = openFeed.dataset.openFeed;
+      if (feedId) {
+        if (selectedSource !== `feed:${feedId}`) {
+          previousSource = selectedSource;
+        }
+        selectedSource = `feed:${feedId}`;
+        selectedItemId = "";
+        feedPane = 0;
+        renderFeeds();
+      }
+      return;
+    }
+    const backSource = event.target.closest("[data-action='back-source']");
+    if (backSource) {
+      if (previousSource) {
+        selectedSource = previousSource;
+        previousSource = null;
+        selectedItemId = "";
+        feedPane = 0;
+        renderFeeds();
+      }
+      return;
+    }
     const startFolder = event.target.closest("[data-start-folder]");
     if (startFolder) {
       folderDraft = true;
@@ -1776,6 +1837,7 @@ function bindFeedsDesk() {
     }
     const showFolder = event.target.closest("[data-show-folder]");
     if (showFolder) {
+      previousSource = null;
       const folder = feedState.folders.find((item) => item.id === showFolder.dataset.showFolder);
       setFolderOpen(folder, true);
       selectedSource = `folder:${showFolder.dataset.showFolder}`;
@@ -1854,6 +1916,7 @@ function bindFeedsDesk() {
     }
     const sourceButton = event.target.closest("[data-source]");
     if (sourceButton) {
+      previousSource = null;
       selectedSource = sourceButton.dataset.source || "all";
       selectedItemId = "";
       feedPane = 0;

@@ -7082,6 +7082,61 @@ body.is-cms [data-cms] {
   line-height: 0.95;
 }
 
+.feeds-back-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent, #6366f1);
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.feeds-back-kicker:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.feeds-title-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.feeds-title-link:hover {
+  opacity: 0.85;
+}
+
+.feeds-title-arrow {
+  font-size: 0.7em;
+  opacity: 0.55;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.feeds-title-link:hover .feeds-title-arrow {
+  opacity: 1;
+  transform: translateX(3px);
+}
+
 .feeds-count {
   padding: 0.18rem 0.55rem 0.14rem;
   border-radius: 999px;
@@ -7736,6 +7791,27 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   font-size: 0.78rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.feed-article-source-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.feed-article-source-btn:hover {
+  color: var(--ink);
+  text-decoration: underline;
 }
 
 .feed-article img {
