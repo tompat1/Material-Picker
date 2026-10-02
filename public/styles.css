@@ -2676,6 +2676,10 @@ select {
 .account-icon {
   width: 1.15rem;
   height: 1.15rem;
+}
+
+.account-icon-outline {
+  display: block;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.7;
@@ -2683,7 +2687,25 @@ select {
   stroke-linejoin: round;
 }
 
+.account-icon-full {
+  display: none;
+  fill: currentColor;
+  stroke: none;
+}
+
+.account-link[data-signed-in="true"] .account-icon-outline {
+  display: none;
+}
+
+.account-link[data-signed-in="true"] .account-icon-full {
+  display: block;
+}
+
 .account-link[data-signed-in="true"] {
+  display: inline-flex;
+}
+
+#accountChip #accountSignOut {
   display: none;
 }
 
