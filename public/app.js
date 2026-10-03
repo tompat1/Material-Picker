@@ -458,6 +458,7 @@ function waitLabelFor(path) {
 
 function shouldTrackRequest(path) {
   if (!path.startsWith("/api/")) return false;
+  if (path === "/api/video-search") return false;
   if (path === "/api/rss/catalog" || path === "/api/offline/status" || path === "/api/stream") return false;
   if (path === "/api/media-proxy" || path === "/api/media-plan" || path === "/api/offline/files") return false;
   if (path.startsWith("/api/youtube/")) return Boolean(document.querySelector("#desk-youtube")?.checked);
@@ -562,6 +563,13 @@ function repairDuplicateArchives() {
     localStorage.setItem(`${STORAGE_KEY}:before-archive-repair`, before);
     saveState();
   }
+}
+
+function openAddVideoDialog() {
+  const store = document.querySelector(".import-store");
+  const mount = document.querySelector("#addVideoMount");
+  if (store && mount && store.childElementCount) mount.append(...store.childNodes);
+  document.querySelector("#addVideoDialog")?.showModal();
 }
 
 function bindEvents() {
@@ -774,12 +782,7 @@ function bindEvents() {
   els.verifyOfflineButton?.addEventListener("click", handleVerifyOfflineButtonClick);
   els.saveSelectedOfflineButton.addEventListener("click", saveSelectedOfflineVideos);
   els.moveSelectedButton?.addEventListener("click", moveSelectedVideos);
-  document.querySelector("#addVideoButton")?.addEventListener("click", () => {
-    const store = document.querySelector(".import-store");
-    const mount = document.querySelector("#addVideoMount");
-    if (store && mount && store.childElementCount) mount.append(...store.childNodes);
-    document.querySelector("#addVideoDialog")?.showModal();
-  });
+  document.querySelector("#addVideoButton")?.addEventListener("click", openAddVideoDialog);
   document.querySelector("#playVideoButton")?.addEventListener("click", togglePlayback);
   window.addEventListener("message", syncEmbedPlaybackState);
   ["play", "pause", "ended"].forEach((eventName) => {
@@ -4204,10 +4207,14 @@ function renderLibrary() {
     else if (searching) message = "No videos match this search.";
     else if (mobileLibraryFilter === "offline") message = "No offline videos yet.";
     else if (mobileLibraryFilter === "favourites") message = "No favourites yet.";
-    else if (activeCollectionId === "all") message = "The library is empty. Scan a folder or a page to add videos.";
+    else if (activeCollectionId === "all") message = "Your library is empty. Add a video to get started.";
     else if (activeCollectionId === "unfiled") message = "No unfiled videos.";
     const topicResultsShowing = searching && mobileLibraryFilter === "all" && libraryTopicResults.length > 0;
-    if (!topicResultsShowing) els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p></div>`;
+    if (!topicResultsShowing) {
+      const showAddVideo = !searching && mobileLibraryFilter === "all" && activeCollectionId === "all";
+      els.videoList.innerHTML = `<div class="empty-reels"><p>${message}</p>${showAddVideo ? '<button class="primary-button empty-add-video" type="button">Add video</button>' : ""}</div>`;
+      els.videoList.querySelector(".empty-add-video")?.addEventListener("click", openAddVideoDialog);
+    }
     renderVideoCount();
     renderLibraryTotals();
     void measureLibraryMedia();

@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "buried-raster",
+        "value": "*",
+        "files": [
+          "public/index.html"
+        ],
+        "createdAt": "2026-10-03T08:53:42.585Z",
+        "reason": "Agent: the only PNG reference is a visible navigation icon alpha mask; no raster background is buried under a wash."
+      }
+    ]
+  }
+}

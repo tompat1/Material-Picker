@@ -2720,17 +2720,16 @@ select {
   height: 2.15rem;
   min-height: 2.15rem;
   padding: 0;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .global-search-trigger:hover {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
-  border-color: color-mix(in srgb, var(--ink) 25%, transparent);
   color: var(--ink);
   transform: scale(1.04);
 }
@@ -3756,14 +3755,13 @@ html[data-picker-theme="new-age"] .account-google {
 .script-desk-results-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
   max-height: 14rem;
   overflow-y: auto;
-  padding: 0.6rem;
-  border-radius: 6px;
-  background: rgba(15, 23, 42, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+}
+
+.script-desk-results-panel[hidden] {
+  display: none;
 }
 
 .no-results-notice {
@@ -3777,22 +3775,19 @@ html[data-picker-theme="new-age"] .account-google {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0.65rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease;
 }
 
 .script-desk-result-card:hover {
-  background: rgba(56, 189, 248, 0.08);
-  border-color: rgba(56, 189, 248, 0.3);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .script-desk-result-card.active-video {
-  border-color: var(--accent, #38bdf8);
-  background: rgba(56, 189, 248, 0.12);
+  background: var(--accent-soft);
 }
 
 .result-card-header {
@@ -3805,20 +3800,20 @@ html[data-picker-theme="new-age"] .account-google {
 .result-card-title {
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--fg, #f8fafc);
+  color: var(--ink);
 }
 
 .result-card-speaker {
   font-size: 0.75rem;
-  color: var(--muted, #94a3b8);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
 }
 
 .result-card-snippet {
   font-size: 0.8125rem;
-  color: var(--muted, #cbd5e1);
+  color: var(--muted);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -4625,6 +4620,11 @@ progress::-moz-progress-bar {
   line-height: 1.2;
 }
 
+.empty-reels .empty-add-video {
+  min-height: 2.75rem;
+  margin-top: 0.25rem;
+}
+
 .player-stage {
   position: static;
   margin-bottom: 0.95rem;
@@ -5253,6 +5253,48 @@ button.is-busy .amber-throbber {
   }
 }
 
+@media (min-width: 761px) and (max-width: 1180px) {
+  .mast {
+    grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+    gap: 0.75rem;
+  }
+
+  .mast .status-line {
+    display: none;
+  }
+
+  #addVideoButton {
+    width: auto;
+  }
+
+  .thumb-style button,
+  .account-link,
+  .global-search-trigger {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .account-link,
+  .global-search-trigger {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .rail {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+
+  body:has(#youtubeNav:not([hidden])) .rail {
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 761px) and (max-width: 900px) {
+  .mast .brand-tagline {
+    display: none;
+  }
+}
+
 @media (max-width: 680px) {
   .mast {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -5278,6 +5320,14 @@ button.is-busy .amber-throbber {
   #addVideoButton {
     grid-area: action;
     justify-self: end;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  #addVideoButton:hover {
+    background: transparent;
+    filter: none;
   }
 
   .brand-name {
@@ -5601,12 +5651,7 @@ html[data-picker-theme="new-age"] .history-list {
   }
 
   #addVideoButton {
-    width: 2.25rem;
-    min-width: 2.25rem;
-    height: 2.25rem;
-    min-height: 2.25rem;
-    padding: 0;
-    border-radius: 999px;
+    display: none;
   }
 
   #addVideoButton .add-video-label {
@@ -5628,6 +5673,10 @@ html[data-picker-theme="new-age"] .history-list {
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+
+  #addVideoButton .phone-icon {
+    display: none;
   }
 
   .phone-icon--fill {

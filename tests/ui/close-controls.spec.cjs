@@ -49,11 +49,16 @@ for (const [device, viewport] of [
     await search.getByRole("button", { name: "Close" }).click();
     await expect(search).not.toBeVisible();
 
-    await page.locator("#addVideoButton").click();
-    const addVideo = page.locator("#addVideoDialog");
-    await expect(addVideo).toBeVisible();
-    await addVideo.getByRole("button", { name: "Close" }).click();
-    await expect(addVideo).not.toBeVisible();
+    const addVideoButton = page.locator("#addVideoButton");
+    if (device === "mobile") {
+      await expect(addVideoButton).toBeHidden();
+    } else {
+      await addVideoButton.click();
+      const addVideo = page.locator("#addVideoDialog");
+      await expect(addVideo).toBeVisible();
+      await addVideo.getByRole("button", { name: "Close" }).click();
+      await expect(addVideo).not.toBeVisible();
+    }
 
     const addFeed = page.locator("#feedsAddDialog");
     await page.locator("#desk-feeds").evaluate((input) => {
