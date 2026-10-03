@@ -400,10 +400,9 @@
               <section class="feeds-pane feeds-pane--list" id="feedRiver" aria-live="polite"></section>
               <section class="feeds-pane feeds-pane--reader" id="feedReader" aria-label="Article"></section>
             </div>
-          </div>
           <dialog class="feeds-add-dialog" id="feedsAddDialog" data-mode="discover">
             <form method="dialog" class="feeds-add-close">
-              <button type="submit" aria-label="Close">✕</button>
+              <button type="submit" aria-label="Close"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"></line><line x1="5" y1="5" x2="19" y2="19"></line></svg></button>
             </form>
             <p class="feeds-dialog-title" id="feedsDialogTitle">Find interesting feeds</p>
             <section class="feeds-discover" id="feedsDiscover" aria-labelledby="discoverTitle">
@@ -833,7 +832,7 @@
 
     <div class="playlist-menu note-menu" id="noteMenu" hidden>
       <button class="menu-close" type="button" data-close-menu aria-label="Close">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"/></svg>
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"></line><line x1="5" y1="5" x2="19" y2="19"></line></svg>
       </button>
       <p class="playlist-menu-lead" id="noteMenuLead">Add this note to the selected videos. Notes already on a video stay.</p>
       <form id="noteMenuForm">
@@ -845,7 +844,7 @@
 
     <div class="playlist-menu" id="playlistMenu" hidden>
       <button class="menu-close" type="button" data-close-menu aria-label="Close">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"/></svg>
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"></line><line x1="5" y1="5" x2="19" y2="19"></line></svg>
       </button>
       <p class="playlist-menu-lead" id="playlistMenuLead"></p>
       <ul class="playlist-menu-list" id="playlistMenuList"></ul>
@@ -861,7 +860,7 @@
       <aside class="shop-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="shopDrawerTitle">
         <header class="shop-drawer-head">
           <h2 id="shopDrawerTitle">Your bag</h2>
-          <button class="ghost-button" type="button" data-shop-close aria-label="Close">✕</button>
+          <button class="ghost-button" type="button" data-shop-close aria-label="Close"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"></line><line x1="5" y1="5" x2="19" y2="19"></line></svg></button>
         </header>
         <div id="shopDrawerBody"></div>
       </aside>
@@ -869,7 +868,7 @@
     <div class="shop-lightbox" id="shopLightbox" hidden>
       <button class="shop-lightbox-scrim" type="button" data-shop-lightbox-close aria-label="Close preview"></button>
       <figure>
-        <button class="ghost-button shop-lightbox-close" type="button" data-shop-lightbox-close aria-label="Close">✕</button>
+        <button class="ghost-button shop-lightbox-close" type="button" data-shop-lightbox-close aria-label="Close"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"></line><line x1="5" y1="5" x2="19" y2="19"></line></svg></button>
         <button class="shop-lightbox-zoom" type="button" id="shopLightboxZoom" aria-label="Zoom product">
           <span id="shopLightboxStage"></span>
         </button>
@@ -881,7 +880,7 @@
     <dialog id="accountDialog">
       <form method="dialog" class="dialog-bar">
         <h2>Account</h2>
-        <button class="ghost-button" value="close" aria-label="Close">✕</button>
+        <button class="ghost-button account-dialog-close" value="close" aria-label="Close"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"></line><line x1="5" y1="5" x2="19" y2="19"></line></svg></button>
       </form>
       <div class="account-session" id="accountSession" hidden>
         <p id="accountSessionName"></p>
@@ -908,7 +907,7 @@
     <dialog id="addVideoDialog">
       <form method="dialog" class="dialog-bar">
         <h2>Add video</h2>
-        <button class="ghost-button" value="close" aria-label="Close">✕</button>
+        <button class="ghost-button" value="close" aria-label="Close"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"></line><line x1="5" y1="5" x2="19" y2="19"></line></svg></button>
       </form>
       <div id="addVideoMount"></div>
     </dialog>
@@ -922,7 +921,7 @@
             <button type="button" class="global-search-clear" id="globalSearchClear" hidden aria-label="Clear search">✕</button>
           </div>
           <form method="dialog" class="global-search-close-form">
-            <button class="ghost-button global-search-close" value="close" aria-label="Close">✕</button>
+            <button class="ghost-button global-search-close" value="close" aria-label="Close"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"></line><line x1="5" y1="5" x2="19" y2="19"></line></svg></button>
           </form>
         </header>
         <div class="global-search-body" id="globalSearchBody"></div>

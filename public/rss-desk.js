@@ -937,7 +937,7 @@ function feedsDiscoverInvite() {
   const allWithUnread = selectedSource === "all" && unreadItems().length > 0;
   if (!fewFeeds && !allWithUnread) return "";
   return `<aside class="feeds-discover-invite">
-    <button class="feeds-discover-dismiss" type="button" data-dismiss-discover-invite aria-label="Close" title="Close">✕</button>
+    <button class="feeds-discover-dismiss" type="button" data-dismiss-discover-invite aria-label="Close" title="Close"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="5" x2="5" y2="19"></line><line x1="5" y1="5" x2="19" y2="19"></line></svg></button>
     <div>
       <strong>Want more interesting feeds?</strong>
       <p>Browse popular topics and add them to a folder in one go.</p>
@@ -1159,19 +1159,20 @@ function renderDirectory() {
     paintDiscoverBar();
     return;
   }
-  box.innerHTML = directoryFeeds.map((feed) => {
+  box.innerHTML = directoryFeeds.map((feed, index) => {
     const key = canonicalFeedUrl(feed.url);
     const following = feedState.feeds.some((item) => canonicalFeedUrl(item.url) === key);
     const picked = catalogPicks.has(key);
+    const inputId = `catalog-pick-${index}`;
     return `<article class="feed-directory-card${picked ? " is-picked" : ""}${following ? " is-following" : ""}">
-      <label class="feed-directory-pick">
-        <input type="checkbox" data-catalog-pick="${escapeFeedText(feed.url)}" data-catalog-title="${escapeFeedText(feed.title)}" data-catalog-topics="${escapeFeedText((feed.topics || []).join(","))}" ${picked ? "checked" : ""} ${following ? "disabled" : ""} />
-        <span class="feed-directory-copy">
-          <p>${escapeFeedText((feed.topics || []).map(topicLabel).join(" · "))}</p>
-          <h3>${escapeFeedText(feed.title)}</h3>
-          <p>${escapeFeedText(feed.blurb)}</p>
-        </span>
-      </label>
+      <div class="feed-directory-pick">
+        <input type="checkbox" id="${inputId}" data-catalog-pick="${escapeFeedText(feed.url)}" data-catalog-title="${escapeFeedText(feed.title)}" data-catalog-topics="${escapeFeedText((feed.topics || []).join(","))}" ${picked ? "checked" : ""} ${following ? "disabled" : ""} />
+        <label class="feed-directory-copy" for="${inputId}">
+          <p class="feed-directory-tag">${escapeFeedText((feed.topics || []).map(topicLabel).join(" · "))}</p>
+          <h3 class="feed-directory-title">${escapeFeedText(feed.title)}</h3>
+          <p class="feed-directory-blurb">${escapeFeedText(feed.blurb)}</p>
+        </label>
+      </div>
       <button class="ghost-button" type="button" data-catalog-url="${escapeFeedText(feed.url)}" data-catalog-title="${escapeFeedText(feed.title)}" data-catalog-topics="${escapeFeedText((feed.topics || []).join(","))}" ${following ? "disabled" : ""}>${following ? "Following" : "Follow"}</button>
     </article>`;
   }).join("");
