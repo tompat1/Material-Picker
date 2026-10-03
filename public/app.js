@@ -9434,6 +9434,7 @@ function merchMoney(amount) {
 }
 
 function bindMerchShop() {
+  document.querySelector("#headerBag")?.addEventListener("click", openHeaderBag);
   document.querySelector("#shopPanel")?.addEventListener("click", onShopClick);
   document.querySelector("#shopPanel")?.addEventListener("change", onShopChange);
   document.querySelector("#shopPanel")?.addEventListener("focusout", onShopCmsBlur);
@@ -9540,17 +9541,28 @@ function checkoutMerch() {
   renderShop();
 }
 
+function openHeaderBag() {
+  closeMobileMenus();
+  showDesk("shop");
+  document.querySelector(".bench")?.scrollTo({ top: 0 });
+  if (window.matchMedia("(max-width: 1180px)").matches) window.scrollTo(0, 0);
+  if (merchCartCount() > 0) openShopDrawer();
+  else closeShopDrawer();
+}
+
 function openShopDrawer() {
   const drawer = document.querySelector("#shopDrawer");
   if (!drawer) return;
   drawer.hidden = false;
   document.body.classList.add("is-shop-open");
+  document.querySelector("#headerBag")?.setAttribute("aria-expanded", "true");
 }
 
 function closeShopDrawer() {
   const drawer = document.querySelector("#shopDrawer");
   if (drawer) drawer.hidden = true;
   document.body.classList.remove("is-shop-open");
+  document.querySelector("#headerBag")?.setAttribute("aria-expanded", "false");
 }
 
 function openShopLightbox(productId) {
@@ -9589,6 +9601,10 @@ function merchCartTotal() {
   }, 0);
 }
 
+function merchCartCount() {
+  return merchCart.reduce((sum, line) => sum + line.qty, 0);
+}
+
 function renderShop() {
   const panel = document.querySelector("#shopPanel");
   const grid = document.querySelector("#shopGrid");
@@ -9624,9 +9640,12 @@ function renderShop() {
       <button class="primary-button" type="button" data-shop-add="${escapeHtml(item.id)}">Add to bag</button>
     </article>`;
   }).join("");
-  const count = merchCart.reduce((sum, line) => sum + line.qty, 0);
+  const count = merchCartCount();
   const badge = document.querySelector("#shopBagCount");
   if (badge) badge.textContent = String(count);
+  const headerCount = document.querySelector("#headerBagCount");
+  if (headerCount) headerCount.textContent = String(count);
+  document.querySelector("#headerBag")?.setAttribute("aria-label", `Bag, ${count} ${count === 1 ? "item" : "items"}`);
   renderShopDrawer();
 }
 

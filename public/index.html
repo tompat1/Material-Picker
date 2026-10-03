@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-122" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-123" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -84,6 +84,10 @@
         </div>
         <button class="global-search-trigger" id="globalSearchTrigger" type="button" aria-label="Search everything" title="Search everything (videos, feeds, playlists, shop)">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
+        <button class="header-bag" id="headerBag" type="button" aria-label="Bag, 0 items" aria-controls="shopDrawer" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l-.85 11.2A2 2 0 0 1 17.15 21H6.85a2 2 0 0 1-2-1.8L4 8Z"/><path d="M7 8V6.5a5 5 0 0 1 10 0V8M4 8h16M9 12.5a3 3 0 0 0 6 0"/></svg>
+          <span class="header-bag-count" aria-hidden="true"><span>(</span><span id="headerBagCount">0</span><span>)</span></span>
         </button>
         <button class="primary-button" id="addVideoButton" type="button">
           <svg class="phone-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
