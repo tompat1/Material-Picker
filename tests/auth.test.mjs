@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { createMemoryAccountStore, fetchChannelUploads, fetchSubscriptionFeed, fetchYouTubeHome, formatYouTubeDuration, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
+import { createFileAccountStore } from "../account-file.mjs";
 
 test("google sign-in asks for offline YouTube read access", () => {
   const url = new URL(googleAuthUrl({
@@ -209,6 +213,53 @@ test("logout clears the session cookie when storage cannot delete the session", 
   assert.equal(logout.status, 200);
   const cleared = logout.headers.getSetCookie().find((item) => item.startsWith("picker_session="));
   assert.match(cleared, /Max-Age=0/);
+});
+
+test("login, logout, and RSS add/remove persist through the feed library API", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "picker-auth-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const stores = [
+    ["memory", createMemoryAccountStore()],
+    ["file", createFileAccountStore(path.join(directory, "accounts.json"))],
+  ];
+  const base = "http://localhost:4173";
+  for (const [kind, store] of stores) {
+    const call = (route, options = {}) => handleAuthRequest(new Request(`${base}${route}`, options), { store });
+    const credentials = { email: `${kind}@example.com`, password: "long-enough" };
+    const register = await call("/api/auth/register", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...credentials, name: "Feed tester" }),
+    });
+    assert.equal(register.status, 200, kind);
+    const registeredCookie = register.headers.getSetCookie().find((item) => item.startsWith("picker_session="))?.split(";")[0];
+    assert.ok(registeredCookie, kind);
+
+    const logout = await call("/api/auth/logout", { method: "POST", headers: { cookie: registeredCookie } });
+    assert.equal(logout.status, 200, kind);
+    assert.match(logout.headers.getSetCookie().join(" "), /picker_session=;.*Max-Age=0/, kind);
+    assert.equal((await (await call("/api/auth/me", { headers: { cookie: registeredCookie } })).json()).user, null, kind);
+    assert.equal((await call("/api/feeds/library", { headers: { cookie: registeredCookie } })).status, 401, kind);
+
+    const login = await call("/api/auth/login", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(credentials),
+    });
+    assert.equal(login.status, 200, kind);
+    const cookie = login.headers.getSetCookie().find((item) => item.startsWith("picker_session="))?.split(";")[0];
+    assert.ok(cookie, kind);
+    assert.equal((await (await call("/api/auth/me", { headers: { cookie } })).json()).user.email, credentials.email, kind);
+
+    const feed = { id: "notes", url: "https://notes.example/feed.xml", title: "Desk notes", folderIds: [] };
+    const put = (body) => call("/api/feeds/library", {
+      method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    assert.equal((await put({ feeds: [feed], folders: [] })).status, 200, kind);
+    assert.deepEqual((await (await call("/api/feeds/library", { headers: { cookie } })).json()).feeds.map((item) => item.url), [feed.url], kind);
+    const removed = await put({ feeds: [], folders: [], removedUrls: [feed.url] });
+    assert.equal(removed.status, 200, kind);
+    const saved = await (await call("/api/feeds/library", { headers: { cookie } })).json();
+    assert.deepEqual(saved.feeds, [], kind);
+    assert.deepEqual(saved.removedUrls, [feed.url], kind);
+  }
 });
 
 test("linking Google keeps the password email lowercase", async () => {

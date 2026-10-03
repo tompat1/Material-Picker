@@ -97,4 +97,4 @@ npm test
 
 The tests cover the real 10-item Day 2 summit playlist structure, title and URL extraction, Vimeo embed generation, duplicate removal, unsupported links, scrape-history migration, and browser-storage round trips.
 
-To verify that all 10 example-page Vimeo players currently expose selectable, public, unencrypted HLS sources that are eligible for offline saving, run `npm run test:live`. This live check requires an internet connection and is kept separate from the deterministic test suite.
+To verify that all 10 example-page Vimeo players currently expose selectable, public, unencrypted HLS sources, and that YouTube search and an RSS feed return usable results, run `npm run test:live`. This check requires an internet connection and is kept separate from the deterministic test suite. The local suite also checks global search, account login/logout, and adding and removing synced RSS feeds.

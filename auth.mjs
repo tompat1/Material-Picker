@@ -445,9 +445,9 @@ export function createMemoryAccountStore() {
       return feedLibraries.get(userId) || emptyFeedLibrary();
     },
     async saveFeedLibrary(userId, library) {
-      const merged = mergeFeedLibraries(feedLibraries.get(userId), library);
-      feedLibraries.set(userId, merged);
-      return merged;
+      const saved = { ...normalizeFeedLibrary(library), updatedAt: new Date().toISOString() };
+      feedLibraries.set(userId, saved);
+      return saved;
     },
   };
 }
@@ -615,32 +615,21 @@ export function createD1AccountStore(db) {
         error.status = 503;
         throw error;
       }
-      const merged = mergeFeedLibraries(current, library);
+      const saved = { ...normalizeFeedLibrary(library), updatedAt: new Date().toISOString() };
       await db.prepare(`INSERT INTO user_feeds (user_id, library_json, updated_at)
         VALUES (?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
           library_json = excluded.library_json,
           updated_at = excluded.updated_at`)
-        .bind(userId, JSON.stringify(merged), merged.updatedAt)
+        .bind(userId, JSON.stringify(saved), saved.updatedAt)
         .run();
-      return merged;
+      return saved;
     },
   };
 }
 
 function emptyFeedLibrary() {
-  return { feeds: [], folders: [], updatedAt: "" };
-}
-
-function feedKey(value) {
-  try {
-    const url = new URL(String(value || ""));
-    const host = url.hostname.toLowerCase().replace(/^www\./, "");
-    const path = url.pathname.replace(/\/+$/, "");
-    return `${url.protocol.toLowerCase()}//${host}${path}`;
-  } catch {
-    return String(value || "").trim().toLowerCase();
-  }
+  return { feeds: [], folders: [], removedUrls: [], updatedAt: "" };
 }
 
 function normalizeFeedLibrary(value) {
@@ -666,29 +655,12 @@ function normalizeFeedLibrary(value) {
       if (!id || !name) return [];
       return [{ id, name }];
     }),
+    removedUrls: (Array.isArray(value?.removedUrls) ? value.removedUrls : [])
+      .map((url) => String(url || "").slice(0, 500))
+      .filter((url) => /^https?:\/\//i.test(url))
+      .slice(0, 400),
     updatedAt: String(value?.updatedAt || ""),
   };
-}
-
-function mergeFeedLibraries(current, incoming) {
-  const base = normalizeFeedLibrary(current);
-  const next = normalizeFeedLibrary(incoming);
-  const feeds = [...base.feeds];
-  const seen = new Set(feeds.map((feed) => feedKey(feed.url)));
-  next.feeds.forEach((feed) => {
-    const key = feedKey(feed.url);
-    if (seen.has(key)) return;
-    seen.add(key);
-    feeds.push(feed);
-  });
-  const folders = [...base.folders];
-  const folderIds = new Set(folders.map((folder) => folder.id));
-  next.folders.forEach((folder) => {
-    if (folderIds.has(folder.id)) return;
-    folderIds.add(folder.id);
-    folders.push(folder);
-  });
-  return { feeds, folders, updatedAt: new Date().toISOString() };
 }
 
 async function feedlyRow(db, userId) {

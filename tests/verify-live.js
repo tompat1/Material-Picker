@@ -30,7 +30,39 @@ async function verify(video) {
   }
 }
 
-Promise.all(videos.map(verify)).then((results) => {
+async function verifyYouTube() {
+  const { handleApiRequest } = await import("../worker.mjs");
+  const response = await handleApiRequest(new Request("https://picker.example/api/video-search?q=ceramics&source=youtube"));
+  const body = await response.json();
+  const results = body.results || [];
+  if (!response.ok || !results.length || !results.every((item) => item.source === "youtube" && /^https:\/\/www\.youtube\.com\/watch\?v=[\w-]{11}$/.test(item.url))) {
+    throw new Error(body.error || `Unexpected YouTube search response (${response.status}, ${results.length} results)`);
+  }
+  return `${response.status} ${results.length} playable search results`;
+}
+
+async function verifyRss() {
+  const { handleApiRequest } = await import("../worker.mjs");
+  const feedUrl = "https://hnrss.org/frontpage";
+  const response = await handleApiRequest(new Request(`https://picker.example/api/rss?url=${encodeURIComponent(feedUrl)}`));
+  const body = await response.json();
+  const feed = body.feed;
+  if (!response.ok || body.kind !== "feed" || !feed?.items?.length || !feed.items.some((item) => /^https?:\/\//.test(item.link || ""))) {
+    throw new Error(body.error || `Unexpected RSS response (${response.status}, ${feed?.items?.length || 0} items)`);
+  }
+  return `${response.status} ${feed.items.length} feed items`;
+}
+
+async function reportExternal(label, check) {
+  try {
+    console.log(`PASS ${label} ${await check()}`);
+  } catch (error) {
+    console.error(`FAIL ${label} ${error.message}`);
+    process.exitCode = 1;
+  }
+}
+
+Promise.all(videos.map(verify)).then(async (results) => {
   results.forEach((result, index) => {
     console.log(
       `${result.ready ? "PASS" : "FAIL"} ${index + 1}/10 ${result.status} ${result.height ? `${result.height}p` : "no variant"} ${result.playerUrl}`
@@ -39,4 +71,8 @@ Promise.all(videos.map(verify)).then((results) => {
   const readyCount = results.filter((result) => result.ready).length;
   console.log(`\n${readyCount}/${results.length} Vimeo players expose selectable, public, unencrypted HLS for offline saving.`);
   if (readyCount !== results.length) process.exitCode = 1;
+  await Promise.all([
+    reportExternal("YouTube search", verifyYouTube),
+    reportExternal("RSS feed", verifyRss),
+  ]);
 });

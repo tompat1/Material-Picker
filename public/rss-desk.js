@@ -76,6 +76,7 @@ function libraryPayload() {
       addedAt: feed.addedAt || "",
     })),
     folders: feedState.folders.map((folder) => ({ id: folder.id, name: folder.name })),
+    removedUrls: Array.from(feedState.removedUrls || []),
   };
 }
 
@@ -111,12 +112,25 @@ async function syncFeedLibrary() {
     return;
   }
   const remoteFeeds = Array.isArray(remote.feeds) ? remote.feeds : [];
+  const remoteRemoved = new Set((Array.isArray(remote.removedUrls) ? remote.removedUrls : []).map(canonicalFeedUrl));
+  const beforeRemovedCount = feedState.removedUrls.size;
+  const beforeCount = feedState.feeds.length;
+  feedState.feeds = feedState.feeds.filter((feed) => !remoteRemoved.has(canonicalFeedUrl(feed.url)));
+  const keptIds = new Set(feedState.feeds.map((feed) => feed.id));
+  feedState.items = feedState.items.filter((item) => keptIds.has(item.feedId));
+  remoteRemoved.forEach((url) => feedState.removedUrls.add(url));
+  const removed = beforeCount !== feedState.feeds.length;
+  if (selectedSource.startsWith("feed:") && !keptIds.has(selectedSource.slice(5))) {
+    selectedSource = "all";
+    selectedItemId = "";
+    feedPane = 0;
+  }
   const known = new Set(feedState.feeds.map((feed) => canonicalFeedUrl(feed.url)));
-  const removed = feedState.removedUrls || new Set();
+  const removedUrls = feedState.removedUrls || new Set();
   let added = 0;
   remoteFeeds.forEach((feed) => {
     const key = canonicalFeedUrl(feed.url);
-    if (!key || known.has(key) || removed.has(key)) return;
+    if (!key || known.has(key) || removedUrls.has(key)) return;
     known.add(key);
     feedState.feeds.push({
       id: feed.id || crypto.randomUUID(),
@@ -137,10 +151,10 @@ async function syncFeedLibrary() {
   });
   const localOnly = feedState.feeds.some((feed) => !remoteFeeds.some((item) => canonicalFeedUrl(item.url) === canonicalFeedUrl(feed.url)));
   librarySignature = feedLibrarySignature();
-  if (added) {
+  if (added || removed || feedState.removedUrls.size !== beforeRemovedCount) {
     saveFeedState();
     renderFeeds();
-    void refreshFeeds({ force: true });
+    if (added) void refreshFeeds({ force: true });
   }
   if (localOnly || added) scheduleLibraryPush();
 }
