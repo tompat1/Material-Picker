@@ -9309,8 +9309,85 @@ function syncCmsEditor() {
   if (document.querySelector("#shopGrid")) renderShop();
 }
 
-function toggleCmsEditing() {
+async function collectCmsEdits() {
+  const patchCopy = {};
+  const patchShop = {};
+
+  document.querySelectorAll("[data-cms]").forEach((node) => {
+    const key = node.dataset.cms;
+    if (!key) return;
+    const text = node.textContent.replace(/\s+/g, " ").trim();
+    const previous = cmsDoc.copy[key] || node.dataset.cmsDefault || "";
+    if (text !== previous) {
+      patchCopy[key] = text === node.dataset.cmsDefault ? "" : text;
+    }
+  });
+
+  document.querySelectorAll("[data-cms-shop]").forEach((field) => {
+    if (field.type === "file") return;
+    const id = field.dataset.cmsShop;
+    const prop = field.dataset.cmsProp;
+    const product = merchCatalog().find((item) => item.id === id);
+    if (!product) return;
+    if (prop === "priceSek") {
+      const priceSek = Number(field.value);
+      if (Number.isInteger(priceSek) && priceSek !== product.priceSek) {
+        patchShop[id] = { ...(patchShop[id] || {}), priceSek, priceEur: Math.round(priceSek / 11) };
+      }
+      return;
+    }
+    const text = field.value.replace(/\s+/g, " ").trim();
+    if (text !== product[prop]) {
+      patchShop[id] = { ...(patchShop[id] || {}), [prop]: text };
+    }
+  });
+
+  const imageInputs = Array.from(document.querySelectorAll("[data-cms-image]"));
+  for (const input of imageInputs) {
+    const file = input.files?.[0];
+    const id = input.dataset.cmsImage;
+    if (!file || !id) continue;
+    try {
+      const response = await fetch("/api/cms/media", {
+        method: "POST",
+        headers: { "content-type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.url) {
+        patchShop[id] = { ...(patchShop[id] || {}), image: data.url };
+      } else if (data.error) {
+        setStatus(data.error);
+      }
+    } catch {
+      setStatus("The image upload failed.");
+    }
+  }
+
+  return {
+    copy: patchCopy,
+    shop: patchShop,
+    hasChanges: Object.keys(patchCopy).length > 0 || Object.keys(patchShop).length > 0,
+  };
+}
+
+async function toggleCmsEditing() {
   if (!cmsUserAdmin) return;
+  const button = document.querySelector("#cmsEdit");
+  if (cmsEditing) {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Saving...";
+    }
+    try {
+      const edits = await collectCmsEdits();
+      if (edits.hasChanges) {
+        await saveCms({ copy: edits.copy, shop: edits.shop });
+      }
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
   cmsEditing = !cmsEditing;
   syncCmsEditor();
 }
@@ -9364,7 +9441,10 @@ async function onShopCmsImage(input) {
     setStatus(data.error || "The image could not be saved.");
     return;
   }
-  await saveCms({ shop: { [id]: { image: data.url } } }, { rerender: true });
+  const edits = await collectCmsEdits();
+  const shopPatch = edits.shop;
+  shopPatch[id] = { ...(shopPatch[id] || {}), image: data.url };
+  await saveCms({ copy: edits.copy, shop: shopPatch }, { rerender: true });
   setStatus("Shop image updated.");
 }
 
