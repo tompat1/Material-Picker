@@ -205,3 +205,33 @@ test("loadFeed reports when a page has no feed", async () => {
     (error) => error.status === 404 && /No RSS or Atom feed/.test(error.message)
   );
 });
+
+test("parseFeed ignores undefined image URLs and tracking pixels", () => {
+  const xml = `<?xml version="1.0"?>
+    <rss version="2.0">
+      <channel>
+        <title>NPR Topics: News</title>
+        <link>https://feeds.npr.org/1001/rss.xml</link>
+        <item>
+          <title>Article with undefined image</title>
+          <link>https://npr.org/1</link>
+          <description><![CDATA[<img src="undefined" /><p>Story</p>]]></description>
+        </item>
+        <item>
+          <title>Article with tracking pixel and real image</title>
+          <link>https://npr.org/2</link>
+          <description><![CDATA[<img src="https://media.npr.org/include/images/tracking/npr-rss-pixel.png?story=1" /><img src="https://npr.brightspotcdn.com/photo.jpg" />]]></description>
+        </item>
+        <item>
+          <title>Article with only tracking pixel</title>
+          <link>https://npr.org/3</link>
+          <description><![CDATA[<img src="https://media.npr.org/include/images/tracking/npr-rss-pixel.png?story=2" />]]></description>
+        </item>
+      </channel>
+    </rss>`;
+  const feed = parseFeed(xml, "https://feeds.npr.org/1001/rss.xml");
+  assert.equal(feed.items[0].image, "");
+  assert.equal(feed.items[1].image, "https://npr.brightspotcdn.com/photo.jpg");
+  assert.equal(feed.items[2].image, "");
+});
+

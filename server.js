@@ -234,7 +234,10 @@ async function handleRss(response, requestUrl) {
   } catch (error) {
     const message = error.message || "The feed could not be loaded.";
     const blocked = error instanceof TypeError || /private|credential|not valid|Only HTTP|not allowed/i.test(message);
-    return sendJson(response, error.status || (blocked ? 400 : 502), { error: message });
+    if (blocked || error.status === 400) {
+      return sendJson(response, 400, { error: message });
+    }
+    return sendJson(response, 200, { ok: false, error: message });
   }
 }
 

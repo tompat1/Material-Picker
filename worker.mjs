@@ -235,7 +235,7 @@ function assertUnencryptedHls(manifest) {
 function localMediaName(remoteUrl, index) {
   let extension = ".bin";
   try {
-    const pathname = new URL(remoteUrl).pathname;
+    const { pathname } = new URL(remoteUrl);
     const candidate = pathname.slice(pathname.lastIndexOf(".")).toLowerCase();
     if (/^\.[a-z0-9]{1,8}$/.test(candidate)) extension = candidate;
   } catch {
@@ -403,7 +403,7 @@ export async function buildDownloadPlan(pageUrl, fetchImpl = fetch) {
   }
 
   if (type === "file") {
-    const pathname = new URL(sourceUrl).pathname;
+    const { pathname } = new URL(sourceUrl);
     const extension = pathname.slice(pathname.lastIndexOf(".")).toLowerCase();
     const safeExtension = /^\.[a-z0-9]{1,8}$/.test(extension) ? extension : ".mp4";
     return { provider, format: "file", files: [{ path: `video${safeExtension}`, url: sourceUrl }] };
@@ -957,7 +957,10 @@ export async function handleApiRequest(request, dependencies = {}) {
     try {
       return json(200, await loadFeed(target, (value) => fetchFeedDocument(value, fetchImpl)));
     } catch (error) {
-      return json(error.status || 502, { error: error.message || "The feed could not be loaded." });
+      if (error.status === 400 || /private|credential|not valid|Only HTTP|not allowed/i.test(error.message || "")) {
+        return json(400, { error: error.message || "A valid public feed URL is required." });
+      }
+      return json(200, { ok: false, error: error.message || "The feed could not be loaded." });
     }
   }
   if (request.method === "POST" && url.pathname === "/api/proofread") {

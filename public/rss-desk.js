@@ -36,13 +36,32 @@ let catalogPicks = new Map();
 let feedSort = "latest";
 let touchStart = null;
 
+function cleanImageUrl(value) {
+  const text = String(value || "").trim();
+  if (!text || text === "undefined" || text === "null" || text === "[object Object]") return "";
+  if (text.endsWith("/undefined") || text.endsWith("/null") || text.includes("/undefined?") || text.includes("/null?")) return "";
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    if (url.pathname.endsWith("/undefined") || url.pathname.endsWith("/null")) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
 function loadFeedState() {
   try {
     const saved = JSON.parse(localStorage.getItem(FEEDS_KEY) || "{}");
+    const items = (Array.isArray(saved.items) ? saved.items : []).map((item) => {
+      if (!item) return item;
+      const image = cleanImageUrl(item.image);
+      return image === item.image ? item : { ...item, image };
+    });
     return {
       feeds: Array.isArray(saved.feeds) ? saved.feeds : [],
       folders: Array.isArray(saved.folders) ? saved.folders : [],
-      items: Array.isArray(saved.items) ? saved.items : [],
+      items,
       read: saved.read && typeof saved.read === "object" ? saved.read : {},
       archived: saved.archived && typeof saved.archived === "object" ? saved.archived : {},
       starred: saved.starred && typeof saved.starred === "object" ? saved.starred : {},
@@ -575,7 +594,7 @@ function setFeedStatus(message) {
 async function requestFeed(url) {
   const response = await fetch(`/api/rss?url=${encodeURIComponent(url)}`);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "The feed could not be loaded.");
+  if (!response.ok || data.ok === false || data.error) throw new Error(data.error || "The feed could not be loaded.");
   return data;
 }
 
@@ -678,7 +697,7 @@ function storeFeed(feed, options = {}) {
     summary: item.summary || "",
     publishedAt: item.publishedAt || "",
     author: item.author || "",
-    image: item.image || "",
+    image: cleanImageUrl(item.image),
     videoUrl: item.videoUrl || "",
   })).filter((item) => {
     const itemKey = canonicalItemKey(item);
@@ -1014,13 +1033,14 @@ function renderList() {
       : "";
     if (feedSort === "latest") lastDay = day;
     const when = formatClock(item.publishedAt);
+    const itemImage = cleanImageUrl(item.image);
     return `${heading}<button class="feed-row${selectedItemId === item.id ? " is-selected" : ""}" type="button" data-open-story="${escapeFeedText(item.id)}">
       <span class="feed-row-copy">
         <span class="feed-row-source"><span>${escapeFeedText(feed?.title || "Feed")}</span>${when ? `<time>${escapeFeedText(when)}</time>` : ""}</span>
         <strong>${feedState.starred[item.id] ? "★ " : ""}${escapeFeedText(item.title)}</strong>
         ${item.summary ? `<span>${escapeFeedText(item.summary)}</span>` : ""}
       </span>
-      ${item.image ? `<img src="${escapeFeedText(item.image)}" alt="" />` : `<span class="feed-row-thumb" aria-hidden="true"></span>`}
+      ${itemImage ? `<img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" onerror="this.remove()" />` : `<span class="feed-row-thumb" aria-hidden="true"></span>`}
     </button>`;
   }).join("");
 }
@@ -1040,12 +1060,13 @@ function renderReader() {
     ? `<button class="feed-article-source-btn" type="button" data-open-feed="${escapeFeedText(feed.id)}" title="View ${escapeFeedText(feed.title)} feed">${escapeFeedText(feed.title)} →</button>`
     : (feed?.title ? `<p class="feed-article-source">${escapeFeedText(feed.title)}</p>` : "");
 
+  const readerImage = cleanImageUrl(item.image);
   reader.innerHTML = `<article class="feed-article" data-article-link="${escapeFeedText(targetUrl)}">
     ${when ? `<p class="feed-article-date">${escapeFeedText(when)}</p>` : ""}
     <h3>${escapeFeedText(item.title)}</h3>
     ${item.author ? `<p class="feed-article-by">${escapeFeedText(item.author)}</p>` : ""}
     ${sourceHtml}
-    ${item.image ? `<img src="${escapeFeedText(item.image)}" alt="" />` : ""}
+    ${readerImage ? `<img src="${escapeFeedText(readerImage)}" alt="" loading="lazy" onerror="this.remove()" />` : ""}
     ${targetUrl ? `<a class="feed-article-link" href="${escapeFeedText(targetUrl)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(targetUrl) || "Open")} →</a>` : ""}
     ${item.summary ? `<p class="feed-article-body">${escapeFeedText(item.summary)}</p>` : ""}
     <div class="feed-article-actions">
@@ -1387,7 +1408,7 @@ function refreshFeeds(options = {}) {
   const button = document.querySelector("#refreshFeeds");
   if (button) button.disabled = true;
   lastFeedRefreshAt = Date.now();
-  feedRefreshTask = pullFeeds().finally(() => {
+  feedRefreshTask = pullFeeds(options).finally(() => {
     feedRefreshTask = null;
     if (button) button.disabled = false;
   });
@@ -1407,8 +1428,10 @@ async function recoverFeed(feed) {
   }
 }
 
-async function pullFeeds() {
-  const queue = [...feedState.feeds];
+async function pullFeeds(options = {}) {
+  const force = Boolean(options.force);
+  const queue = feedState.feeds.filter((feed) => force || feed.status !== "dead");
+  if (!queue.length) return;
   const total = queue.length;
   let done = 0;
   const failures = [];

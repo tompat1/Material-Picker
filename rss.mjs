@@ -99,10 +99,11 @@ function tagsOf(block, name) {
 
 function absoluteHttp(value, base) {
   const text = String(value || "").trim();
-  if (!text) return "";
+  if (!text || text === "undefined" || text === "null" || text === "[object Object]") return "";
   try {
     const url = new URL(text, base);
     if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    if (url.pathname.endsWith("/undefined") || url.pathname.endsWith("/null")) return "";
     url.hash = "";
     return url.href;
   } catch {
@@ -139,25 +140,35 @@ function looksLikeImage(url) {
 }
 
 function imageFromHtml(block, base) {
-  const raw = innerRaw(block, ["encoded", "description", "summary", "content"]);
-  if (!raw || !/<img\b/i.test(raw)) return "";
-  const tag = decodeXml(raw).match(/<img\b[^>]*>/i);
-  if (!tag) return "";
-  const src = attrValue(tag[0], "src") || attrValue(tag[0], "data-src") || attrValue(tag[0], "data-original");
-  if (!src || /^data:/i.test(src)) return "";
-  return absoluteHttp(src, base);
+  for (const name of ["encoded", "description", "summary", "content"]) {
+    const match = block.match(new RegExp(`<(?:[\\w.:-]+:)?${name}(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[\\w.:-]+:)?${name}>`, "i"));
+    if (!match || !/<img\b/i.test(match[1])) continue;
+    for (const imgMatch of decodeXml(match[1]).matchAll(/<img\b([^>]*)\/?>/gi)) {
+      const tag = imgMatch[0];
+      const src = attrValue(tag, "src") || attrValue(tag, "data-src") || attrValue(tag, "data-original");
+      if (!src || /^data:/i.test(src) || src === "undefined" || src === "null") continue;
+      if (/(?:pixel|tracking|spacer|\b1x1\b)/i.test(src)) continue;
+      const resolved = absoluteHttp(src, base);
+      if (resolved) return resolved;
+    }
+  }
+  return "";
 }
 
 function imageUrl(block, base) {
   for (const tag of [...tagsOf(block, "thumbnail"), ...tagsOf(block, "image")]) {
-    const url = absoluteHttp(attrValue(tag[1], "url") || attrValue(tag[1], "href"), base);
+    const rawUrl = attrValue(tag[1], "url") || attrValue(tag[1], "href");
+    if (!rawUrl || rawUrl === "undefined" || rawUrl === "null") continue;
+    const url = absoluteHttp(rawUrl, base);
     if (url) return url;
   }
   for (const tag of [...tagsOf(block, "content"), ...tagsOf(block, "enclosure")]) {
     const type = attrValue(tag[1], "type").toLowerCase();
     const medium = attrValue(tag[1], "medium").toLowerCase();
     if (type.startsWith("video/") || type.startsWith("audio/") || medium === "video" || medium === "audio") continue;
-    const url = absoluteHttp(attrValue(tag[1], "url"), base);
+    const rawUrl = attrValue(tag[1], "url");
+    if (!rawUrl || rawUrl === "undefined" || rawUrl === "null") continue;
+    const url = absoluteHttp(rawUrl, base);
     if (!url) continue;
     if (type.startsWith("image/") || medium === "image" || looksLikeImage(url)) return url;
   }
@@ -168,7 +179,9 @@ function openGraphImage(html, base) {
   for (const tag of tagsOf(html, "meta")) {
     const prop = (attrValue(tag[1], "property") || attrValue(tag[1], "name")).toLowerCase();
     if (prop !== "og:image" && prop !== "twitter:image") continue;
-    const url = absoluteHttp(attrValue(tag[1], "content"), base);
+    const rawUrl = attrValue(tag[1], "content");
+    if (!rawUrl || rawUrl === "undefined" || rawUrl === "null") continue;
+    const url = absoluteHttp(rawUrl, base);
     if (url) return url;
   }
   return "";
@@ -178,7 +191,7 @@ async function fillMissingImages(feed, fetchText) {
   if (!feed?.items?.length || feed.items.some((item) => item.image)) return feed;
   const targets = feed.items.filter((item) => item.link && !item.image).slice(0, 12);
   let cursor = 0;
-  async function worker() {
+  const worker = async () => {
     while (cursor < targets.length) {
       const item = targets[cursor];
       cursor += 1;
@@ -563,7 +576,7 @@ export function searchFeedCatalog({ query = "", topic = "" } = {}) {
       return words.every((word) => haystack.includes(word));
     });
   }
-  const mapped = !selected ? subjectTopicForQuery(query) : "";
+  const mapped = selected ? "" : subjectTopicForQuery(query);
   const topicFilter = selected && TOPIC_IDS.has(selected) ? selected : mapped;
   if (selected && !TOPIC_IDS.has(selected)) return [];
   if (!topicFilter && !words.length) return [];
