@@ -97,4 +97,6 @@ npm test
 
 The tests cover the real 10-item Day 2 summit playlist structure, title and URL extraction, Vimeo embed generation, duplicate removal, unsupported links, scrape-history migration, and browser-storage round trips.
 
+Run the Chromium UI checks with `npx playwright install chromium` followed by `npm run test:ui`. They open the app on a separate local port, check close-button size and behavior at desktop and mobile widths, and compare the main header plus account and search dialogs with reviewed screenshots. Screenshot baselines are currently recorded for macOS; generate and review baselines before running screenshot comparisons on another OS.
+
 To verify that all 10 example-page Vimeo players currently expose selectable, public, unencrypted HLS sources, and that YouTube search and an RSS feed return usable results, run `npm run test:live`. This check requires an internet connection and is kept separate from the deterministic test suite. The local suite also checks global search, account login/logout, and adding and removing synced RSS feeds.

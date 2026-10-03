@@ -38,3 +38,5 @@ token.json
 .wrangler/
 .dev.vars*
 !.dev.vars.example
+playwright-report/
+test-results/

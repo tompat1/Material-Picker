@@ -8304,7 +8304,7 @@ button[value="close"] {
   border-radius: 999px;
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--ink);
-  font-size: 1.85rem;
+  font-size: 1.2rem;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -8322,10 +8322,10 @@ button[value="close"] {
 .menu-close svg,
 button[aria-label="Close"] svg,
 button[value="close"] svg {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   stroke: currentColor;
-  stroke-width: 2.8;
+  stroke-width: 2.2;
   display: block;
 }
 
@@ -8376,7 +8376,7 @@ button[value="close"]:active {
     height: 3rem;
     min-height: 3rem;
     min-width: 3rem;
-    font-size: 2rem;
+    font-size: 1.2rem;
   }
 
   .feeds-add-close button svg,
@@ -8390,9 +8390,9 @@ button[value="close"]:active {
   .menu-close svg,
   button[aria-label="Close"] svg,
   button[value="close"] svg {
-    width: 26px;
-    height: 26px;
-    stroke-width: 3.2;
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.2;
   }
 }
 
