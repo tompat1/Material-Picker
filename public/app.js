@@ -2113,11 +2113,71 @@ function bindYouTubeSwipe() {
   }, true);
 }
 
+function getDerivedYouTubeTopics(shelf) {
+  const topicsMap = new Map();
+  YOUTUBE_ACCOUNT_SUBJECTS.forEach((subject) => {
+    topicsMap.set(subject.toLowerCase(), { label: subject, topic: subject });
+  });
+
+  const allVideos = [
+    ...(shelf?.subscriptions || []),
+    ...(shelf?.liked || []),
+    ...(shelf?.playlistVideos || []),
+  ];
+
+  const domainCandidates = [
+    { label: "Electrical Engineering", keywords: ["electrical engineering", "circuit", "electronics", "microcontroller", "pcb", "soldering", "voltage"] },
+    { label: "Gaming", keywords: ["gameplay", "gaming", "walkthrough", "playthrough", "gamer", "nintendo", "playstation", "xbox"] },
+    { label: "AI", keywords: ["ai", "artificial intelligence", "machine learning", "llm", "chatgpt", "deepmind", "openai"] },
+    { label: "Apple", keywords: ["apple", "iphone", "macbook", "ipad", "ios", "macos", "wwdc"] },
+    { label: "Electric cars", keywords: ["ev", "electric car", "electric vehicle", "tesla", "cybertruck", "rivian", "lucid"] },
+    { label: "Science fiction", keywords: ["sci-fi", "science fiction", "cyberpunk", "star wars", "star trek", "dune"] },
+    { label: "Role-Playing Games", keywords: ["role-playing", "rpg", "d&d", "baldurs gate", "elden ring", "skyrim", "fallout", "jrpg"] },
+    { label: "Vocal Music", keywords: ["vocal music", "vocals", "singing", "choir", "vocalist", "acapella"] },
+    { label: "Supercar", keywords: ["supercar", "hypercar", "ferrari", "lamborghini", "porsche", "bugatti", "mclaren", "racing"] },
+    { label: "Podcasts", keywords: ["podcast", "podcasts", "interview", "discussion", "talk show"] },
+    { label: "Music", keywords: ["music", "song", "album", "track", "concert", "band", "soundtrack"] },
+    { label: "Trailers", keywords: ["trailer", "trailers", "teaser", "first look", "preview"] },
+    { label: "Satire", keywords: ["satire", "parody", "sketch", "comedy", "satirical"] },
+    { label: "Live", keywords: ["live", "stream", "livestream", "broadcast"] },
+    { label: "Mixes", keywords: ["mix", "mixes", "compilation", "playlist", "remix", "set"] },
+  ];
+
+  for (const candidate of domainCandidates) {
+    const key = candidate.label.toLowerCase();
+    if (!topicsMap.has(key)) {
+      let count = 0;
+      for (const v of allVideos) {
+        const text = `${v.title || ""} ${v.speaker || ""} ${v.channelTitle || ""}`.toLowerCase();
+        if (candidate.keywords.some((kw) => text.includes(kw))) {
+          count++;
+        }
+      }
+      if (count > 0) {
+        topicsMap.set(key, { label: candidate.label, topic: candidate.label });
+      }
+    }
+  }
+
+  (shelf?.channels || []).forEach((c) => {
+    const title = String(c.title || "").trim();
+    const key = title.toLowerCase();
+    if (title.length > 2 && title.length < 24 && !topicsMap.has(key)) {
+      const videoCount = allVideos.filter((v) => v.channelId === c.id || v.speaker === title).length;
+      if (videoCount >= 2) {
+        topicsMap.set(key, { label: title, topic: title });
+      }
+    }
+  });
+
+  return Array.from(topicsMap.values()).map((item) => item.label);
+}
+
 function updateYouTubeTopicBar() {
   const container = document.querySelector("#youtubeTopicsBar");
   if (!container) return;
-  const topics = YOUTUBE_ACCOUNT_SUBJECTS;
-  if (!topics || !topics.length) {
+  const topics = getDerivedYouTubeTopics(youtubeShelf);
+  if (!topics || topics.length <= 1) {
     container.innerHTML = "";
     container.style.display = "none";
     return;
