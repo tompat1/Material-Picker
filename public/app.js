@@ -9407,6 +9407,7 @@ let merchColorway = "espresso";
 let merchColorwayReady = false;
 let merchCart = loadMerchCart();
 let merchOrder = null;
+const merchSelections = new Map();
 
 function loadMerchCart() {
   try {
@@ -9482,16 +9483,17 @@ function onShopChange(event) {
     void onShopCmsImage(image);
     return;
   }
-  const select = event.target.closest("[data-shop-option]");
-  if (!select) return;
-  select.closest(".shop-card")?.setAttribute("data-option", select.value);
+  const option = event.target.closest("input[data-shop-option]");
+  if (!option?.checked) return;
+  const productId = option.closest(".shop-card")?.dataset.shopProduct;
+  if (productId) merchSelections.set(productId, option.value);
 }
 
 function addMerchToCart(productId, button) {
   const product = merchCatalog().find((item) => item.id === productId);
   if (!product) return;
   const card = button.closest(".shop-card");
-  const option = card?.querySelector("[data-shop-option]")?.value || "One size";
+  const option = card?.querySelector("input[data-shop-option]:checked")?.value || "One size";
   const id = `${product.id}:${option}`;
   const existing = merchCart.find((line) => line.id === id);
   if (existing) existing.qty += 1;
@@ -9622,11 +9624,13 @@ function renderShop() {
   }
   const visible = merchCatalog().filter((item) => merchCategory === "all" || item.category === merchCategory);
   grid.innerHTML = visible.map((item) => {
+    const savedOption = merchSelections.get(item.id);
+    const selectedOption = item.options?.includes(savedOption) ? savedOption : item.options?.[0];
     const options = item.options
-      ? `<label class="shop-option"><span>${escapeHtml(item.optionLabel || "Size")}</span><select data-shop-option>${item.options.map((option) => `<option>${escapeHtml(option)}</option>`).join("")}</select></label>`
-      : `<p class="shop-option"><span>Size</span><strong>One size</strong></p>`;
+      ? `<fieldset class="shop-option"><legend>${escapeHtml(item.optionLabel || "Size")}</legend><div class="shop-option-choices">${item.options.map((option) => `<label><input type="radio" name="shop-option-${escapeHtml(item.id)}" value="${escapeHtml(option)}" data-shop-option${option === selectedOption ? " checked" : ""}><span>${escapeHtml(option)}</span></label>`).join("")}</div></fieldset>`
+      : `<p class="shop-option shop-option--single"><span>Size</span><strong>One size</strong></p>`;
     const specs = item.specs.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
-    return `<article class="shop-card${item.featured ? " is-featured" : ""}">
+    return `<article class="shop-card${item.featured ? " is-featured" : ""}" data-shop-product="${escapeHtml(item.id)}">
       <button class="shop-piece-button" type="button" data-shop-preview="${escapeHtml(item.id)}" aria-label="Preview ${escapeHtml(item.name)}">${merchPieceMarkup(item)}</button>
       <div>
         <div class="shop-card-top"><span class="shop-price">${item.priceSek} SEK <small>(${item.priceEur} €)</small></span>${item.badge ? `<span class="shop-badge">${escapeHtml(item.badge)}</span>` : ""}</div>
