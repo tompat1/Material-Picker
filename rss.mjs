@@ -340,55 +340,124 @@ export const FEED_TOPICS = [
   { id: "tech", label: "Tech" },
   { id: "apple", label: "Apple" },
   { id: "ai", label: "AI" },
-  { id: "politics", label: "Politics" },
-  { id: "movies", label: "Movies" },
   { id: "gaming", label: "Gaming" },
   { id: "science", label: "Science" },
+  { id: "movies", label: "Movies" },
   { id: "business", label: "Business" },
   { id: "sports", label: "Sports" },
+  { id: "politics", label: "Politics" },
+  { id: "design", label: "Design" },
+  { id: "evs", label: "EVs & Auto" },
+  { id: "music", label: "Music" },
 ];
 
 export const FEED_CATALOG = [
+  // News
   { id: "bbc-news", title: "BBC News", url: "https://feeds.bbci.co.uk/news/rss.xml", site: "bbc.com", topics: ["news"], blurb: "World and UK headlines" },
-  { id: "nyt-home", title: "New York Times", url: "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml", site: "nytimes.com", topics: ["news"], blurb: "Top stories" },
+  { id: "nyt-home", title: "New York Times", url: "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml", site: "nytimes.com", topics: ["news"], blurb: "Top stories and global reporting" },
   { id: "npr-news", title: "NPR News", url: "https://feeds.npr.org/1001/rss.xml", site: "npr.org", topics: ["news"], blurb: "US public radio headlines" },
-  { id: "guardian-world", title: "The Guardian", url: "https://www.theguardian.com/world/rss", site: "theguardian.com", topics: ["news"], blurb: "World news" },
-  { id: "aljazeera", title: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml", site: "aljazeera.com", topics: ["news"], blurb: "International news" },
-  { id: "verge", title: "The Verge", url: "https://www.theverge.com/rss/index.xml", site: "theverge.com", topics: ["tech"], blurb: "Technology and culture" },
-  { id: "ars", title: "Ars Technica", url: "https://feeds.arstechnica.com/arstechnica/index", site: "arstechnica.com", topics: ["tech"], blurb: "Science and technology" },
-  { id: "hn", title: "Hacker News", url: "https://hnrss.org/frontpage", site: "news.ycombinator.com", topics: ["tech"], blurb: "Front page" },
-  { id: "wired", title: "WIRED", url: "https://www.wired.com/feed/rss", site: "wired.com", topics: ["tech"], blurb: "Culture, science, and gear" },
-  { id: "engadget", title: "Engadget", url: "https://www.engadget.com/rss.xml", site: "engadget.com", topics: ["tech"], blurb: "Gadget news and reviews" },
-  { id: "mkbhd", title: "Marques Brownlee", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ", site: "youtube.com", topics: ["tech"], blurb: "YouTube · MKBHD" },
-  { id: "matt-wolfe", title: "Matt Wolfe", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UChpleBmo18P08aKCIgti38g", site: "youtube.com", topics: ["ai"], blurb: "YouTube · AI tools" },
-  { id: "macrumors", title: "MacRumors", url: "https://feeds.macrumors.com/MacRumors-All", site: "macrumors.com", topics: ["apple", "tech"], blurb: "Apple news and rumors" },
-  { id: "nineto5mac", title: "9to5Mac", url: "https://9to5mac.com/feed/", site: "9to5mac.com", topics: ["apple", "tech"], blurb: "Apple coverage" },
-  { id: "daring-fireball", title: "Daring Fireball", url: "https://daringfireball.net/feeds/main", site: "daringfireball.net", topics: ["apple"], blurb: "John Gruber on Apple" },
-  { id: "openai", title: "OpenAI News", url: "https://openai.com/news/rss.xml", site: "openai.com", topics: ["ai"], blurb: "OpenAI announcements" },
-  { id: "mit-ai", title: "MIT Technology Review AI", url: "https://www.technologyreview.com/topic/artificial-intelligence/feed", site: "technologyreview.com", topics: ["ai"], blurb: "Artificial intelligence" },
-  { id: "huggingface", title: "Hugging Face Blog", url: "https://huggingface.co/blog/feed.xml", site: "huggingface.co", topics: ["ai"], blurb: "Models and research" },
-  { id: "google-ai", title: "Google AI", url: "https://blog.google/technology/ai/rss/", site: "blog.google", topics: ["ai"], blurb: "Google AI posts" },
-  { id: "deepmind", title: "Google DeepMind", url: "https://deepmind.google/blog/rss.xml", site: "deepmind.google", topics: ["ai"], blurb: "DeepMind research" },
-  { id: "bbc-politics", title: "BBC Politics", url: "https://feeds.bbci.co.uk/news/politics/rss.xml", site: "bbc.com", topics: ["politics", "news"], blurb: "UK politics" },
-  { id: "nyt-politics", title: "NYT Politics", url: "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml", site: "nytimes.com", topics: ["politics", "news"], blurb: "US politics" },
-  { id: "the-hill", title: "The Hill", url: "https://thehill.com/feed/", site: "thehill.com", topics: ["politics"], blurb: "Washington news" },
-  { id: "variety", title: "Variety", url: "https://variety.com/feed/", site: "variety.com", topics: ["movies"], blurb: "Film and entertainment" },
-  { id: "indiewire", title: "IndieWire", url: "https://www.indiewire.com/feed/", site: "indiewire.com", topics: ["movies"], blurb: "Independent film" },
-  { id: "ebert", title: "Roger Ebert", url: "https://www.rogerebert.com/feed", site: "rogerebert.com", topics: ["movies"], blurb: "Reviews and essays" },
-  { id: "thr", title: "The Hollywood Reporter", url: "https://www.hollywoodreporter.com/feed/", site: "hollywoodreporter.com", topics: ["movies"], blurb: "Hollywood news" },
-  { id: "polygon", title: "Polygon", url: "https://www.polygon.com/rss/index.xml", site: "polygon.com", topics: ["gaming"], blurb: "Games and entertainment" },
-  { id: "kotaku", title: "Kotaku", url: "https://kotaku.com/rss", site: "kotaku.com", topics: ["gaming"], blurb: "Video games" },
-  { id: "ign", title: "IGN", url: "https://feeds.ign.com/ign/games-all", site: "ign.com", topics: ["gaming"], blurb: "Games coverage" },
-  { id: "rps", title: "Rock Paper Shotgun", url: "https://www.rockpapershotgun.com/feed", site: "rockpapershotgun.com", topics: ["gaming"], blurb: "PC gaming" },
-  { id: "eurogamer", title: "Eurogamer", url: "https://www.eurogamer.net/feed", site: "eurogamer.net", topics: ["gaming"], blurb: "European games news" },
-  { id: "nasa", title: "NASA", url: "https://www.nasa.gov/rss/dyn/breaking_news.rss", site: "nasa.gov", topics: ["science"], blurb: "Breaking space news" },
-  { id: "sciencedaily", title: "ScienceDaily", url: "https://www.sciencedaily.com/rss/all.xml", site: "sciencedaily.com", topics: ["science"], blurb: "Research roundups" },
-  { id: "guardian-science", title: "Guardian Science", url: "https://www.theguardian.com/science/rss", site: "theguardian.com", topics: ["science"], blurb: "Science news" },
-  { id: "nature", title: "Nature", url: "https://www.nature.com/nature.rss", site: "nature.com", topics: ["science"], blurb: "Journal highlights" },
-  { id: "bbc-business", title: "BBC Business", url: "https://feeds.bbci.co.uk/news/business/rss.xml", site: "bbc.com", topics: ["business", "news"], blurb: "Business headlines" },
-  { id: "guardian-business", title: "Guardian Business", url: "https://www.theguardian.com/uk/business/rss", site: "theguardian.com", topics: ["business"], blurb: "Markets and companies" },
-  { id: "bbc-sport", title: "BBC Sport", url: "https://feeds.bbci.co.uk/sport/rss.xml", site: "bbc.com", topics: ["sports"], blurb: "Sport headlines" },
-  { id: "guardian-sport", title: "Guardian Sport", url: "https://www.theguardian.com/sport/rss", site: "theguardian.com", topics: ["sports"], blurb: "Sport news" },
+  { id: "guardian-world", title: "The Guardian", url: "https://www.theguardian.com/world/rss", site: "theguardian.com", topics: ["news"], blurb: "Independent international news" },
+  { id: "aljazeera", title: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml", site: "aljazeera.com", topics: ["news"], blurb: "Global news coverage" },
+  { id: "reuters", title: "Reuters", url: "https://www.reutersagency.com/feed/?best-topics=top-news", site: "reuters.com", topics: ["news"], blurb: "Breaking market and world news" },
+  { id: "ap-news", title: "Associated Press", url: "https://apnews.com/rss", site: "apnews.com", topics: ["news"], blurb: "Unbiased wire headlines" },
+  { id: "wapo", title: "Washington Post", url: "https://feeds.washingtonpost.com/rss/world", site: "washingtonpost.com", topics: ["news"], blurb: "World and national affairs" },
+  { id: "politico", title: "Politico", url: "https://www.politico.com/rss/politicopicks.xml", site: "politico.com", topics: ["news", "politics"], blurb: "Political reporting and analysis" },
+  { id: "axios", title: "Axios", url: "https://api.axios.com/feed/", site: "axios.com", topics: ["news"], blurb: "Smart brevity on world events" },
+  { id: "vox", title: "Vox", url: "https://www.vox.com/rss/index.xml", site: "vox.com", topics: ["news"], blurb: "Explanatory journalism" },
+
+  // Tech
+  { id: "verge", title: "The Verge", url: "https://www.theverge.com/rss/index.xml", site: "theverge.com", topics: ["tech"], blurb: "Technology, science, and culture" },
+  { id: "ars", title: "Ars Technica", url: "https://feeds.arstechnica.com/arstechnica/index", site: "arstechnica.com", topics: ["tech"], blurb: "Tech news and in-depth reviews" },
+  { id: "hn", title: "Hacker News", url: "https://hnrss.org/frontpage", site: "news.ycombinator.com", topics: ["tech"], blurb: "Tech, startup, and developer links" },
+  { id: "wired", title: "WIRED", url: "https://www.wired.com/feed/rss", site: "wired.com", topics: ["tech"], blurb: "Culture, science, and future tech" },
+  { id: "engadget", title: "Engadget", url: "https://www.engadget.com/rss.xml", site: "engadget.com", topics: ["tech"], blurb: "Gadgets and consumer technology" },
+  { id: "techcrunch", title: "TechCrunch", url: "https://techcrunch.com/feed/", site: "techcrunch.com", topics: ["tech"], blurb: "Startups, venture capital, and tech" },
+  { id: "tomshardware", title: "Tom's Hardware", url: "https://www.tomshardware.com/feeds/all", site: "tomshardware.com", topics: ["tech"], blurb: "PC hardware news and testing" },
+  { id: "github-blog", title: "GitHub Blog", url: "https://github.blog/feed/", site: "github.blog", topics: ["tech"], blurb: "Software updates and dev trends" },
+  { id: "smashing", title: "Smashing Magazine", url: "https://www.smashingmagazine.com/feed/", site: "smashingmagazine.com", topics: ["tech", "design"], blurb: "Web design and development" },
+  { id: "css-tricks", title: "CSS-Tricks", url: "https://css-tricks.com/feed/", site: "css-tricks.com", topics: ["tech", "design"], blurb: "Front-end tips and web development" },
+  { id: "mkbhd", title: "Marques Brownlee", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ", site: "youtube.com", topics: ["tech"], blurb: "YouTube · Tech reviews with MKBHD" },
+  { id: "ltt", title: "Linus Tech Tips", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCXuqSBlHAE6Xw-yeJA0Tunw", site: "youtube.com", topics: ["tech"], blurb: "YouTube · Hardware and build projects" },
+
+  // Apple
+  { id: "macrumors", title: "MacRumors", url: "https://feeds.macrumors.com/MacRumors-All", site: "macrumors.com", topics: ["apple", "tech"], blurb: "Apple news, leaks, and rumors" },
+  { id: "nineto5mac", title: "9to5Mac", url: "https://9to5mac.com/feed/", site: "9to5mac.com", topics: ["apple", "tech"], blurb: "Comprehensive Apple coverage" },
+  { id: "daring-fireball", title: "Daring Fireball", url: "https://daringfireball.net/feeds/main", site: "daringfireball.net", topics: ["apple"], blurb: "John Gruber's commentary on Apple" },
+  { id: "appleinsider", title: "AppleInsider", url: "https://appleinsider.com/rss/news", site: "appleinsider.com", topics: ["apple"], blurb: "Apple hardware and software news" },
+  { id: "sixcolors", title: "Six Colors", url: "https://sixcolors.com/feed/", site: "sixcolors.com", topics: ["apple"], blurb: "Jason Snell on Apple and tech" },
+  { id: "macstories", title: "MacStories", url: "https://www.macstories.net/feed/", site: "macstories.net", topics: ["apple"], blurb: "iOS, macOS apps and workflows" },
+
+  // AI
+  { id: "matt-wolfe", title: "Matt Wolfe", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UChpleBmo18P08aKCIgti38g", site: "youtube.com", topics: ["ai", "tech"], blurb: "YouTube · Latest AI tools and news" },
+  { id: "openai", title: "OpenAI News", url: "https://openai.com/news/rss.xml", site: "openai.com", topics: ["ai"], blurb: "Official OpenAI research & product updates" },
+  { id: "mit-ai", title: "MIT Tech Review AI", url: "https://www.technologyreview.com/topic/artificial-intelligence/feed", site: "technologyreview.com", topics: ["ai"], blurb: "Artificial intelligence reporting" },
+  { id: "huggingface", title: "Hugging Face Blog", url: "https://huggingface.co/blog/feed.xml", site: "huggingface.co", topics: ["ai"], blurb: "Open source AI models and research" },
+  { id: "google-ai", title: "Google AI Blog", url: "https://blog.google/technology/ai/rss/", site: "blog.google", topics: ["ai"], blurb: "Google AI announcements" },
+  { id: "deepmind", title: "Google DeepMind", url: "https://deepmind.google/blog/rss.xml", site: "deepmind.google", topics: ["ai"], blurb: "DeepMind research breakthroughs" },
+  { id: "anthropic", title: "Anthropic News", url: "https://www.anthropic.com/feed.xml", site: "anthropic.com", topics: ["ai"], blurb: "Claude and AI safety research" },
+  { id: "two-minute-papers", title: "Two Minute Papers", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCbfYPyITQ-7l4upoX8nvctg", site: "youtube.com", topics: ["ai", "science"], blurb: "YouTube · AI research papers summarized" },
+  { id: "ai-explained", title: "AI Explained", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UC98gO_5L3V2fthcZzN4-2vQ", site: "youtube.com", topics: ["ai"], blurb: "YouTube · In-depth AI analysis" },
+
+  // Gaming
+  { id: "polygon", title: "Polygon", url: "https://www.polygon.com/rss/index.xml", site: "polygon.com", topics: ["gaming"], blurb: "Games, entertainment, and gaming culture" },
+  { id: "kotaku", title: "Kotaku", url: "https://kotaku.com/rss", site: "kotaku.com", topics: ["gaming"], blurb: "Video game news and reviews" },
+  { id: "ign", title: "IGN", url: "https://feeds.ign.com/ign/games-all", site: "ign.com", topics: ["gaming"], blurb: "Video games, trailers, and reviews" },
+  { id: "rps", title: "Rock Paper Shotgun", url: "https://www.rockpapershotgun.com/feed", site: "rockpapershotgun.com", topics: ["gaming"], blurb: "PC gaming news and indie games" },
+  { id: "eurogamer", title: "Eurogamer", url: "https://www.eurogamer.net/feed", site: "eurogamer.net", topics: ["gaming"], blurb: "European video game news and reviews" },
+  { id: "gamespot", title: "GameSpot", url: "https://www.gamespot.com/feeds/news/", site: "gamespot.com", topics: ["gaming"], blurb: "Gaming news, reviews, and walkthroughs" },
+  { id: "nintendo-life", title: "Nintendo Life", url: "https://www.nintendolife.com/feeds/latest", site: "nintendolife.com", topics: ["gaming"], blurb: "Switch and Nintendo news" },
+
+  // Science
+  { id: "nasa", title: "NASA Breaking News", url: "https://www.nasa.gov/rss/dyn/breaking_news.rss", site: "nasa.gov", topics: ["science"], blurb: "Space exploration and astronomy" },
+  { id: "sciencedaily", title: "ScienceDaily", url: "https://www.sciencedaily.com/rss/all.xml", site: "sciencedaily.com", topics: ["science"], blurb: "Research discoveries roundups" },
+  { id: "guardian-science", title: "Guardian Science", url: "https://www.theguardian.com/science/rss", site: "theguardian.com", topics: ["science"], blurb: "Science reporting and discovery" },
+  { id: "nature", title: "Nature Journal", url: "https://www.nature.com/nature.rss", site: "nature.com", topics: ["science"], blurb: "Peer-reviewed scientific highlights" },
+  { id: "sci-american", title: "Scientific American", url: "https://www.scientificamerican.com/feed/", site: "scientificamerican.com", topics: ["science"], blurb: "Science, health, and technology" },
+  { id: "newscientist", title: "New Scientist", url: "https://www.newscientist.com/feed/home", site: "newscientist.com", topics: ["science"], blurb: "Global science news" },
+  { id: "space-com", title: "Space.com", url: "https://www.space.com/feeds/all", site: "space.com", topics: ["science"], blurb: "Astronomy, skywatching, and rockets" },
+  { id: "kurzgesagt", title: "Kurzgesagt", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCsXVk37bltHxD1rDPwtNM8Q", site: "youtube.com", topics: ["science"], blurb: "YouTube · Animated science videos" },
+  { id: "veritasium", title: "Veritasium", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCHnyfMqiRRG1u-2MsSQLbXA", site: "youtube.com", topics: ["science"], blurb: "YouTube · Science experiments and ideas" },
+
+  // Movies
+  { id: "variety", title: "Variety", url: "https://variety.com/feed/", site: "variety.com", topics: ["movies"], blurb: "Hollywood film and TV entertainment" },
+  { id: "indiewire", title: "IndieWire", url: "https://www.indiewire.com/feed/", site: "indiewire.com", topics: ["movies"], blurb: "Independent film and festival coverage" },
+  { id: "ebert", title: "Roger Ebert", url: "https://www.rogerebert.com/feed", site: "rogerebert.com", topics: ["movies"], blurb: "Film reviews and essays" },
+  { id: "thr", title: "The Hollywood Reporter", url: "https://www.hollywoodreporter.com/feed/", site: "hollywoodreporter.com", topics: ["movies"], blurb: "Film, TV, and streaming industry" },
+  { id: "slashfilm", title: "SlashFilm", url: "https://www.slashfilm.com/feed/", site: "slashfilm.com", topics: ["movies"], blurb: "Movie trailers and film news" },
+  { id: "deadline", title: "Deadline", url: "https://deadline.com/feed/", site: "deadline.com", topics: ["movies"], blurb: "Entertainment news and box office" },
+
+  // Business
+  { id: "bbc-business", title: "BBC Business", url: "https://feeds.bbci.co.uk/news/business/rss.xml", site: "bbc.com", topics: ["business", "news"], blurb: "Global economics and business" },
+  { id: "guardian-business", title: "Guardian Business", url: "https://www.theguardian.com/uk/business/rss", site: "theguardian.com", topics: ["business"], blurb: "Markets and corporate news" },
+  { id: "cnbc", title: "CNBC Top News", url: "https://www.cnbc.com/id/100003114/device/rss/rss.html", site: "cnbc.com", topics: ["business"], blurb: "Stock markets and financial news" },
+  { id: "economist", title: "The Economist", url: "https://www.economist.com/finance-and-economics/rss.xml", site: "economist.com", topics: ["business"], blurb: "Finance and global economics" },
+  { id: "coindesk", title: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", site: "coindesk.com", topics: ["business", "tech"], blurb: "Crypto and Web3 financial news" },
+
+  // Sports
+  { id: "bbc-sport", title: "BBC Sport", url: "https://feeds.bbci.co.uk/sport/rss.xml", site: "bbc.com", topics: ["sports"], blurb: "Football, F1, and world sports" },
+  { id: "guardian-sport", title: "Guardian Sport", url: "https://www.theguardian.com/sport/rss", site: "theguardian.com", topics: ["sports"], blurb: "Live match reporting and analysis" },
+  { id: "espn", title: "ESPN News", url: "https://www.espn.com/espn/rss/news", site: "espn.com", topics: ["sports"], blurb: "American and global sports coverage" },
+  { id: "sky-sports", title: "Sky Sports", url: "https://www.skysports.com/rss/12040", site: "skysports.com", topics: ["sports"], blurb: "Premier League and sports scores" },
+
+  // Politics
+  { id: "bbc-politics", title: "BBC Politics", url: "https://feeds.bbci.co.uk/news/politics/rss.xml", site: "bbc.com", topics: ["politics", "news"], blurb: "UK and international politics" },
+  { id: "nyt-politics", title: "NYT Politics", url: "https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml", site: "nytimes.com", topics: ["politics", "news"], blurb: "US government and election coverage" },
+  { id: "the-hill", title: "The Hill", url: "https://thehill.com/feed/", site: "thehill.com", topics: ["politics"], blurb: "Capitol Hill news" },
+
+  // Design
+  { id: "abduzeedo", title: "Abduzeedo", url: "https://abduzeedo.com/feed", site: "abduzeedo.com", topics: ["design"], blurb: "3D, typography, and visual design" },
+  { id: "design-milk", title: "Design Milk", url: "https://design-milk.com/feed/", site: "design-milk.com", topics: ["design"], blurb: "Modern architecture, art, and interior design" },
+  { id: "creative-bloq", title: "Creative Bloq", url: "https://www.creativebloq.com/feed", site: "creativebloq.com", topics: ["design"], blurb: "Art, graphic design, and 3D modeling" },
+
+  // EVs & Auto
+  { id: "electrek", title: "Electrek", url: "https://electrek.co/feed/", site: "electrek.co", topics: ["evs", "tech"], blurb: "Electric vehicles, Tesla, and green tech" },
+  { id: "teslarati", title: "Teslarati", url: "https://www.teslarati.com/feed/", site: "teslarati.com", topics: ["evs", "tech"], blurb: "Tesla, SpaceX, and EV news" },
+  { id: "insideevs", title: "InsideEVs", url: "https://insideevs.com/rss/news/all/", site: "insideevs.com", topics: ["evs"], blurb: "EV reviews and automotive news" },
+
+  // Music
+  { id: "pitchfork", title: "Pitchfork", url: "https://pitchfork.com/feed/feed-news/rss", site: "pitchfork.com", topics: ["music"], blurb: "Album reviews and music news" },
+  { id: "nme", title: "NME", url: "https://www.nme.com/feed", site: "nme.com", topics: ["music"], blurb: "Music, film, and pop culture" },
+  { id: "rick-beato", title: "Rick Beato", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCJquYFIaeaczoV8ctLG5nUg", site: "youtube.com", topics: ["music"], blurb: "YouTube · Music theory and song analysis" },
 ];
 
 const TOPIC_IDS = new Set(FEED_TOPICS.map((topic) => topic.id));
@@ -406,6 +475,7 @@ const POPULAR_FEED_IDS = [
   "openai",
   "mit-ai",
   "mkbhd",
+  "matt-wolfe",
   "variety",
   "indiewire",
   "polygon",
@@ -414,6 +484,8 @@ const POPULAR_FEED_IDS = [
   "sciencedaily",
   "bbc-sport",
   "the-hill",
+  "electrek",
+  "pitchfork",
 ];
 
 const SUBJECT_TO_TOPIC = {
@@ -445,6 +517,12 @@ const SUBJECT_TO_TOPIC = {
   ai: "ai",
   "artificial intelligence": "ai",
   news: "news",
+  design: "design",
+  ev: "evs",
+  evs: "evs",
+  cars: "evs",
+  tesla: "evs",
+  music: "music",
 };
 
 export function popularFeedCatalog() {
@@ -463,7 +541,7 @@ function subjectTopicForQuery(query) {
 }
 
 function catalogScore(feed, words, popularRank) {
-  const haystack = [feed.title, feed.site, feed.blurb, ...(feed.topics || [])].join(" ").toLowerCase();
+  const haystack = [feed.title, feed.site, feed.blurb, feed.url, ...(feed.topics || [])].join(" ").toLowerCase();
   let score = 0;
   words.forEach((word) => {
     if (feed.title.toLowerCase().includes(word)) score += 8;
@@ -491,14 +569,9 @@ export function searchFeedCatalog({ query = "", topic = "" } = {}) {
   if (!topicFilter && !words.length) return [];
   return FEED_CATALOG
     .filter((feed) => {
-      if (topicFilter && !feed.topics.includes(topicFilter)) {
-        if (!words.length) return false;
-        const haystack = [feed.title, feed.site, feed.blurb, ...feed.topics].join(" ").toLowerCase();
-        return words.every((word) => haystack.includes(word));
-      }
+      if (topicFilter && !(feed.topics || []).includes(topicFilter)) return false;
       if (!words.length) return true;
-      const haystack = [feed.title, feed.site, feed.blurb, ...feed.topics].join(" ").toLowerCase();
-      if (mapped && feed.topics.includes(mapped)) return true;
+      const haystack = [feed.title, feed.site, feed.blurb, ...(feed.topics || [])].join(" ").toLowerCase();
       return words.every((word) => haystack.includes(word));
     })
     .sort((a, b) => catalogScore(b, words, popularRank.get(b.id) ?? 99) - catalogScore(a, words, popularRank.get(a.id) ?? 99));
