@@ -6521,8 +6521,8 @@ html[data-picker-theme="new-age"] .history-list {
 }
 
 .shop-card.is-featured .shop-piece {
-  aspect-ratio: 16 / 9;
-  max-height: 340px;
+  aspect-ratio: 1.4 / 1;
+  max-height: 480px;
 }
 
 .shop-piece-button {
