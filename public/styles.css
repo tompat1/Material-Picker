@@ -8117,8 +8117,7 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   font: 650 1.15rem/1 var(--sans);
 }
 
-.feeds-folder-heading button,
-.feeds-folder-remove {
+.feeds-folder-heading button {
   border: 0;
   background: transparent;
   color: var(--accent);
@@ -8128,34 +8127,39 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 
 .feeds-folder {
   display: grid;
-  grid-template-columns: 1.6rem minmax(0, 1fr) auto auto;
-  align-items: start;
+  grid-template-columns: 2.25rem 2.75rem minmax(0, 1fr) 2.75rem 2.75rem;
+  align-items: center;
+  gap: 0.1rem;
+  min-width: 0;
 }
 
 .feeds-folder-name {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
   min-width: 0;
-  min-height: 2.6rem;
-  padding: 0.35rem 0.45rem;
+  min-height: 2.75rem;
   border-radius: 10px;
-  font: 560 1rem/1.2 var(--sans);
 }
 
 .feeds-folder.is-current .feeds-folder-name {
   background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
-.feeds-folder-toggle {
+.feeds-folder > .feeds-folder-toggle {
   display: grid;
   place-items: center;
-  width: 1.6rem;
-  height: 2.6rem;
+  width: 2.25rem;
+  min-height: 2.75rem;
+  padding: 0;
   border: 0;
+  border-radius: 8px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+}
+
+.feeds-folder > .feeds-folder-toggle:hover,
+.feeds-folder > .feeds-folder-toggle:focus-visible {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
 }
 
 .feeds-folder-chevron {
@@ -8168,33 +8172,132 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   transform: rotate(-90deg);
 }
 
-.feeds-folder-show {
-  align-self: center;
-  height: 1.85rem;
-  padding: 0 0.55rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  color: var(--accent);
-  font: 600 0.75rem/1 var(--sans);
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  cursor: pointer;
+.feeds-folder .feeds-folder-name-button {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  min-height: 2.75rem;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: 560 1rem/1.2 var(--sans);
+  text-align: left;
+  cursor: text;
 }
 
-.feeds-folder-show:hover,
-.feeds-folder-show:focus-visible {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+.feeds-folder .feeds-folder-name-button:hover,
+.feeds-folder .feeds-folder-name-button:focus-visible {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+.feeds-folder-name-button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feeds-folder-name-button > em {
+  margin-left: auto;
+}
+
+.feeds-folder-rename {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin: 0;
+}
+
+.feeds-folder-rename input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.35rem;
+  padding: 0.3rem 0.5rem;
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  outline: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 560 1rem/1.2 var(--sans);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.feeds-folder > .feeds-folder-select,
+.feeds-folder > .feeds-folder-action {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 160ms var(--ease), color 160ms var(--ease), transform 160ms var(--ease);
+}
+
+.feeds-folder > .feeds-folder-select svg,
+.feeds-folder > .feeds-folder-action svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.feeds-folder > .feeds-folder-select svg circle {
+  fill: transparent;
+}
+
+.feeds-folder > .feeds-folder-select[data-selection-state="all"],
+.feeds-folder > .feeds-folder-select[data-selection-state="some"] {
+  color: var(--accent);
+}
+
+.feeds-folder > .feeds-folder-select[data-selection-state="all"] svg circle {
+  fill: currentColor;
+}
+
+.feeds-folder > .feeds-folder-select[data-selection-state="all"] svg path {
+  stroke: var(--accent-ink);
+  stroke-width: 2.2;
+}
+
+.feeds-folder > .feeds-folder-select:hover:not(:disabled),
+.feeds-folder > .feeds-folder-select:focus-visible,
+.feeds-folder > .feeds-folder-action:hover,
+.feeds-folder > .feeds-folder-action:focus-visible {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.feeds-folder > .feeds-folder-select:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.feeds-folder > .feeds-folder-show {
+  color: var(--accent);
+}
+
+.feeds-folder > .feeds-folder-remove:hover,
+.feeds-folder > .feeds-folder-remove:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
 }
 
 .feeds-folder ul {
   grid-column: 1 / -1;
-  margin-left: 1.4rem;
-}
-
-.feeds-folder-remove {
-  height: 2.6rem;
-  padding: 0 0.35rem;
+  margin-left: 5.1rem;
 }
 
 .feeds-feed-row {
@@ -8254,6 +8357,7 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 }
 
 .feeds-selection,
+.feeds-folder-view,
 .feeds-new-folder,
 .feeds-folder-pick {
   display: grid;
@@ -8264,6 +8368,40 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 .feeds-selection p {
   margin: 0;
   color: var(--muted);
+}
+
+.feeds-folder-view {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  margin: 0.3rem 0 0.75rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.feeds-folder-view p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.feeds-folder-view p strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.feeds-folder-view > div {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.feeds-folder-view .primary-button,
+.feeds-folder-view .ghost-button {
+  min-height: 2.75rem;
+  padding: 0 0.75rem;
+  white-space: nowrap;
 }
 
 .feeds-selection-actions,
@@ -8286,6 +8424,85 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   background: var(--bg);
   color: var(--ink);
   padding: 0 0.8rem;
+}
+
+.feeds-folder-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  margin: 0 0 0.9rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg));
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+
+.feeds-folder-filter-banner > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.feeds-folder-filter-banner svg {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.feeds-folder-filter-banner strong {
+  font-weight: 650;
+}
+
+.feeds-folder-filter-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+}
+
+.feeds-folder-filter-actions button {
+  min-height: 2.75rem;
+  padding: 0 0.7rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font: 650 0.78rem/1 var(--sans);
+  cursor: pointer;
+}
+
+.feeds-folder-filter-actions button:hover,
+.feeds-folder-filter-actions button:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+@media (max-width: 480px) {
+  .feeds-folder-view,
+  .feeds-folder-filter-banner {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .feeds-folder-view {
+    display: grid;
+  }
+
+  .feeds-folder-view > div,
+  .feeds-folder-filter-actions {
+    justify-content: flex-start;
+  }
+
+  .feeds-folder-filter-banner {
+    flex-direction: column;
+  }
 }
 
 .feeds-folder ul button span:first-child,
