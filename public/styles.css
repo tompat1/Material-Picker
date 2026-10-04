@@ -4571,36 +4571,7 @@ progress::-moz-progress-bar {
   position: absolute;
   top: 8px;
   right: 8px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  min-height: 2.75rem;
-  min-width: 2.75rem;
-  padding: 0;
-  border: 1.5px solid var(--line);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink);
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
-}
-
-.menu-close svg {
-  width: 24px;
-  height: 24px;
-  stroke: currentColor;
-  stroke-width: 2.8;
-  display: block;
-}
-
-.menu-close:hover,
-.menu-close:focus-visible {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 14%, transparent);
-  border-color: var(--ink);
-  transform: scale(1.06);
+  z-index: 2;
 }
 
 .playlist-menu[hidden] {
@@ -8929,6 +8900,7 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 .dialog-bar .ghost-button[aria-label="Close"],
 .shop-drawer-head .ghost-button[aria-label="Close"],
 .shop-lightbox-close.ghost-button,
+.shop-lightbox-close,
 .global-search-close,
 .account-dialog-close,
 .feeds-discover-dismiss,
@@ -8938,16 +8910,16 @@ button[value="close"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  min-height: 2.75rem;
-  min-width: 2.75rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  min-height: 1.9rem;
+  min-width: 1.9rem;
   padding: 0;
-  border: 1.5px solid var(--line);
+  border: 1px solid var(--line);
   border-radius: 999px;
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--ink);
-  font-size: 1.2rem;
+  font-size: 0.95rem;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -8959,14 +8931,15 @@ button[value="close"] {
 .dialog-bar .ghost-button[aria-label="Close"] svg,
 .shop-drawer-head .ghost-button[aria-label="Close"] svg,
 .shop-lightbox-close.ghost-button svg,
+.shop-lightbox-close svg,
 .global-search-close svg,
 .account-dialog-close svg,
 .feeds-discover-dismiss svg,
 .menu-close svg,
 button[aria-label="Close"] svg,
 button[value="close"] svg {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   stroke: currentColor;
   stroke-width: 2.2;
   display: block;
@@ -8977,6 +8950,7 @@ button[value="close"] svg {
 .dialog-bar .ghost-button[aria-label="Close"]:hover,
 .shop-drawer-head .ghost-button[aria-label="Close"]:hover,
 .shop-lightbox-close.ghost-button:hover,
+.shop-lightbox-close:hover,
 .global-search-close:hover,
 .account-dialog-close:hover,
 .feeds-discover-dismiss:hover,
@@ -8994,6 +8968,7 @@ button[value="close"]:hover {
 .dialog-bar .ghost-button[aria-label="Close"]:active,
 .shop-drawer-head .ghost-button[aria-label="Close"]:active,
 .shop-lightbox-close.ghost-button:active,
+.shop-lightbox-close:active,
 .global-search-close:active,
 .account-dialog-close:active,
 .feeds-discover-dismiss:active,
@@ -9010,16 +8985,36 @@ button[value="close"]:active {
   .dialog-bar .ghost-button[aria-label="Close"],
   .shop-drawer-head .ghost-button[aria-label="Close"],
   .shop-lightbox-close.ghost-button,
+  .shop-lightbox-close,
   .global-search-close,
   .account-dialog-close,
   .menu-close,
   button[aria-label="Close"],
   button[value="close"] {
-    width: 3rem;
-    height: 3rem;
-    min-height: 3rem;
-    min-width: 3rem;
-    font-size: 1.2rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    min-height: 1.75rem;
+    min-width: 1.75rem;
+    font-size: 0.9rem;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .feeds-add-close button:hover,
+  .feeds-discover-dismiss:hover,
+  .dialog-bar .ghost-button[value="close"]:hover,
+  .dialog-bar .ghost-button[aria-label="Close"]:hover,
+  .shop-drawer-head .ghost-button[aria-label="Close"]:hover,
+  .shop-lightbox-close.ghost-button:hover,
+  .shop-lightbox-close:hover,
+  .global-search-close:hover,
+  .account-dialog-close:hover,
+  .menu-close:hover,
+  button[aria-label="Close"]:hover,
+  button[value="close"]:hover {
+    border: none;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
   }
 
   .feeds-add-close button svg,
@@ -9028,13 +9023,14 @@ button[value="close"]:active {
   .dialog-bar .ghost-button[aria-label="Close"] svg,
   .shop-drawer-head .ghost-button[aria-label="Close"] svg,
   .shop-lightbox-close.ghost-button svg,
+  .shop-lightbox-close svg,
   .global-search-close svg,
   .account-dialog-close svg,
   .menu-close svg,
   button[aria-label="Close"] svg,
   button[value="close"] svg {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     stroke-width: 2.2;
   }
 }
