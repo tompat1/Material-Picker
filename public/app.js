@@ -2255,7 +2255,7 @@ function paintYouTubeGrid(message = "") {
     </div>
     <div class="yt-card-content">
       <button class="yt-thumb" type="button" data-youtube-open="${index}">
-        ${video.thumbnail ? `<img alt="" src="${escapeHtml(video.thumbnail)}" />` : `<span class="yt-thumb-fallback"></span>`}
+        ${video.thumbnail ? `<span class="yt-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img alt="" src="${escapeHtml(video.thumbnail)}" loading="lazy" onload="this.classList.add('is-loaded')" onerror="this.remove()" /></span>` : `<span class="yt-thumb-fallback"></span>`}
         ${video.duration ? `<span class="yt-duration">${escapeHtml(video.duration)}</span>` : ""}
       </button>
       <div class="yt-card-body">
@@ -3494,9 +3494,12 @@ function paintThumb(element, url) {
   if (!image) {
     image = document.createElement("img");
     image.alt = "";
+    image.onload = () => image.classList.add("is-loaded");
     element.prepend(image);
   }
+  image.onload = () => image.classList.add("is-loaded");
   image.src = url;
+  if (image.complete) image.classList.add("is-loaded");
   element.querySelectorAll(".thumb-spinner, .thumb-render").forEach((node) => node.remove());
 }
 

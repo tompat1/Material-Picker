@@ -376,10 +376,12 @@
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5"/></svg>
             </button>
             <div class="feeds-reeder-title">
-              <p class="feeds-kicker" id="feedsKicker">Feeds</p>
+              <div class="feeds-kicker-row">
+                <p class="feeds-kicker" id="feedsKicker">Feeds</p>
+                <p class="feeds-count" id="feedsSubtitle"></p>
+              </div>
               <div class="feeds-heading-row">
                 <h2 id="feedsTitle">Feeds</h2>
-                <p class="feeds-count" id="feedsSubtitle"></p>
               </div>
               <div class="feeds-sort" id="feedsSort" role="group" aria-label="Sort stories">
                 <button type="button" data-feed-sort="latest" aria-pressed="true">Latest</button>
@@ -417,7 +419,7 @@
               <p class="feeds-discover-lead">Pick a topic, select feeds you like, then file them into a folder.</p>
               <form id="feedTopicSearch" role="search">
                 <label for="feedTopicQuery">Search by subject or name</label>
-                <input id="feedTopicQuery" type="search" placeholder="cybersecurity, indie games, gardening…" />
+                <input id="feedTopicQuery" type="search" placeholder="Search by topic or feed name (e.g. movies, AI, gaming…)" />
               </form>
               <div class="feeds-topics" id="feedTopics" role="group" aria-label="Feed topics">
                 <button type="button" data-feed-topic="popular">Popular</button>

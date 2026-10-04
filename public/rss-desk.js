@@ -872,21 +872,36 @@ function applyPane() {
 
 function feedSourceRow(feed, options = {}) {
   const unread = itemsForSource(`feed:${feed.id}`).length;
-  const checked = selectedFeedIds.has(feed.id) ? "checked" : "";
+  const checked = selectedFeedIds.has(feed.id);
   const folders = (feed.folderIds || []).map((id) => feedState.folders.find((folder) => folder.id === id)?.name).filter(Boolean);
   const folderNote = options.showFolder && folders.length ? `<small>${escapeFeedText(folders.join(", "))}</small>` : "";
+  const id = escapeFeedText(feed.id);
+  const title = escapeFeedText(feed.title);
+  const selectionLabel = checked
+    ? `Deselect ${title}`
+    : `Select ${title}`;
+  const selectionMark = checked ? `<path d="m7.3 12.2 3.1 3.1 6.4-7"/>` : "";
   const health = feed.status === "dead"
     ? `<span class="feeds-feed-badge is-dead">Dead</span>`
     : feed.status === "broken"
-      ? `<button class="feeds-feed-resolve" type="button" data-resolve-feed="${escapeFeedText(feed.id)}">Resolve</button>`
+      ? `<button class="feeds-feed-resolve" type="button" data-resolve-feed="${id}">Resolve</button>`
       : "";
   const remove = options.showDelete
-    ? `<button class="feeds-feed-delete" type="button" data-delete-feed="${escapeFeedText(feed.id)}" aria-label="Delete ${escapeFeedText(feed.title)}">Delete</button>`
+    ? `<button class="feeds-folder-action feeds-folder-remove" type="button" data-delete-feed="${id}" aria-label="Delete ${title} feed" title="Delete feed">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14"/><path d="M9 7V4.8h6V7"/><path d="m7.2 7 .7 12h8.2l.7-12"/><path d="M10 10.5v5M14 10.5v5"/></svg>
+      </button>`
     : "";
-  return `<li class="feeds-feed-row${feed.status ? ` is-${escapeFeedText(feed.status)}` : ""}">
-    <label class="feeds-select"><input type="checkbox" data-select-feed="${escapeFeedText(feed.id)}" ${checked} aria-label="Select ${escapeFeedText(feed.title)}" /></label>
-    <button type="button" data-source="feed:${escapeFeedText(feed.id)}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span>${escapeFeedText(feed.title)}${folderNote}</span><em>${unread ? countLabel(unread) : ""}</em></button>
-    ${health}
+  return `<li class="feeds-folder feeds-feed-row${feed.status ? ` is-${escapeFeedText(feed.status)}` : ""}">
+    <span class="feeds-folder-toggle-space" aria-hidden="true"></span>
+    <button class="feeds-folder-select" type="button" data-select-feed="${id}" data-selection-state="${checked ? "all" : "none"}" aria-pressed="${checked ? "true" : "false"}" aria-label="${escapeFeedText(selectionLabel)}" title="${escapeFeedText(selectionLabel)}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/>${selectionMark}</svg>
+    </button>
+    <div class="feeds-folder-name">
+      <button class="feeds-folder-name-button" type="button" data-source="feed:${id}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}">
+        <span>${title}${folderNote}</span><em>${unread ? countLabel(unread) : ""}</em>
+      </button>
+    </div>
+    <div class="feeds-feed-health">${health}</div>
     ${remove}
   </li>`;
 }
@@ -957,8 +972,8 @@ function renderSources() {
     ? `<div class="feeds-folder-view" aria-live="polite">
         <p><strong>${folderNames.length === 1 ? "1 folder" : `${folderNames.length} folders`}</strong> selected for the main feed</p>
         <div>
-          <button class="${isShowActive ? "primary-button" : "secondary-button"}" type="button" data-show-selected-folders>Show selected</button>
-          <button class="${isHideActive ? "primary-button" : "secondary-button"}" type="button" data-hide-selected-folders>Hide selected</button>
+          <button class="${isShowActive ? "primary-button" : "secondary-button"}" type="button" data-show-selected-folders>Show</button>
+          <button class="${isHideActive ? "primary-button" : "secondary-button"}" type="button" data-hide-selected-folders>Hide</button>
           <button class="ghost-button" type="button" data-clear-folder-filter>Clear</button>
         </div>
       </div>`
@@ -1197,7 +1212,7 @@ function renderList() {
         <strong>${feedState.starred[item.id] ? "★ " : ""}${escapeFeedText(item.title)}</strong>
         ${item.summary ? `<span>${escapeFeedText(item.summary)}</span>` : ""}
       </span>
-      ${itemImage ? `<img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" onerror="this.remove()" />` : `<span class="feed-row-thumb" aria-hidden="true"></span>`}
+      ${itemImage ? `<span class="feed-row-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" onload="this.classList.add('is-loaded')" onerror="this.closest('.feed-row-thumb-wrap')?.remove()" /></span>` : `<span class="feed-row-thumb" aria-hidden="true"></span>`}
     </button>`;
   }).join("");
 }
@@ -1223,7 +1238,7 @@ function renderReader() {
     <h3>${escapeFeedText(item.title)}</h3>
     ${item.author ? `<p class="feed-article-by">${escapeFeedText(item.author)}</p>` : ""}
     ${sourceHtml}
-    ${readerImage ? `<img src="${escapeFeedText(readerImage)}" alt="" loading="lazy" onerror="this.remove()" />` : ""}
+    ${readerImage ? `<div class="feed-article-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(readerImage)}" alt="" loading="lazy" onload="this.classList.add('is-loaded')" onerror="this.closest('.feed-article-thumb-wrap')?.remove()" /></div>` : ""}
     ${targetUrl ? `<a class="feed-article-link" href="${escapeFeedText(targetUrl)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(targetUrl) || "Open")} →</a>` : ""}
     ${item.summary ? `<p class="feed-article-body">${escapeFeedText(item.summary)}</p>` : ""}
     <div class="feed-article-actions">
@@ -1909,8 +1924,11 @@ function bindFeedsDesk() {
   document.querySelector("#feedTopicSearch")?.addEventListener("submit", (event) => event.preventDefault());
   document.querySelector("#feedTopicQuery")?.addEventListener("input", (event) => {
     catalogQuery = event.target.value || "";
-    if (catalogQuery.trim()) selectedTopic = "";
-    else if (!selectedTopic) selectedTopic = "popular";
+    if (catalogQuery.trim() && selectedTopic === "popular") {
+      selectedTopic = "";
+    } else if (!catalogQuery.trim() && !selectedTopic) {
+      selectedTopic = "popular";
+    }
     void loadDirectory();
   });
   document.querySelector("#opmlFile")?.addEventListener("change", (event) => {
@@ -2087,6 +2105,14 @@ function bindFeedsDesk() {
       toggleFolderSelection(selectFolder.dataset.selectFolder);
       return;
     }
+    const selectFeed = event.target.closest("[data-select-feed]");
+    if (selectFeed) {
+      const feedId = selectFeed.dataset.selectFeed;
+      if (selectedFeedIds.has(feedId)) selectedFeedIds.delete(feedId);
+      else selectedFeedIds.add(feedId);
+      renderSources();
+      return;
+    }
     const showSelectedFolders = event.target.closest("[data-show-selected-folders]");
     if (showSelectedFolders) {
       if (selectedFolderIds.size) {
@@ -2168,10 +2194,8 @@ function bindFeedsDesk() {
     }
     const topicButton = event.target.closest("[data-feed-topic]");
     if (topicButton) {
-      selectedTopic = selectedTopic === topicButton.dataset.feedTopic ? "popular" : topicButton.dataset.feedTopic;
-      catalogQuery = "";
-      const query = document.querySelector("#feedTopicQuery");
-      if (query) query.value = "";
+      const targetTopic = topicButton.dataset.feedTopic;
+      selectedTopic = selectedTopic === targetTopic ? "popular" : targetTopic;
       void loadDirectory();
       return;
     }

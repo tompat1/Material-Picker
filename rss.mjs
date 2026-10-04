@@ -576,18 +576,33 @@ export function searchFeedCatalog({ query = "", topic = "" } = {}) {
       return words.every((word) => haystack.includes(word));
     });
   }
-  const mapped = selected ? "" : subjectTopicForQuery(query);
-  const topicFilter = selected && TOPIC_IDS.has(selected) ? selected : mapped;
-  if (selected && !TOPIC_IDS.has(selected)) return [];
+  let mapped = "";
+  let topicFilter = "";
+  if (selected) {
+    if (TOPIC_IDS.has(selected)) {
+      topicFilter = selected;
+    } else {
+      mapped = subjectTopicForQuery(selected);
+      if (mapped) {
+        topicFilter = mapped;
+      } else {
+        words.push(...selected.split(/\s+/).filter(Boolean));
+      }
+    }
+  } else if (words.length) {
+    mapped = subjectTopicForQuery(query);
+    if (mapped) topicFilter = mapped;
+  }
   if (!topicFilter && !words.length) return [];
+  const uniqueWords = Array.from(new Set(words));
   return FEED_CATALOG
     .filter((feed) => {
       if (topicFilter && !(feed.topics || []).includes(topicFilter)) return false;
-      if (!words.length) return true;
+      if (!uniqueWords.length) return true;
       const haystack = [feed.title, feed.site, feed.blurb, ...(feed.topics || [])].join(" ").toLowerCase();
-      return words.every((word) => haystack.includes(word));
+      return uniqueWords.every((word) => haystack.includes(word));
     })
-    .sort((a, b) => catalogScore(b, words, popularRank.get(b.id) ?? 99) - catalogScore(a, words, popularRank.get(a.id) ?? 99));
+    .sort((a, b) => catalogScore(b, uniqueWords, popularRank.get(b.id) ?? 99) - catalogScore(a, uniqueWords, popularRank.get(a.id) ?? 99));
 }
 
 export function parseOpml(xml) {
