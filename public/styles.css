@@ -144,9 +144,10 @@ button:disabled {
   filter: grayscale(0.35);
 }
 
-:focus-visible {
-  outline: 3px solid var(--teal);
-  outline-offset: 3px;
+:focus,
+:focus-visible,
+:focus-within {
+  outline: none;
 }
 
 .skip-link {
@@ -644,7 +645,9 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
 }
 
 .workspace-nav .nav-search {
-  position: relative;
+  position: sticky;
+  bottom: 12px;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -715,6 +718,11 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
   font-size: 16px;
   letter-spacing: 0;
   text-transform: none;
+  outline: none;
+}
+
+.nav-search input:focus {
+  outline: none;
 }
 
 .nav-search input::-webkit-search-cancel-button {
@@ -749,8 +757,8 @@ html[data-picker-theme="new-age"] .brand-logo--new-age {
 .nav-search:focus-within,
 .nav-search:has(.search-suggest:not([hidden])) {
   z-index: 100 !important;
-  outline: 3px solid var(--teal);
-  outline-offset: 3px;
+  border-color: var(--ink);
+  outline: none;
 }
 
 .nav-panel {
@@ -6773,8 +6781,7 @@ label.cms-image-choose {
 
 .cms-image-choose:focus-within,
 .cms-image-reset:focus-visible {
-  outline: 3px solid var(--teal);
-  outline-offset: 2px;
+  outline: none;
 }
 
 .cms-image-status {
@@ -6940,8 +6947,8 @@ label.cms-image-choose {
 }
 
 .shop-option-choices input:focus-visible + span {
-  outline: 3px solid var(--teal);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--ink);
 }
 
 .shop-option--single {
