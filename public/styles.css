@@ -6549,8 +6549,8 @@ html[data-picker-theme="new-age"] .history-list {
 }
 
 .shop-card.is-featured .shop-piece {
-  aspect-ratio: 16 / 9;
-  max-height: 320px;
+  aspect-ratio: 3 / 4;
+  max-height: none;
 }
 
 .shop-piece-button {
@@ -6582,7 +6582,7 @@ html[data-picker-theme="new-age"] .history-list {
   position: relative;
   display: grid;
   place-items: center;
-  aspect-ratio: 1;
+  aspect-ratio: 3 / 4;
   overflow: hidden;
   border-radius: 12px;
   background:
@@ -7151,7 +7151,7 @@ label.cms-image-choose {
 }
 
 .shop-lightbox .shop-piece {
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 4;
   transition: transform 0.25s var(--ease);
 }
 
