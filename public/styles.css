@@ -8519,6 +8519,7 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 }
 
 .feeds-folder-view .primary-button,
+.feeds-folder-view .secondary-button,
 .feeds-folder-view .ghost-button {
   min-height: 2.75rem;
   padding: 0 0.75rem;

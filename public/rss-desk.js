@@ -24,6 +24,7 @@ let feedRefreshTask = null;
 let lastFeedRefreshAt = 0;
 let selectedFeedIds = new Set();
 let selectedFolderIds = new Set();
+let folderFilterMode = "show";
 let folderDraft = false;
 let folderDraftMoves = false;
 let folderDraftName = "";
@@ -294,6 +295,7 @@ function selectedFolderNames() {
 
 function clearFolderSelection() {
   selectedFolderIds.clear();
+  folderFilterMode = "show";
   selectedSource = "all";
   previousSource = null;
   selectedItemId = "";
@@ -397,6 +399,9 @@ function itemsForSource(source = selectedSource) {
         .filter((feed) => (feed.folderIds || []).some((id) => selectedFolderIds.has(id)))
         .map((feed) => feed.id)
     );
+    if (folderFilterMode === "hide") {
+      return uniqueStories(unreadItems().filter((item) => !feedIds.has(item.feedId)));
+    }
     return uniqueStories(unreadItems().filter((item) => feedIds.has(item.feedId)));
   }
   if (source.startsWith("folder:")) {
@@ -485,6 +490,11 @@ function sourceTitle(source = selectedSource) {
   if (source === "all") return "All";
   if (source === "folders") {
     const names = selectedFolderNames();
+    if (folderFilterMode === "hide") {
+      if (names.length === 1) return `Hiding ${names[0]}`;
+      if (names.length === 2) return `Hiding ${names.join(" + ")}`;
+      return `Hiding ${names.length} folders`;
+    }
     if (names.length === 1) return names[0];
     if (names.length === 2) return names.join(" + ");
     return `${names.length} selected folders`;
@@ -504,10 +514,17 @@ function folderFilterBanner() {
   const label = names.length <= 3
     ? names.join(" · ")
     : `${names.slice(0, 2).join(" · ")} + ${names.length - 2} more`;
+  const isHide = folderFilterMode === "hide";
+  const icon = isHide
+    ? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+    : `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h3.2c1.1 0 2 .9 2 2v1"/><path d="M4.8 18.5h12.9a2 2 0 0 0 1.9-1.5l1.2-5.2a1.5 1.5 0 0 0-1.5-1.8H5.2a1.8 1.8 0 0 0-1.8 2.2l1.4 6.3Z"/></svg>`;
+  const text = isHide
+    ? `Hiding <strong>${escapeFeedText(label)}</strong>`
+    : `Showing <strong>${escapeFeedText(label)}</strong>`;
   return `<aside class="feeds-folder-filter-banner" aria-label="Filtered folder view">
     <span>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h3.2c1.1 0 2 .9 2 2v1"/><path d="M4.8 18.5h12.9a2 2 0 0 0 1.9-1.5l1.2-5.2a1.5 1.5 0 0 0-1.5-1.8H5.2a1.8 1.8 0 0 0-1.8 2.2l1.4 6.3Z"/></svg>
-      <span>Showing <strong>${escapeFeedText(label)}</strong></span>
+      ${icon}
+      <span>${text}</span>
     </span>
     <span class="feeds-folder-filter-actions">
       <button type="button" data-edit-folder-filter>Edit</button>
@@ -933,11 +950,15 @@ function renderSources() {
   const allFeeds = [...feedState.feeds].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
   const folderOptions = feedState.folders.map((folder) => `<option value="${escapeFeedText(folder.name)}">${escapeFeedText(folder.name)}</option>`).join("");
   const folderNames = selectedFolderNames();
+  const isFoldersActive = selectedSource === "folders";
+  const isShowActive = isFoldersActive && folderFilterMode === "show";
+  const isHideActive = isFoldersActive && folderFilterMode === "hide";
   const folderViewTools = folderNames.length
     ? `<div class="feeds-folder-view" aria-live="polite">
         <p><strong>${folderNames.length === 1 ? "1 folder" : `${folderNames.length} folders`}</strong> selected for the main feed</p>
         <div>
-          <button class="primary-button" type="button" data-show-selected-folders>Show selected</button>
+          <button class="${isShowActive ? "primary-button" : "secondary-button"}" type="button" data-show-selected-folders>Show selected</button>
+          <button class="${isHideActive ? "primary-button" : "secondary-button"}" type="button" data-hide-selected-folders>Hide selected</button>
           <button class="ghost-button" type="button" data-clear-folder-filter>Clear</button>
         </div>
       </div>`
@@ -2069,6 +2090,19 @@ function bindFeedsDesk() {
     const showSelectedFolders = event.target.closest("[data-show-selected-folders]");
     if (showSelectedFolders) {
       if (selectedFolderIds.size) {
+        folderFilterMode = "show";
+        selectedSource = "folders";
+        selectedItemId = "";
+        feedPane = 0;
+        renderFeeds();
+      }
+      document.querySelector("#feedsAddDialog")?.close();
+      return;
+    }
+    const hideSelectedFolders = event.target.closest("[data-hide-selected-folders]");
+    if (hideSelectedFolders) {
+      if (selectedFolderIds.size) {
+        folderFilterMode = "hide";
         selectedSource = "folders";
         selectedItemId = "";
         feedPane = 0;
@@ -2098,6 +2132,7 @@ function bindFeedsDesk() {
       const folder = feedState.folders.find((item) => item.id === showFolder.dataset.showFolder);
       setFolderOpen(folder, true);
       selectedFolderIds = new Set([showFolder.dataset.showFolder]);
+      folderFilterMode = "show";
       selectedSource = "folders";
       selectedItemId = "";
       feedPane = 0;
