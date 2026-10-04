@@ -3197,7 +3197,8 @@ function syncThumbnailStyleControl() {
   if (themeColor) themeColor.setAttribute("content", style === "new-age" ? "#f3f0ed" : "#281E19");
   const cinematic = document.querySelector("#thumbStyleCinematic");
   const newer = document.querySelector("#thumbStyleNewAge");
-  const focusedTheme = document.activeElement === cinematic || document.activeElement === newer;
+  const focusedTheme = (document.activeElement === cinematic || document.activeElement === newer)
+    && document.activeElement.matches(":focus-visible");
   if (cinematic) cinematic.setAttribute("aria-pressed", style === "cinematic" ? "true" : "false");
   if (newer) newer.setAttribute("aria-pressed", style === "new-age" ? "true" : "false");
   if (focusedTheme && window.matchMedia("(max-width: 760px)").matches) {

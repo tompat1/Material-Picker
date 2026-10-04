@@ -9316,6 +9316,11 @@ button[value="close"]:active {
     display: none !important;
   }
 
+  .feeds-panel.is-empty .feeds-discover-cta {
+    animation: none;
+    box-shadow: none;
+  }
+
   /* Give the back action its own column only while it is visible. */
   .feeds-reeder-bar:has(#feedsBack:not([hidden])) {
     grid-template-columns: 44px minmax(0, 1fr) auto;
