@@ -9312,6 +9312,10 @@ button[value="close"]:active {
     box-shadow: none;
   }
 
+  .feeds-icon-button[hidden] {
+    display: none !important;
+  }
+
   /* Give the back action its own column only while it is visible. */
   .feeds-reeder-bar:has(#feedsBack:not([hidden])) {
     grid-template-columns: 44px minmax(0, 1fr) auto;
