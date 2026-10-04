@@ -5619,7 +5619,7 @@ html[data-picker-theme="new-age"] .ghost-button:hover {
   background: rgba(130, 95, 161, 0.08);
 }
 
-html[data-picker-theme="new-age"] label,
+html[data-picker-theme="new-age"] label:not(.cms-image-choose):not(.feeds-opml-upload),
 html[data-picker-theme="new-age"] .secondary-button {
   color: var(--ink);
 }
@@ -6789,9 +6789,14 @@ body.is-cms [data-cms] {
   cursor: pointer;
 }
 
-.cms-image-choose {
+.cms-image-choose,
+label.cms-image-choose {
   background: var(--ink);
-  color: var(--bg);
+  color: var(--bg) !important;
+}
+
+.cms-image-choose span {
+  color: inherit;
 }
 
 .cms-image-choose:focus-within,
