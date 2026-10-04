@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-124" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-125" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -582,17 +582,17 @@
                   <p id="nowPlayingMeta"></p>
                 </div>
                 <div class="now-playing-actions">
-                  <button class="add-to-list" id="addCurrentToList" type="button" title="Add to a playlist" aria-label="Add to a playlist" disabled>
+                  <button class="add-to-list" id="addCurrentToList" type="button" aria-label="Add to a playlist" data-tooltip="Add to playlist" disabled>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h11M4 12h11M4 18h7"/><path d="M17 15v6M14 18h6"/></svg>
                   </button>
-                  <button class="favourite-toggle" id="favouriteCurrent" type="button" title="Add to favourites" aria-label="Add to favourites" aria-pressed="false" disabled>
+                  <button class="favourite-toggle" id="favouriteCurrent" type="button" aria-label="Add to favourites" data-tooltip="Add to favourites" aria-pressed="false" disabled>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-line" d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/><path class="heart-solid" d="M12 21.35 10.55 20C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/></svg>
                   </button>
                   <div class="topic-feedback player-feedback" role="group" aria-label="Rate this video">
-                    <button class="topic-vote topic-vote-up" id="playerVoteUp" type="button" aria-pressed="false" disabled aria-label="Like this video">
+                    <button class="topic-vote topic-vote-up" id="playerVoteUp" type="button" aria-pressed="false" disabled aria-label="Like this video" data-tooltip="Like">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11v8"/><path d="M11 11V8.5a1.5 1.5 0 0 1 3 0V11"/><path d="M7 11 4.5 14v5h15v-5L16.5 11"/></svg>
                     </button>
-                    <button class="topic-vote topic-vote-down" id="playerVoteDown" type="button" aria-pressed="false" disabled aria-label="Dislike this video">
+                    <button class="topic-vote topic-vote-down" id="playerVoteDown" type="button" aria-pressed="false" disabled aria-label="Dislike this video" data-tooltip="Dislike">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 13V5"/><path d="M11 13v3.5a1.5 1.5 0 0 0 3 0V13"/><path d="M7 13 4.5 10V5h15v5L16.5 13"/></svg>
                     </button>
                   </div>
@@ -938,10 +938,10 @@
         <button class="card-main" type="button"></button>
         <span class="playback-badge"></span>
         <div class="card-actions">
-          <button class="add-to-list" type="button" title="Add to a playlist" aria-label="Add to a playlist">
+          <button class="add-to-list" type="button" aria-label="Add to a playlist" data-tooltip="Add to playlist">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h11M4 12h11M4 18h7"/><path d="M17 15v6M14 18h6"/></svg>
           </button>
-          <button class="favourite-toggle" type="button" title="Add to favourites" aria-label="Add to favourites" aria-pressed="false">
+          <button class="favourite-toggle" type="button" aria-label="Add to favourites" data-tooltip="Add to favourites" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-line" d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/><path class="heart-solid" d="M12 21.35 10.55 20C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/></svg>
           </button>
         </div>
@@ -977,7 +977,7 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-121" defer></script>
+    <script src="./app.js?v=picker-nav-125" defer></script>
     <script src="./rss-desk.js?v=picker-nav-28" defer></script>
   </body>
 </html>

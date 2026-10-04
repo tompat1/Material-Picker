@@ -1911,29 +1911,33 @@ let youtubeShelf = {
 async function selectYouTubeTopic(subject) {
   const target = (subject === "All" || subject === youtubeShelf.topic) ? "All" : subject;
   youtubeShelf.topic = target === "All" ? "" : target;
+  const topic = youtubeShelf.topic;
+  const topicCache = youtubeShelf.topicCache && typeof youtubeShelf.topicCache === "object"
+    ? youtubeShelf.topicCache
+    : (youtubeShelf.topicCache = {});
 
-  if (!youtubeShelf.topic || youtubeShelf.topic === "All" || youtubeShelf.topic === "Recently uploaded" || youtubeShelf.topic === "Posts") {
+  if (!topic || topic === "All" || topic === "Recently uploaded" || topic === "Posts") {
     paintYouTubeGrid();
     return;
   }
 
-  if (youtubeShelf.topicCache[youtubeShelf.topic]) {
+  if (topicCache[topic]) {
     paintYouTubeGrid();
     return;
   }
 
-  paintYouTubeGrid("Searching YouTube for " + youtubeShelf.topic + "...");
+  paintYouTubeGrid("Searching YouTube for " + topic + "...");
 
   try {
-    const searchQuery = youtubeShelf.topic === "New to you" ? "new trending" : youtubeShelf.topic;
+    const searchQuery = topic === "New to you" ? "new trending" : topic;
     const response = await fetch(`/api/video-search?q=${encodeURIComponent(searchQuery)}&source=youtube`);
     const data = await response.json().catch(() => ([]));
     const videos = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
-    youtubeShelf.topicCache[youtubeShelf.topic] = videos;
+    topicCache[topic] = videos;
   } catch {
-    youtubeShelf.topicCache[youtubeShelf.topic] = [];
+    topicCache[topic] = [];
   } finally {
-    paintYouTubeGrid();
+    if (youtubeShelf.topic === topic) paintYouTubeGrid();
   }
 }
 
@@ -1963,8 +1967,11 @@ function youtubeTextMatches(item) {
 }
 
 function youtubeShelfVideos() {
-  if (youtubeShelf.topic && youtubeShelf.topicCache[youtubeShelf.topic]) {
-    const cached = youtubeShelf.topicCache[youtubeShelf.topic];
+  const topicCache = youtubeShelf.topicCache && typeof youtubeShelf.topicCache === "object"
+    ? youtubeShelf.topicCache
+    : (youtubeShelf.topicCache = {});
+  if (youtubeShelf.topic && topicCache[youtubeShelf.topic]) {
+    const cached = topicCache[youtubeShelf.topic];
     return cached.filter((item) => youtubeTextMatches(item));
   }
 
@@ -2256,7 +2263,7 @@ function paintYouTubeGrid(message = "") {
           <p>${escapeHtml(video.speaker || "")}</p>
           <p>${escapeHtml(youtubeWhen(video.publishedAt))}</p>
         </div>
-        <button class="yt-hide-button" type="button" data-youtube-hide="${escapeHtml(video.url || index)}" title="Hide video from feed" aria-label="Hide video">
+        <button class="yt-hide-button" type="button" data-youtube-hide="${escapeHtml(video.url || index)}" aria-label="Hide video" data-tooltip="Hide video">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
@@ -2273,11 +2280,11 @@ function paintYouTubeGrid(message = "") {
   const rest = videos.slice(2).map((video, index) => card(video, index + 2)).join("");
   const carousel = rest
     ? `<div class="yt-carousel-frame">
-        <button class="yt-carousel-arrow yt-carousel-prev" type="button" data-youtube-scroll="prev" aria-label="Previous videos" hidden>
+        <button class="yt-carousel-arrow yt-carousel-prev" type="button" data-youtube-scroll="prev" aria-label="Previous videos" data-tooltip="Previous videos" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6.5 9 12l5.5 5.5"/></svg>
         </button>
         <div class="yt-carousel-track">${rest}</div>
-        <button class="yt-carousel-arrow yt-carousel-next" type="button" data-youtube-scroll="next" aria-label="Next videos">
+        <button class="yt-carousel-arrow yt-carousel-next" type="button" data-youtube-scroll="next" aria-label="Next videos" data-tooltip="Next videos">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6.5 5.5 5.5-5.5 5.5"/></svg>
         </button>
       </div>`
@@ -2340,8 +2347,11 @@ function renderYouTubeHome(data) {
     subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions : [],
     playlists: Array.isArray(data.playlists) ? data.playlists : [],
     liked: Array.isArray(data.liked) ? data.liked : [],
+    activity: Array.isArray(data.activity) ? data.activity : [],
     playlistVideos: [],
     view: "all",
+    topic: "",
+    topicCache: {},
     channelId: "",
     playlistId: "",
     playlistTitle: "",
@@ -2637,14 +2647,14 @@ function topicResultMarkup(results) {
       </button>
       <div class="topic-result-actions">
         <div class="topic-feedback" role="group" aria-label="Rate this suggestion">
-          <button class="topic-vote topic-vote-up" type="button" data-topic-vote-up="${index}" aria-pressed="${vote === 1 ? "true" : "false"}" aria-label="${escapeHtml(vote === 1 ? `You liked ${title}` : `Like ${title}`)}">
+          <button class="topic-vote topic-vote-up" type="button" data-topic-vote-up="${index}" aria-pressed="${vote === 1 ? "true" : "false"}" aria-label="${escapeHtml(vote === 1 ? `You liked ${title}` : `Like ${title}`)}" data-tooltip="${vote === 1 ? "Liked" : "Like"}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11v8"/><path d="M11 11V8.5a1.5 1.5 0 0 1 3 0V11"/><path d="M7 11 4.5 14v5h15v-5L16.5 11"/></svg>
           </button>
-          <button class="topic-vote topic-vote-down" type="button" data-topic-vote-down="${index}" aria-pressed="${vote === -1 ? "true" : "false"}" aria-label="${escapeHtml(vote === -1 ? `You disliked ${title}` : `Dislike ${title}`)}">
+          <button class="topic-vote topic-vote-down" type="button" data-topic-vote-down="${index}" aria-pressed="${vote === -1 ? "true" : "false"}" aria-label="${escapeHtml(vote === -1 ? `You disliked ${title}` : `Dislike ${title}`)}" data-tooltip="${vote === -1 ? "Disliked" : "Dislike"}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 13V5"/><path d="M11 13v3.5a1.5 1.5 0 0 0 3 0V13"/><path d="M7 13 4.5 10V5h15v5L16.5 13"/></svg>
           </button>
         </div>
-        <button class="topic-download" type="button" data-download-topic="${index}" aria-pressed="${marked ? "true" : "false"}" aria-label="${escapeHtml(marked ? `${title} is on the download list` : `Add ${title} to downloads`)}">
+        <button class="topic-download" type="button" data-download-topic="${index}" aria-pressed="${marked ? "true" : "false"}" aria-label="${escapeHtml(marked ? `${title} is on the download list` : `Add ${title} to downloads`)}" data-tooltip="${marked ? "On download list" : "Add to downloads"}">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11"/><path d="m7.5 11.5 4.5 4.5 4.5-4.5"/><path d="M5 19h14"/></svg>
         </button>
       </div>
@@ -4495,8 +4505,10 @@ function syncAddToListButtons() {
     button.setAttribute("aria-pressed", listed ? "true" : "false");
     const title = video?.title || "this video";
     const label = listed ? `${title} is in a playlist` : `Add ${title} to a playlist`;
-    button.title = label;
+    const tooltip = listed ? "In a playlist" : "Add to playlist";
+    button.removeAttribute("title");
     button.setAttribute("aria-label", label);
+    button.dataset.tooltip = tooltip;
     if (button.id === "addCurrentToList") button.disabled = !video;
   });
 }
@@ -4849,8 +4861,10 @@ function syncFavouriteButtons() {
     button.setAttribute("aria-pressed", saved ? "true" : "false");
     const title = video?.title || "this video";
     const label = saved ? `Remove ${title} from favourites` : `Add ${title} to favourites`;
-    button.title = label;
+    const tooltip = saved ? "Remove from favourites" : "Add to favourites";
+    button.removeAttribute("title");
     button.setAttribute("aria-label", label);
+    button.dataset.tooltip = tooltip;
     if (button.id === "favouriteCurrent") button.disabled = !video;
   });
 }
@@ -5530,6 +5544,10 @@ function syncPlayerFeedVotes() {
   const title = video?.title || "this video";
   up.setAttribute("aria-label", vote === 1 ? `You liked ${title}` : `Like ${title}`);
   down.setAttribute("aria-label", vote === -1 ? `You disliked ${title}` : `Dislike ${title}`);
+  up.removeAttribute("title");
+  down.removeAttribute("title");
+  up.dataset.tooltip = vote === 1 ? "Liked" : "Like";
+  down.dataset.tooltip = vote === -1 ? "Disliked" : "Dislike";
 }
 
 function syncPlayingCards() {

@@ -2127,6 +2127,64 @@ html[data-picker-theme="new-age"] .topic-vote-down[aria-pressed="true"] {
   height: 2.15rem;
 }
 
+.now-playing-actions [data-tooltip],
+.card-actions [data-tooltip],
+.topic-result-actions [data-tooltip],
+.yt-hide-button[data-tooltip] {
+  position: relative;
+}
+
+.now-playing-actions [data-tooltip]::after,
+.card-actions [data-tooltip]::after,
+.topic-result-actions [data-tooltip]::after,
+.yt-hide-button[data-tooltip]::after,
+.yt-carousel-arrow[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(100% + 0.5rem);
+  width: max-content;
+  max-width: 13rem;
+  padding: 0.38rem 0.52rem;
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  font: 600 0.72rem/1.2 var(--sans);
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 0.2rem);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.now-playing-actions [data-tooltip]:hover::after,
+.now-playing-actions [data-tooltip]:focus-visible::after,
+.card-actions [data-tooltip]:hover::after,
+.card-actions [data-tooltip]:focus-visible::after,
+.topic-result-actions [data-tooltip]:hover::after,
+.topic-result-actions [data-tooltip]:focus-visible::after,
+.yt-hide-button[data-tooltip]:hover::after,
+.yt-hide-button[data-tooltip]:focus-visible::after,
+.yt-carousel-arrow[data-tooltip]:hover::after,
+.yt-carousel-arrow[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .now-playing-actions [data-tooltip]::after,
+  .card-actions [data-tooltip]::after,
+  .topic-result-actions [data-tooltip]::after,
+  .yt-hide-button[data-tooltip]::after,
+  .yt-carousel-arrow[data-tooltip]::after {
+    transition: none;
+  }
+}
+
 .topic-result strong,
 .topic-result span span {
   display: block;
