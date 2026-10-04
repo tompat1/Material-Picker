@@ -9266,6 +9266,8 @@ const MERCH_CATEGORIES = [
 let cmsDoc = { copy: {}, shop: {} };
 let cmsUserAdmin = false;
 let cmsEditing = false;
+let cmsSaveQueue = Promise.resolve();
+const cmsPreviewUrls = new Map();
 
 function merchCatalog() {
   return MERCH_CATALOG.map((item) => ({ ...item, ...(cmsDoc.shop?.[item.id] || {}) }));
@@ -9336,6 +9338,14 @@ async function collectCmsEdits() {
       }
       return;
     }
+    if (prop === "imageZoom" || prop === "imageX" || prop === "imageY") {
+      const value = Number(field.value);
+      const current = merchImageCrop(product)[prop];
+      if (Number.isFinite(value) && value !== current) {
+        patchShop[id] = { ...(patchShop[id] || {}), [prop]: value };
+      }
+      return;
+    }
     const text = field.value.replace(/\s+/g, " ").trim();
     if (text !== product[prop]) {
       patchShop[id] = { ...(patchShop[id] || {}), [prop]: text };
@@ -9356,11 +9366,11 @@ async function collectCmsEdits() {
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.url) {
         patchShop[id] = { ...(patchShop[id] || {}), image: data.url };
-      } else if (data.error) {
-        setStatus(data.error);
+      } else {
+        throw new Error(data.error || "The image could not be saved.");
       }
-    } catch {
-      setStatus("The image upload failed.");
+    } catch (error) {
+      throw new Error(error.message || "The image upload failed.");
     }
   }
 
@@ -9374,6 +9384,7 @@ async function collectCmsEdits() {
 async function toggleCmsEditing() {
   if (!cmsUserAdmin) return;
   const button = document.querySelector("#cmsEdit");
+  let saved = true;
   if (cmsEditing) {
     if (button) {
       button.disabled = true;
@@ -9382,12 +9393,21 @@ async function toggleCmsEditing() {
     try {
       const edits = await collectCmsEdits();
       if (edits.hasChanges) {
-        await saveCms({ copy: edits.copy, shop: edits.shop });
+        saved = await saveCms({ copy: edits.copy, shop: edits.shop });
+        if (saved) setStatus("Changes saved.");
       }
+    } catch (error) {
+      setStatus(error.message || "The edit could not be saved.");
+      saved = false;
     } finally {
       if (button) button.disabled = false;
     }
   }
+  if (!saved) {
+    if (button) button.textContent = "Done";
+    return;
+  }
+  if (cmsEditing) clearCmsPreviewUrls();
   cmsEditing = !cmsEditing;
   syncCmsEditor();
 }
@@ -9416,6 +9436,7 @@ async function onShopCmsBlur(event) {
   const prop = field.dataset.cmsProp;
   const product = merchCatalog().find((item) => item.id === id);
   if (!product) return;
+  if (prop === "imageZoom" || prop === "imageX" || prop === "imageY") return;
   if (prop === "priceSek") {
     const priceSek = Number(field.value);
     if (!Number.isInteger(priceSek) || priceSek === product.priceSek) return;
@@ -9427,42 +9448,52 @@ async function onShopCmsBlur(event) {
   await saveCms({ shop: { [id]: { [prop]: text } } });
 }
 
-async function onShopCmsImage(input) {
+function previewShopCmsImage(input) {
   const file = input.files?.[0];
   const id = input.dataset.cmsImage;
   if (!file || !id) return;
-  const response = await fetch("/api/cms/media", {
-    method: "POST",
-    headers: { "content-type": file.type || "application/octet-stream" },
-    body: file,
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    setStatus(data.error || "The image could not be saved.");
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 1_500_000) {
+    input.value = "";
+    setStatus(file.size > 1_500_000 ? "Keep the image under 1.5 MB." : "Use a JPEG, PNG, or WebP image.");
     return;
   }
-  const edits = await collectCmsEdits();
-  const shopPatch = edits.shop;
-  shopPatch[id] = { ...(shopPatch[id] || {}), image: data.url };
-  await saveCms({ copy: edits.copy, shop: shopPatch }, { rerender: true });
-  setStatus("Shop image updated.");
+  const previousUrl = cmsPreviewUrls.get(id);
+  if (previousUrl) URL.revokeObjectURL(previousUrl);
+  const previewUrl = URL.createObjectURL(file);
+  cmsPreviewUrls.set(id, previewUrl);
+  const preview = input.closest(".shop-card")?.querySelector(".shop-photo");
+  if (preview) preview.src = previewUrl;
+  setStatus("Image preview ready. Adjust its crop, then choose Done to save.");
 }
 
-async function saveCms(patch, { rerender = false } = {}) {
-  const response = await fetch("/api/cms", {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(patch),
+function clearCmsPreviewUrls() {
+  for (const url of cmsPreviewUrls.values()) URL.revokeObjectURL(url);
+  cmsPreviewUrls.clear();
+}
+
+function saveCms(patch) {
+  const pending = cmsSaveQueue.then(async () => {
+    try {
+      const response = await fetch("/api/cms", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setStatus(data.error || "The edit could not be saved.");
+        return false;
+      }
+      cmsDoc = data;
+      applyCmsCopy();
+      return true;
+    } catch {
+      setStatus("The edit could not be saved.");
+      return false;
+    }
   });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    setStatus(data.error || "The edit could not be saved.");
-    applyCmsCopy();
-    return;
-  }
-  cmsDoc = data;
-  applyCmsCopy();
-  if (rerender) renderShop();
+  cmsSaveQueue = pending.then(() => {}, () => {});
+  return pending;
 }
 
 const MERCH_SIZES = ["S", "M", "L", "XL"];
@@ -9507,7 +9538,38 @@ function merchColorwayForTheme() {
 }
 
 function merchPieceMarkup(product) {
-  return `<span class="shop-piece shop-piece-photo"><img class="shop-photo" src="${escapeHtml(product.image)}" alt="" /></span>`;
+  const crop = merchImageCrop(product);
+  const image = cmsPreviewUrls.get(product.id) || product.image;
+  return `<span class="shop-piece shop-piece-photo"><img class="shop-photo" src="${escapeHtml(image)}" alt="" style="--shop-image-x:${crop.imageX}%;--shop-image-y:${crop.imageY}%;--shop-image-zoom:${crop.imageZoom}" /></span>`;
+}
+
+function merchImageCrop(product) {
+  const zoom = Number(product.imageZoom);
+  const imageX = Number(product.imageX);
+  const imageY = Number(product.imageY);
+  return {
+    imageZoom: Number.isFinite(zoom) ? Math.max(1, Math.min(3, zoom)) : 1,
+    imageX: Number.isFinite(imageX) ? Math.max(0, Math.min(100, imageX)) : 50,
+    imageY: Number.isFinite(imageY) ? Math.max(0, Math.min(100, imageY)) : 50,
+  };
+}
+
+function onShopCmsCropInput(input) {
+  const card = input.closest(".shop-card");
+  if (!card) return;
+  const id = card.dataset.shopProduct;
+  const prop = input.dataset.cmsProp;
+  const product = merchCatalog().find((item) => item.id === id);
+  if (!product || !["imageZoom", "imageX", "imageY"].includes(prop)) return;
+  const crop = { ...merchImageCrop(product), [prop]: Number(input.value) };
+  const preview = card.querySelector(".shop-photo");
+  if (preview) {
+    preview.style.setProperty("--shop-image-x", `${crop.imageX}%`);
+    preview.style.setProperty("--shop-image-y", `${crop.imageY}%`);
+    preview.style.setProperty("--shop-image-zoom", String(crop.imageZoom));
+  }
+  const output = input.closest("label")?.querySelector("output");
+  if (output) output.value = prop === "imageZoom" ? `${Math.round(crop.imageZoom * 100)}%` : `${Math.round(crop[prop])}%`;
 }
 
 function merchMoney(amount) {
@@ -9518,6 +9580,10 @@ function bindMerchShop() {
   document.querySelector("#headerBag")?.addEventListener("click", openHeaderBag);
   document.querySelector("#shopPanel")?.addEventListener("click", onShopClick);
   document.querySelector("#shopPanel")?.addEventListener("change", onShopChange);
+  document.querySelector("#shopPanel")?.addEventListener("input", (event) => {
+    const crop = event.target.closest("[data-cms-crop]");
+    if (crop) onShopCmsCropInput(crop);
+  });
   document.querySelector("#shopPanel")?.addEventListener("focusout", onShopCmsBlur);
   document.querySelector("#cmsEdit")?.addEventListener("click", toggleCmsEditing);
   document.addEventListener("focusout", onCmsCopyBlur);
@@ -9560,7 +9626,7 @@ function onShopClick(event) {
 function onShopChange(event) {
   const image = event.target.closest("[data-cms-image]");
   if (image) {
-    void onShopCmsImage(image);
+    previewShopCmsImage(image);
     return;
   }
   const option = event.target.closest("input[data-shop-option]");
@@ -9706,6 +9772,7 @@ function renderShop() {
   grid.innerHTML = visible.map((item) => {
     const savedOption = merchSelections.get(item.id);
     const selectedOption = item.options?.includes(savedOption) ? savedOption : item.options?.[0];
+    const imageCrop = merchImageCrop(item);
     const options = item.options
       ? `<fieldset class="shop-option"><legend>${escapeHtml(item.optionLabel || "Size")}</legend><div class="shop-option-choices">${item.options.map((option) => `<label><input type="radio" name="shop-option-${escapeHtml(item.id)}" value="${escapeHtml(option)}" data-shop-option${option === selectedOption ? " checked" : ""}><span>${escapeHtml(option)}</span></label>`).join("")}</div></fieldset>`
       : `<p class="shop-option shop-option--single"><span>Size</span><strong>One size</strong></p>`;
@@ -9716,7 +9783,7 @@ function renderShop() {
         <div class="shop-card-top"><span class="shop-price">${item.priceSek} SEK <small>(${item.priceEur} €)</small></span>${item.badge ? `<span class="shop-badge">${escapeHtml(item.badge)}</span>` : ""}</div>
         <h3>${escapeHtml(item.name)}</h3>
         <p>${escapeHtml(item.description)}</p>
-        ${cmsEditing ? `<div class="cms-fields"><label>Name<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="name" value="${escapeHtml(item.name)}"></label><label>Description<textarea data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="description">${escapeHtml(item.description)}</textarea></label><label>Price SEK<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="priceSek" inputmode="numeric" value="${Number(item.priceSek) || 0}"></label><label>Replace image<input type="file" accept="image/jpeg,image/png,image/webp" data-cms-image="${escapeHtml(item.id)}"></label></div>` : ""}
+        ${cmsEditing ? `<div class="cms-fields"><label>Name<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="name" value="${escapeHtml(item.name)}"></label><label>Description<textarea data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="description">${escapeHtml(item.description)}</textarea></label><label>Price SEK<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="priceSek" inputmode="numeric" value="${Number(item.priceSek) || 0}"></label><label>Replace image<input type="file" accept="image/jpeg,image/png,image/webp" data-cms-image="${escapeHtml(item.id)}"><small>The preview above updates before saving.</small></label><div class="cms-image-controls" aria-label="Image crop controls"><label>Zoom <output>${Math.round(imageCrop.imageZoom * 100)}%</output><input type="range" min="1" max="3" step="0.05" value="${imageCrop.imageZoom}" data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="imageZoom" data-cms-crop></label><label>Horizontal placement <output>${Math.round(imageCrop.imageX)}%</output><input type="range" min="0" max="100" step="1" value="${imageCrop.imageX}" data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="imageX" data-cms-crop></label><label>Vertical placement <output>${Math.round(imageCrop.imageY)}%</output><input type="range" min="0" max="100" step="1" value="${imageCrop.imageY}" data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="imageY" data-cms-crop></label></div></div>` : ""}
         <dl class="shop-specs">${specs}</dl>
         ${options}
         <p class="shop-stock">${escapeHtml(item.stock)}</p>

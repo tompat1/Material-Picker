@@ -6622,6 +6622,9 @@ html[data-picker-theme="new-age"] .history-list {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: var(--shop-image-x, 50%) var(--shop-image-y, 50%);
+  transform: scale(var(--shop-image-zoom, 1));
+  transform-origin: center;
   display: block;
 }
 
@@ -6665,6 +6668,35 @@ body.is-cms [data-cms] {
 .cms-fields textarea {
   min-height: 4.5rem;
   resize: vertical;
+}
+
+.cms-fields small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.cms-image-controls {
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.2rem;
+}
+
+.cms-image-controls label {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.cms-image-controls output {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.cms-fields input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
 }
 
 .shop-card-top {

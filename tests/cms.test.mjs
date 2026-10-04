@@ -87,4 +87,31 @@ test("shop text and images save for the admin and stay hidden from everyone else
   const media = await handleCmsRequest(new Request(`http://localhost:4173${uploaded.url}`), { store });
   assert.equal(media.headers.get("content-type"), "image/jpeg");
   assert.equal((await media.arrayBuffer()).byteLength, 4);
+
+  const replacement = await handleCmsRequest(new Request("http://localhost:4173/api/cms", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      shop: { cap: { image: uploaded.url, imageZoom: 1.75, imageX: 28, imageY: 64 } },
+    }),
+  }), { store, user: { email: "tremdia@gmail.com" } });
+  assert.equal(replacement.status, 200);
+  const savedReplacement = await replacement.json();
+  assert.equal(savedReplacement.shop.cap.image, uploaded.url);
+  assert.equal(savedReplacement.shop.cap.imageZoom, 1.75);
+  assert.equal(savedReplacement.shop.cap.imageX, 28);
+  assert.equal(savedReplacement.shop.cap.imageY, 64);
+  const reloaded = await handleCmsRequest(new Request("http://localhost:4173/api/cms"), { store });
+  const persisted = await reloaded.json();
+  assert.equal(persisted.shop.cap.image, uploaded.url);
+  assert.equal(persisted.shop.cap.imageZoom, 1.75);
+  assert.equal(persisted.shop.cap.imageX, 28);
+  assert.equal(persisted.shop.cap.imageY, 64);
+
+  const invalidCrop = await handleCmsRequest(new Request("http://localhost:4173/api/cms", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ shop: { cap: { imageZoom: 4 } } }),
+  }), { store, user: { email: "tremdia@gmail.com" } });
+  assert.equal(invalidCrop.status, 400);
 });

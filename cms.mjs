@@ -75,6 +75,9 @@ export function mergeContent(current, patch) {
         else if (!IMAGE_PATH.test(image)) throw badRequest("Shop images must be a catalog photo or an uploaded image.");
         else item.image = image;
       }
+      if ("imageZoom" in fields) item.imageZoom = boundedNumber(fields.imageZoom, 1, 3, "Image zoom must be between 1× and 3×.");
+      if ("imageX" in fields) item.imageX = boundedNumber(fields.imageX, 0, 100, "Image horizontal placement must be between 0 and 100.");
+      if ("imageY" in fields) item.imageY = boundedNumber(fields.imageY, 0, 100, "Image vertical placement must be between 0 and 100.");
       if (Object.keys(item).length) next.shop[id] = item;
       else delete next.shop[id];
     }
@@ -219,6 +222,12 @@ function money(value, max) {
   const amount = Number(value);
   if (!Number.isInteger(amount) || amount < 0 || amount > max) throw badRequest("Use a whole price.");
   return amount;
+}
+
+function boundedNumber(value, min, max, message) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < min || amount > max) throw badRequest(message);
+  return Math.round(amount * 100) / 100;
 }
 
 function badRequest(message) {
