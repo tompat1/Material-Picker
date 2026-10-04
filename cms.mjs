@@ -12,6 +12,8 @@ const SHOP_IDS = new Set([
   "tee-white",
   "cap",
   "beanie",
+  "beanie-orange",
+  "beanie-white",
   "tote-black",
   "tote-white",
   "case",
