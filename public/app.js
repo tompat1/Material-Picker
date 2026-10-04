@@ -353,20 +353,23 @@ let pickerLoaderHide = 0;
 
 function hasInlineSpinner() {
   const selectors = [
+    "#feedsStatus:not(:empty)",
     "#feedsStatus .amber-throbber",
     "#feedsStatus .status-throbber",
     "#feedsStatus .feeds-status-line",
-    "#statusLine.is-running",
+    "#statusLine:not([hidden])",
     ".status-line.is-running",
     ".status-line .status-throbber",
     ".amber-throbber:not(#pickerLoader .amber-throbber)",
-    "button.is-busy .amber-throbber",
+    "button.is-busy",
   ];
   for (const selector of selectors) {
     const nodes = document.querySelectorAll(selector);
     for (const node of nodes) {
       if (node.closest("#pickerLoader")) continue;
-      if (node.offsetWidth > 0 && node.offsetHeight > 0) {
+      const text = node.textContent.trim();
+      const hasContent = text.length > 0 || Boolean(node.querySelector("span, svg, div, img, p, ul, li"));
+      if (hasContent) {
         const style = window.getComputedStyle(node);
         if (style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0") {
           return true;

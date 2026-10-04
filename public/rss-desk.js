@@ -25,6 +25,9 @@ let lastFeedRefreshAt = 0;
 let selectedFeedIds = new Set();
 let selectedFolderIds = new Set();
 let folderFilterMode = "show";
+let riverRenderLimit = 40;
+let lastRenderedSourceKey = "";
+let riverObserver = null;
 let folderDraft = false;
 let folderDraftMoves = false;
 let folderDraftName = "";
@@ -32,6 +35,8 @@ let folderDraftFocus = false;
 let editingFolderId = "";
 let folderRenameFocus = false;
 let folderActionPointerDown = false;
+let foldersSectionCollapsed = false;
+let allFeedsSectionCollapsed = false;
 let selectedTopic = "popular";
 let catalogQuery = "";
 let catalogTopics = [];
@@ -217,7 +222,11 @@ function normalizeFeedInput(value) {
   return /^https?:\/\//i.test(text) ? text : `https://${text}`;
 }
 
+const feedUrlCache = new Map();
 function canonicalFeedUrl(value) {
+  if (!value) return "";
+  let res = feedUrlCache.get(value);
+  if (res !== undefined) return res;
   try {
     const url = new URL(normalizeFeedInput(value));
     url.hash = "";
@@ -227,16 +236,21 @@ function canonicalFeedUrl(value) {
     const path = url.pathname.replace(/\/+$/, "");
     const params = [...url.searchParams.entries()].sort(([left], [right]) => left.localeCompare(right));
     const search = params.length ? `?${params.map(([key, item]) => `${encodeURIComponent(key)}=${encodeURIComponent(item)}`).join("&")}` : "";
-    return `${url.protocol.toLowerCase()}//${host}${port}${path}${search}`;
+    res = `${url.protocol.toLowerCase()}//${host}${port}${path}${search}`;
   } catch {
-    return String(value || "").trim().toLowerCase();
+    res = String(value || "").trim().toLowerCase();
   }
+  feedUrlCache.set(value, res);
+  return res;
 }
 
 function canonicalItemKey(item) {
+  if (!item) return "";
+  if (item._canonicalKey) return item._canonicalKey;
   const link = item?.link || item?.videoUrl || "";
-  if (link) return canonicalFeedUrl(link);
-  return `item:${item?.feedId || ""}:${item?.title || item?.id || ""}`;
+  const key = link ? canonicalFeedUrl(link) : `item:${item?.feedId || ""}:${item?.title || item?.id || ""}`;
+  item._canonicalKey = key;
+  return key;
 }
 
 function moveFeedFlag(map, from, to) {
@@ -329,8 +343,12 @@ function renameFolder(id, value) {
 }
 
 function feedTime(item) {
+  if (!item) return 0;
+  if (typeof item._parsedTime === "number") return item._parsedTime;
   const value = Date.parse(item?.publishedAt || "");
-  return Number.isFinite(value) ? value : 0;
+  const time = Number.isFinite(value) ? value : 0;
+  item._parsedTime = time;
+  return time;
 }
 
 function formatClock(value) {
@@ -870,8 +888,18 @@ function applyPane() {
   }
 }
 
+function getUnreadCountsMap() {
+  const counts = new Map();
+  const unread = uniqueStories(unreadItems());
+  for (let i = 0; i < unread.length; i++) {
+    const feedId = unread[i].feedId;
+    counts.set(feedId, (counts.get(feedId) || 0) + 1);
+  }
+  return counts;
+}
+
 function feedSourceRow(feed, options = {}) {
-  const unread = itemsForSource(`feed:${feed.id}`).length;
+  const unread = options.unreadCount !== undefined ? options.unreadCount : itemsForSource(`feed:${feed.id}`).length;
   const checked = selectedFeedIds.has(feed.id);
   const folders = (feed.folderIds || []).map((id) => feedState.folders.find((folder) => folder.id === id)?.name).filter(Boolean);
   const folderNote = options.showFolder && folders.length ? `<small>${escapeFeedText(folders.join(", "))}</small>` : "";
@@ -893,7 +921,7 @@ function feedSourceRow(feed, options = {}) {
     : "";
   return `<li class="feeds-folder feeds-feed-row${feed.status ? ` is-${escapeFeedText(feed.status)}` : ""}">
     <span class="feeds-folder-toggle-space" aria-hidden="true"></span>
-    <button class="feeds-folder-select" type="button" data-select-feed="${id}" data-selection-state="${checked ? "all" : "none"}" aria-pressed="${checked ? "true" : "false"}" aria-label="${escapeFeedText(selectionLabel)}" title="${escapeFeedText(selectionLabel)}">
+    <button class="feeds-folder-select" type="button" data-select-feed="${id}" data-selection-state="${checked ? "all" : "none"}" aria-pressed="${checked ? "false" : "false"}" aria-label="${escapeFeedText(selectionLabel)}" title="${escapeFeedText(selectionLabel)}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/>${selectionMark}</svg>
     </button>
     <div class="feeds-folder-name">
@@ -916,12 +944,16 @@ function newFolderForm() {
 function renderSources() {
   const root = document.querySelector("#feedsSources");
   if (!root) return;
-  const allCount = unreadItems().length;
+  const unreadCounts = getUnreadCountsMap();
+  let allCount = 0;
+  unreadCounts.forEach((c) => { allCount += c; });
   const folders = feedState.folders.map((folder) => {
-    const count = itemsForSource(`folder:${folder.id}`).length;
+    const folderFeeds = feedState.feeds.filter((feed) => (feed.folderIds || []).includes(folder.id));
+    let count = 0;
+    folderFeeds.forEach((feed) => { count += (unreadCounts.get(feed.id) || 0); });
     const open = folderIsOpen(folder);
     const selected = selectedFolderIds.has(folder.id);
-    const hasFeeds = feedState.feeds.some((feed) => (feed.folderIds || []).includes(folder.id));
+    const hasFeeds = folderFeeds.length > 0;
     const id = escapeFeedText(folder.id);
     const name = escapeFeedText(folder.name);
     const editing = editingFolderId === folder.id;
@@ -936,11 +968,10 @@ function renderSources() {
       : `<button class="feeds-folder-name-button" type="button" data-rename-folder="${id}" aria-label="Rename ${name}" title="Select to rename">
           <span>${name}</span><em>${count ? countLabel(count) : ""}</em>
         </button>`;
-    const nested = feedState.feeds
-      .filter((feed) => (feed.folderIds || []).includes(folder.id))
+    const nested = folderFeeds
       .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
       .map((feed) => {
-        const unread = itemsForSource(`feed:${feed.id}`).length;
+        const unread = unreadCounts.get(feed.id) || 0;
         const feedId = escapeFeedText(feed.id);
         return `<li><button type="button" data-source="feed:${feedId}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span>${escapeFeedText(feed.title)}</span><em>${unread ? countLabel(unread) : ""}</em></button></li>`;
       })
@@ -996,13 +1027,30 @@ function renderSources() {
     <li><button type="button" data-source="all" aria-pressed="${selectedSource === "all" ? "true" : "false"}"><span>All items</span><em>${countLabel(allCount)}</em></button></li>
     <li><button type="button" data-source="archive" aria-pressed="${selectedSource === "archive" ? "true" : "false"}"><span>Archive</span><em></em></button></li>
   </ul>
-  <div class="feeds-folder-heading"><span>Folders</span><button type="button" data-start-folder>New folder</button></div>
-  ${folderDraft && !folderDraftMoves ? newFolderForm() : ""}
-  ${folderViewTools}
-  ${selectionTools}
-  <ul class="feeds-source-list">${folders}</ul>
-  <div class="feeds-folder-heading"><span>All feeds</span></div>
-  <ul class="feeds-source-list">${allFeeds.map((feed) => feedSourceRow(feed, { showDelete: true, showFolder: true })).join("") || `<li class="feeds-feed-empty">Feeds you follow show up here.</li>`}</ul>`;
+  <div class="feeds-folder-heading">
+    <button type="button" class="feeds-section-toggle${foldersSectionCollapsed ? " is-collapsed" : ""}" data-toggle-section="folders" aria-expanded="${!foldersSectionCollapsed}">
+      <svg class="feeds-folder-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>Folders</span>
+      <em class="feeds-section-count">(${feedState.folders.length})</em>
+    </button>
+    <button type="button" data-start-folder>New folder</button>
+  </div>
+  ${foldersSectionCollapsed ? "" : `
+    ${folderDraft && !folderDraftMoves ? newFolderForm() : ""}
+    ${folderViewTools}
+    ${selectionTools}
+    <ul class="feeds-source-list">${folders}</ul>
+  `}
+  <div class="feeds-folder-heading">
+    <button type="button" class="feeds-section-toggle${allFeedsSectionCollapsed ? " is-collapsed" : ""}" data-toggle-section="allFeeds" aria-expanded="${!allFeedsSectionCollapsed}">
+      <svg class="feeds-folder-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>All feeds</span>
+      <em class="feeds-section-count">(${feedState.feeds.length})</em>
+    </button>
+  </div>
+  ${allFeedsSectionCollapsed ? "" : `
+    <ul class="feeds-source-list">${allFeeds.map((feed) => feedSourceRow(feed, { showDelete: true, showFolder: true, unreadCount: unreadCounts.get(feed.id) || 0 })).join("") || `<li class="feeds-feed-empty">Feeds you follow show up here.</li>`}</ul>
+  `}`;
   if (folderDraftFocus) {
     folderDraftFocus = false;
     document.querySelector("#newFolderInput")?.focus();
@@ -1170,6 +1218,37 @@ function feedsWelcome() {
         </div>`;
 }
 
+function bindRiverLoadMore(totalItems) {
+  if (riverObserver) {
+    riverObserver.disconnect();
+    riverObserver = null;
+  }
+  const sentinel = document.querySelector("#riverLoadMore");
+  if (!sentinel) return;
+
+  const loadNextBatch = () => {
+    if (riverRenderLimit < totalItems) {
+      riverRenderLimit += 40;
+      renderList();
+    }
+  };
+
+  if ("IntersectionObserver" in window) {
+    const root = document.querySelector("#feedRiver")?.closest(".feeds-pane") || null;
+    riverObserver = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) {
+        loadNextBatch();
+      }
+    }, { root, rootMargin: "400px" });
+    riverObserver.observe(sentinel);
+  }
+
+  sentinel.querySelector("[data-load-more-river-btn]")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    loadNextBatch();
+  });
+}
+
 function renderList() {
   const river = document.querySelector("#feedRiver");
   if (!river) return;
@@ -1177,6 +1256,13 @@ function renderList() {
   sortButtons.forEach((button) => {
     button.setAttribute("aria-pressed", button.dataset.feedSort === feedSort ? "true" : "false");
   });
+
+  const currentKey = `${selectedSource}|${Array.from(selectedFolderIds).sort().join(",")}|${folderFilterMode}|${feedSort}`;
+  if (currentKey !== lastRenderedSourceKey) {
+    lastRenderedSourceKey = currentKey;
+    riverRenderLimit = 40;
+  }
+
   const unreadWeights = new Map();
   unreadItems().forEach((item) => {
     unreadWeights.set(item.feedId, (unreadWeights.get(item.feedId) || 0) + 1);
@@ -1190,14 +1276,20 @@ function renderList() {
   });
   const filterBanner = folderFilterBanner();
   if (!items.length) {
+    if (riverObserver) {
+      riverObserver.disconnect();
+      riverObserver = null;
+    }
     river.innerHTML = feedState.feeds.length
       ? `${filterBanner}${feedsDiscoverInvite()}<p class="feeds-river-empty">Nothing unread in this view.</p>${feedsSignInNote()}`
       : feedsWelcome();
     return;
   }
+  const visibleItems = items.slice(0, riverRenderLimit);
+  const hasMore = items.length > riverRenderLimit;
   const signedOutNote = feedsSignInNote();
   let lastDay = "";
-  river.innerHTML = filterBanner + feedsDiscoverInvite() + signedOutNote + items.map((item) => {
+  const rowsHtml = visibleItems.map((item) => {
     const feed = feedRecord(item.feedId);
     const day = dayKey(item.publishedAt);
     const heading = feedSort === "latest" && day !== lastDay
@@ -1215,6 +1307,17 @@ function renderList() {
       ${itemImage ? `<span class="feed-row-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" onload="this.classList.add('is-loaded')" onerror="this.closest('.feed-row-thumb-wrap')?.remove()" /></span>` : `<span class="feed-row-thumb" aria-hidden="true"></span>`}
     </button>`;
   }).join("");
+
+  const moreHtml = hasMore
+    ? `<div class="feeds-river-more" id="riverLoadMore">
+        <span class="thumb-spinner" aria-hidden="true"></span>
+        <span>Showing <strong>${visibleItems.length}</strong> of <strong>${countLabel(items.length)}</strong> stories</span>
+        <button class="ghost-button" type="button" data-load-more-river-btn>Load more</button>
+      </div>`
+    : "";
+
+  river.innerHTML = filterBanner + feedsDiscoverInvite() + signedOutNote + rowsHtml + moreHtml;
+  bindRiverLoadMore(items.length);
 }
 
 function renderReader() {
@@ -2219,6 +2322,17 @@ function bindFeedsDesk() {
     if (choice) {
       const feed = feedChoices[Number(choice.dataset.feedChoice)];
       if (feed) void followUrl(feed.url);
+      return;
+    }
+    const sectionToggle = event.target.closest("[data-toggle-section]");
+    if (sectionToggle) {
+      const section = sectionToggle.dataset.toggleSection;
+      if (section === "folders") {
+        foldersSectionCollapsed = !foldersSectionCollapsed;
+      } else if (section === "allFeeds") {
+        allFeedsSectionCollapsed = !allFeedsSectionCollapsed;
+      }
+      renderSources();
       return;
     }
     const folderToggle = event.target.closest("[data-folder-toggle]");
