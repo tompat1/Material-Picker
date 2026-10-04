@@ -1911,10 +1911,12 @@ let youtubeShelf = {
 async function selectYouTubeTopic(subject) {
   const target = (subject === "All" || subject === youtubeShelf.topic) ? "All" : subject;
   youtubeShelf.topic = target === "All" ? "" : target;
-  const topic = youtubeShelf.topic;
-  const topicCache = youtubeShelf.topicCache && typeof youtubeShelf.topicCache === "object"
-    ? youtubeShelf.topicCache
-    : (youtubeShelf.topicCache = {});
+  const { topic } = youtubeShelf;
+  let { topicCache } = youtubeShelf;
+  if (!topicCache || typeof topicCache !== "object") {
+    topicCache = {};
+    youtubeShelf.topicCache = topicCache;
+  }
 
   if (!topic || topic === "All" || topic === "Recently uploaded" || topic === "Posts") {
     paintYouTubeGrid();
@@ -4025,7 +4027,7 @@ function renderActivity() {
   }).join("");
   list.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
-      const videoId = button.dataset.videoId;
+      const { videoId } = button.dataset;
       if (!videoId || !state.videos.some((video) => video.id === videoId)) {
         setStatus("That video is no longer in the library.");
         return;
@@ -5399,7 +5401,7 @@ function renderChapters(video) {
 function seekToChapter(timeOrSeconds) {
   const seconds =
     typeof timeOrSeconds === "number" ? timeOrSeconds : parseChapterClock(timeOrSeconds);
-  const mode = els.playerShell?.dataset.mode;
+  const { mode } = els.playerShell?.dataset || {};
   if (mode === "video" && els.videoPlayer) {
     els.videoPlayer.currentTime = seconds;
     els.videoPlayer.play()?.catch(() => {});
@@ -5652,7 +5654,7 @@ function postEmbedCommand(command) {
 function syncEmbedPlaybackState(event) {
   const host = String(event.origin || "").replace(/^https?:\/\//, "");
   if (!/(^|\.)youtube\.com$|(^|\.)youtube-nocookie\.com$|(^|\.)vimeo\.com$/i.test(host)) return;
-  let data = event.data;
+  let { data } = event;
   if (typeof data === "string") {
     try {
       data = JSON.parse(data);
@@ -5747,7 +5749,7 @@ function dockPlayBubble() {
 }
 
 function playingMediaNode() {
-  const mode = els.playerShell?.dataset.mode;
+  const { mode } = els.playerShell?.dataset || {};
   const node = mode === "video" ? els.videoPlayer : mode === "embed" ? els.embedPlayer : null;
   const hasPicture = mode === "embed"
     ? Boolean(node?.getAttribute("src"))
@@ -5873,7 +5875,7 @@ function bindPlayBubble() {
 
 function togglePlayback() {
   if (!selectedVideo()) return;
-  const mode = els.playerShell?.dataset.mode;
+  const { mode } = els.playerShell?.dataset || {};
   if (mode === "video" && els.videoPlayer) {
     if (els.videoPlayer.paused || els.videoPlayer.ended) els.videoPlayer.play()?.catch(() => {});
     else els.videoPlayer.pause();
