@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createMemoryAccountStore, handleAuthRequest } from "../auth.mjs";
-import { ADMIN_EMAIL, createMemoryCmsStore, handleCmsRequest, isAdminUser } from "../cms.mjs";
+import { ADMIN_EMAIL, createD1CmsStore, createMemoryCmsStore, handleCmsRequest, isAdminUser } from "../cms.mjs";
 
 test("only the admin Google account can edit", () => {
   assert.equal(ADMIN_EMAIL, "tremdia@gmail.com");
@@ -114,4 +114,34 @@ test("shop text and images save for the admin and stay hidden from everyone else
     body: JSON.stringify({ shop: { cap: { imageZoom: 4 } } }),
   }), { store, user: { email: "tremdia@gmail.com" } });
   assert.equal(invalidCrop.status, 400);
+});
+
+test("the D1 CMS adapter binds image bytes as an ArrayBuffer and restores returned blobs", async () => {
+  let insertValues = null;
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...values) {
+          if (sql.startsWith("INSERT INTO cms_media")) insertValues = values;
+          return {
+            async run() {},
+            async first() {
+              return { mime: "image/png", bytes: [1, 2, 3, 4] };
+            },
+          };
+        },
+      };
+    },
+  };
+  const store = createD1CmsStore(db);
+  await store.putMedia("image-test", "image/png", new Uint8Array([1, 2, 3, 4]));
+  assert.equal(insertValues[0], "image-test");
+  assert.equal(insertValues[1], "image/png");
+  assert.ok(insertValues[2] instanceof ArrayBuffer);
+  assert.deepEqual(Array.from(new Uint8Array(insertValues[2])), [1, 2, 3, 4]);
+
+  const media = await store.getMedia("image-test");
+  assert.equal(media.mime, "image/png");
+  assert.ok(media.bytes instanceof Uint8Array);
+  assert.deepEqual(Array.from(media.bytes), [1, 2, 3, 4]);
 });

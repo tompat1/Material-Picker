@@ -167,14 +167,23 @@ export function createD1CmsStore(db) {
         .run();
     },
     async putMedia(id, mime, bytes) {
+      const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+      const blob = view.byteOffset === 0 && view.byteLength === view.buffer.byteLength
+        ? view.buffer
+        : view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
       await db.prepare("INSERT INTO cms_media (id, mime, bytes) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET mime = excluded.mime, bytes = excluded.bytes")
-        .bind(id, mime, bytes)
+        .bind(id, mime, blob)
         .run();
     },
     async getMedia(id) {
       const row = await db.prepare("SELECT mime, bytes FROM cms_media WHERE id = ?").bind(id).first();
       if (!row?.bytes) return null;
-      return { mime: row.mime || "image/jpeg", bytes: row.bytes };
+      const bytes = row.bytes instanceof ArrayBuffer
+        ? new Uint8Array(row.bytes)
+        : ArrayBuffer.isView(row.bytes)
+          ? new Uint8Array(row.bytes.buffer, row.bytes.byteOffset, row.bytes.byteLength)
+          : new Uint8Array(row.bytes);
+      return { mime: row.mime || "image/jpeg", bytes };
     },
   };
 }

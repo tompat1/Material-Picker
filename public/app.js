@@ -9286,9 +9286,25 @@ let cmsUserAdmin = false;
 let cmsEditing = false;
 let cmsSaveQueue = Promise.resolve();
 const cmsPreviewUrls = new Map();
+const cmsPendingImages = new Map();
+const cmsPendingImageUrls = new Map();
+const cmsImageJobs = new Map();
+const cmsImageErrors = new Map();
+const cmsDraftImageCrops = new Map();
+const CMS_IMAGE_UPLOAD_LIMIT = 1_500_000;
+const CMS_IMAGE_PREPARED_LIMIT = 1_425_000;
 
 function merchCatalog() {
-  return MERCH_CATALOG.map((item) => ({ ...item, ...(cmsDoc.shop?.[item.id] || {}) }));
+  return MERCH_CATALOG.map((item) => ({
+    ...item,
+    ...(cmsDoc.shop?.[item.id] || {}),
+    ...(cmsDraftImageCrops.get(item.id) || {}),
+  }));
+}
+
+function storedMerchProduct(id) {
+  const item = MERCH_CATALOG.find((product) => product.id === id);
+  return item ? { ...item, ...(cmsDoc.shop?.[id] || {}) } : null;
 }
 
 async function loadCms() {
@@ -9356,39 +9372,48 @@ async function collectCmsEdits() {
       }
       return;
     }
-    if (prop === "imageZoom" || prop === "imageX" || prop === "imageY") {
-      const value = Number(field.value);
-      const current = merchImageCrop(product)[prop];
-      if (Number.isFinite(value) && value !== current) {
-        patchShop[id] = { ...(patchShop[id] || {}), [prop]: value };
-      }
-      return;
-    }
+    if (prop === "imageZoom" || prop === "imageX" || prop === "imageY") return;
     const text = field.value.replace(/\s+/g, " ").trim();
     if (text !== product[prop]) {
       patchShop[id] = { ...(patchShop[id] || {}), [prop]: text };
     }
   });
 
-  const imageInputs = Array.from(document.querySelectorAll("[data-cms-image]"));
-  for (const input of imageInputs) {
-    const file = input.files?.[0];
-    const id = input.dataset.cmsImage;
-    if (!file || !id) continue;
-    try {
-      const response = await fetch("/api/cms/media", {
-        method: "POST",
-        headers: { "content-type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.ok && data.url) {
-        patchShop[id] = { ...(patchShop[id] || {}), image: data.url };
-      } else {
-        throw new Error(data.error || "The image could not be saved.");
+  await Promise.allSettled(cmsImageJobs.values());
+  if (cmsImageErrors.size) throw new Error(cmsImageErrors.values().next().value);
+
+  for (const [id, crop] of cmsDraftImageCrops) {
+    const product = storedMerchProduct(id);
+    if (!product) continue;
+    const savedCrop = merchImageCrop(product);
+    for (const prop of ["imageZoom", "imageX", "imageY"]) {
+      if (crop[prop] !== savedCrop[prop]) {
+        patchShop[id] = { ...(patchShop[id] || {}), [prop]: crop[prop] };
       }
+    }
+  }
+
+  for (const [id, image] of cmsPendingImages) {
+    try {
+      let imageUrl = cmsPendingImageUrls.get(id);
+      if (!imageUrl) {
+        setCmsImageStatus(id, "Uploading image…", "busy");
+        const response = await fetch("/api/cms/media", {
+          method: "POST",
+          headers: { "content-type": image.type || "image/webp" },
+          body: image,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.url) throw new Error(data.error || "The image could not be saved.");
+        imageUrl = data.url;
+        cmsPendingImageUrls.set(id, imageUrl);
+      }
+      patchShop[id] = { ...(patchShop[id] || {}), image: imageUrl };
     } catch (error) {
-      throw new Error(error.message || "The image upload failed.");
+      const message = error.message || "The image upload failed.";
+      cmsImageErrors.set(id, message);
+      setCmsImageStatus(id, message, "error");
+      throw new Error(message);
     }
   }
 
@@ -9466,27 +9491,111 @@ async function onShopCmsBlur(event) {
   await saveCms({ shop: { [id]: { [prop]: text } } });
 }
 
-function previewShopCmsImage(input) {
+function replaceCmsPreviewUrl(id, image) {
+  const previousUrl = cmsPreviewUrls.get(id);
+  if (previousUrl) URL.revokeObjectURL(previousUrl);
+  const previewUrl = URL.createObjectURL(image);
+  cmsPreviewUrls.set(id, previewUrl);
+  const preview = document.querySelector(`[data-shop-product="${CSS.escape(id)}"] .shop-photo`);
+  if (preview) preview.src = previewUrl;
+}
+
+function setCmsImageStatus(id, message, state = "") {
+  const status = document.querySelector(`[data-shop-product="${CSS.escape(id)}"] [data-cms-image-status]`);
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.state = state;
+}
+
+function cmsImageStatus(id) {
+  if (cmsImageErrors.has(id)) return { message: cmsImageErrors.get(id), state: "error" };
+  if (cmsImageJobs.has(id)) return { message: "Preparing image…", state: "busy" };
+  if (cmsPendingImages.has(id)) return { message: "Ready — choose Done to save.", state: "ready" };
+  return { message: "JPEG, PNG, WebP, or another browser-readable image.", state: "" };
+}
+
+function canvasBlob(canvas, type, quality) {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+async function prepareCmsImage(file) {
+  if (!file.type.startsWith("image/")) throw new Error("Choose an image file.");
+  if (file.size > 30_000_000) throw new Error("Keep the original image under 30 MB.");
+  if (/^image\/(jpeg|png|webp)$/.test(file.type) && file.size <= CMS_IMAGE_UPLOAD_LIMIT) return file;
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    throw new Error("This image format could not be read. Try JPEG, PNG, or WebP.");
+  }
+  let scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+  let width = Math.max(1, Math.round(bitmap.width * scale));
+  let height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  let prepared = null;
+  try {
+    for (let pass = 0; pass < 5 && !prepared; pass += 1) {
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      context.clearRect(0, 0, width, height);
+      context.drawImage(bitmap, 0, 0, width, height);
+      for (const quality of [0.9, 0.82, 0.74, 0.66]) {
+        const candidate = await canvasBlob(canvas, "image/webp", quality);
+        if (candidate && candidate.size <= CMS_IMAGE_PREPARED_LIMIT) {
+          prepared = candidate;
+          break;
+        }
+      }
+      width = Math.max(1, Math.round(width * 0.82));
+      height = Math.max(1, Math.round(height * 0.82));
+    }
+  } finally {
+    bitmap.close?.();
+  }
+  if (!prepared) throw new Error("The image could not be prepared for upload. Try a smaller JPEG or WebP.");
+  return prepared;
+}
+
+async function previewShopCmsImage(input) {
   const file = input.files?.[0];
   const id = input.dataset.cmsImage;
   if (!file || !id) return;
-  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 1_500_000) {
-    input.value = "";
-    setStatus(file.size > 1_500_000 ? "Keep the image under 1.5 MB." : "Use a JPEG, PNG, or WebP image.");
-    return;
-  }
-  const previousUrl = cmsPreviewUrls.get(id);
-  if (previousUrl) URL.revokeObjectURL(previousUrl);
-  const previewUrl = URL.createObjectURL(file);
-  cmsPreviewUrls.set(id, previewUrl);
-  const preview = input.closest(".shop-card")?.querySelector(".shop-photo");
-  if (preview) preview.src = previewUrl;
+  cmsImageErrors.delete(id);
+  cmsPendingImages.delete(id);
+  cmsPendingImageUrls.delete(id);
+  replaceCmsPreviewUrl(id, file);
+  setCmsImageStatus(id, file.size > CMS_IMAGE_UPLOAD_LIMIT ? "Optimizing image…" : "Preparing image…", "busy");
   setStatus("Image preview ready. Adjust its crop, then choose Done to save.");
+
+  const job = prepareCmsImage(file);
+  cmsImageJobs.set(id, job);
+  try {
+    const prepared = await job;
+    if (cmsImageJobs.get(id) !== job) return;
+    cmsPendingImages.set(id, prepared);
+    if (prepared !== file) replaceCmsPreviewUrl(id, prepared);
+    setCmsImageStatus(id, prepared !== file ? "Optimized and ready — choose Done to save." : "Ready — choose Done to save.", "ready");
+  } catch (error) {
+    if (cmsImageJobs.get(id) !== job) return;
+    const message = error.message || "The image could not be prepared.";
+    cmsImageErrors.set(id, message);
+    input.value = "";
+    setCmsImageStatus(id, message, "error");
+    setStatus(message);
+  } finally {
+    if (cmsImageJobs.get(id) === job) cmsImageJobs.delete(id);
+  }
 }
 
 function clearCmsPreviewUrls() {
   for (const url of cmsPreviewUrls.values()) URL.revokeObjectURL(url);
   cmsPreviewUrls.clear();
+  cmsPendingImages.clear();
+  cmsPendingImageUrls.clear();
+  cmsImageErrors.clear();
+  cmsDraftImageCrops.clear();
 }
 
 function saveCms(patch) {
@@ -9579,7 +9688,13 @@ function onShopCmsCropInput(input) {
   const prop = input.dataset.cmsProp;
   const product = merchCatalog().find((item) => item.id === id);
   if (!product || !["imageZoom", "imageX", "imageY"].includes(prop)) return;
-  const crop = { ...merchImageCrop(product), [prop]: Number(input.value) };
+  const crop = merchImageCrop(product);
+  card.querySelectorAll("[data-cms-crop]").forEach((control) => {
+    const controlProp = control.dataset.cmsProp;
+    const value = Number(control.value);
+    if (["imageZoom", "imageX", "imageY"].includes(controlProp) && Number.isFinite(value)) crop[controlProp] = value;
+  });
+  cmsDraftImageCrops.set(id, crop);
   const preview = card.querySelector(".shop-photo");
   if (preview) {
     preview.style.setProperty("--shop-image-x", `${crop.imageX}%`);
@@ -9588,6 +9703,44 @@ function onShopCmsCropInput(input) {
   }
   const output = input.closest("label")?.querySelector("output");
   if (output) output.value = prop === "imageZoom" ? `${Math.round(crop.imageZoom * 100)}%` : `${Math.round(crop[prop])}%`;
+}
+
+function resetShopCmsCrop(button) {
+  const card = button.closest(".shop-card");
+  const id = card?.dataset.shopProduct;
+  if (!card || !id) return;
+  const crop = { imageZoom: 1, imageX: 50, imageY: 50 };
+  cmsDraftImageCrops.set(id, crop);
+  card.querySelectorAll("[data-cms-crop]").forEach((control) => {
+    const prop = control.dataset.cmsProp;
+    control.value = String(crop[prop]);
+    const output = control.closest("label")?.querySelector("output");
+    if (output) output.value = prop === "imageZoom" ? "100%" : "50%";
+  });
+  const preview = card.querySelector(".shop-photo");
+  if (preview) {
+    preview.style.setProperty("--shop-image-x", "50%");
+    preview.style.setProperty("--shop-image-y", "50%");
+    preview.style.setProperty("--shop-image-zoom", "1");
+  }
+  setCmsImageStatus(id, "Crop reset — choose Done to save.", "ready");
+}
+
+function cmsImageEditorMarkup(item, crop) {
+  const status = cmsImageStatus(item.id);
+  return `<fieldset class="cms-image-editor">
+    <legend>Product image</legend>
+    <div class="cms-image-actions">
+      <label class="cms-image-choose"><input class="sr-only" type="file" accept="image/*" data-cms-image="${escapeHtml(item.id)}"><span>Choose image</span></label>
+      <button type="button" class="cms-image-reset" data-cms-image-reset>Reset crop</button>
+    </div>
+    <p class="cms-image-status" role="status" data-cms-image-status data-state="${status.state}">${escapeHtml(status.message)}</p>
+    <div class="cms-image-controls" aria-label="Image crop controls">
+      <label>Zoom <output>${Math.round(crop.imageZoom * 100)}%</output><input type="range" min="1" max="3" step="0.05" value="${crop.imageZoom}" data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="imageZoom" data-cms-crop></label>
+      <label>Horizontal placement <output>${Math.round(crop.imageX)}%</output><input type="range" min="0" max="100" step="1" value="${crop.imageX}" data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="imageX" data-cms-crop></label>
+      <label>Vertical placement <output>${Math.round(crop.imageY)}%</output><input type="range" min="0" max="100" step="1" value="${crop.imageY}" data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="imageY" data-cms-crop></label>
+    </div>
+  </fieldset>`;
 }
 
 function merchMoney(amount) {
@@ -9616,6 +9769,11 @@ function bindMerchShop() {
 }
 
 function onShopClick(event) {
+  const cropReset = event.target.closest("[data-cms-image-reset]");
+  if (cropReset) {
+    resetShopCmsCrop(cropReset);
+    return;
+  }
   const color = event.target.closest("[data-shop-color]");
   if (color) {
     merchColorway = color.dataset.shopColor;
@@ -9644,7 +9802,7 @@ function onShopClick(event) {
 function onShopChange(event) {
   const image = event.target.closest("[data-cms-image]");
   if (image) {
-    previewShopCmsImage(image);
+    void previewShopCmsImage(image);
     return;
   }
   const option = event.target.closest("input[data-shop-option]");
@@ -9797,11 +9955,12 @@ function renderShop() {
     const specs = item.specs.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
     return `<article class="shop-card${item.featured ? " is-featured" : ""}" data-shop-product="${escapeHtml(item.id)}">
       <button class="shop-piece-button" type="button" data-shop-preview="${escapeHtml(item.id)}" aria-label="Preview ${escapeHtml(item.name)}">${merchPieceMarkup(item)}</button>
+      ${cmsEditing ? cmsImageEditorMarkup(item, imageCrop) : ""}
       <div>
         <div class="shop-card-top"><span class="shop-price">${item.priceSek} SEK <small>(${item.priceEur} €)</small></span>${item.badge ? `<span class="shop-badge">${escapeHtml(item.badge)}</span>` : ""}</div>
         <h3>${escapeHtml(item.name)}</h3>
         <p>${escapeHtml(item.description)}</p>
-        ${cmsEditing ? `<div class="cms-fields"><label>Name<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="name" value="${escapeHtml(item.name)}"></label><label>Description<textarea data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="description">${escapeHtml(item.description)}</textarea></label><label>Price SEK<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="priceSek" inputmode="numeric" value="${Number(item.priceSek) || 0}"></label><label>Replace image<input type="file" accept="image/jpeg,image/png,image/webp" data-cms-image="${escapeHtml(item.id)}"><small>The preview above updates before saving.</small></label><div class="cms-image-controls" aria-label="Image crop controls"><label>Zoom <output>${Math.round(imageCrop.imageZoom * 100)}%</output><input type="range" min="1" max="3" step="0.05" value="${imageCrop.imageZoom}" data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="imageZoom" data-cms-crop></label><label>Horizontal placement <output>${Math.round(imageCrop.imageX)}%</output><input type="range" min="0" max="100" step="1" value="${imageCrop.imageX}" data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="imageX" data-cms-crop></label><label>Vertical placement <output>${Math.round(imageCrop.imageY)}%</output><input type="range" min="0" max="100" step="1" value="${imageCrop.imageY}" data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="imageY" data-cms-crop></label></div></div>` : ""}
+        ${cmsEditing ? `<div class="cms-fields"><label>Name<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="name" value="${escapeHtml(item.name)}"></label><label>Description<textarea data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="description">${escapeHtml(item.description)}</textarea></label><label>Price SEK<input data-cms-shop="${escapeHtml(item.id)}" data-cms-prop="priceSek" inputmode="numeric" value="${Number(item.priceSek) || 0}"></label></div>` : ""}
         <dl class="shop-specs">${specs}</dl>
         ${options}
         <p class="shop-stock">${escapeHtml(item.stock)}</p>
