@@ -12,6 +12,7 @@ const TOPIC_LABELS = {
   science: "Science",
   business: "Business",
   sports: "Sports",
+  photography: "Photography",
 };
 
 const feedState = loadFeedState();
@@ -1390,16 +1391,18 @@ function paintDiscoverBar() {
   const bar = document.querySelector("#feedsDiscoverBar");
   const count = document.querySelector("#feedsDiscoverCount");
   const add = document.querySelector("#discoverAdd");
+  const clear = document.querySelector("#discoverClear");
   const tools = document.querySelector("#feedsDirectoryTools");
   const pack = document.querySelector("#discoverTopicPack");
   if (bar && count && add) {
     const { size } = catalogPicks;
     bar.hidden = size === 0;
     bar.classList.toggle("is-sticky", size > 0);
-    count.textContent = size === 1 ? "1 feed selected" : `${size} feeds selected`;
-    add.disabled = size === 0;
+    if (clear) clear.hidden = size === 0;
     const folderNames = discoverFolderNames();
     const folderLabel = folderNames.length ? ` to "${folderNames[0]}"` : "";
+    count.textContent = size === 1 ? `1 feed selected — tap "Add 1 feed" to finish` : `${size} feeds selected — tap "Add ${size} feeds" to finish`;
+    add.disabled = size === 0;
     add.textContent = size === 1 ? `Add 1 feed${folderLabel}` : `Add ${size} feeds${folderLabel}`;
   }
   if (tools && pack) {
@@ -1978,6 +1981,11 @@ function bindFeedsDesk() {
     const task = followCatalogPicks();
     window.pickerWaitUntil?.("feeds-discover", "Adding feeds", task);
     void task;
+  });
+  document.querySelector("#discoverClear")?.addEventListener("click", () => {
+    catalogPicks.clear();
+    renderDirectory();
+    setFeedStatus("Selection cleared.");
   });
   document.querySelector("#discoverTopicPack")?.addEventListener("click", () => selectTopicPack());
   document.querySelector("#feedsSort")?.addEventListener("click", (event) => {

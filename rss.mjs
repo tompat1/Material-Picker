@@ -362,6 +362,7 @@ export const FEED_TOPICS = [
   { id: "design", label: "Design" },
   { id: "evs", label: "EVs & Auto" },
   { id: "music", label: "Music" },
+  { id: "photography", label: "Photography" },
 ];
 
 export const FEED_CATALOG = [
@@ -471,6 +472,13 @@ export const FEED_CATALOG = [
   { id: "pitchfork", title: "Pitchfork", url: "https://pitchfork.com/feed/feed-news/rss", site: "pitchfork.com", topics: ["music"], blurb: "Album reviews and music news" },
   { id: "nme", title: "NME", url: "https://www.nme.com/feed", site: "nme.com", topics: ["music"], blurb: "Music, film, and pop culture" },
   { id: "rick-beato", title: "Rick Beato", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCJquYFIaeaczoV8ctLG5nUg", site: "youtube.com", topics: ["music"], blurb: "YouTube · Music theory and song analysis" },
+
+  // Photography
+  { id: "petapixel", title: "PetaPixel", url: "https://petapixel.com/feed/", site: "petapixel.com", topics: ["photography", "tech"], blurb: "Photography news, gear reviews, camera tech, and tutorials" },
+  { id: "dpreview", title: "DPReview", url: "https://www.dpreview.com/feeds/news.xml", site: "dpreview.com", topics: ["photography", "tech"], blurb: "Digital camera reviews, lens tests, and photography news" },
+  { id: "fstoppers", title: "Fstoppers", url: "https://fstoppers.com/feed", site: "fstoppers.com", topics: ["photography"], blurb: "Photography community, lighting guides, and technique" },
+  { id: "500px-iso", title: "500px ISO", url: "https://iso.500px.com/feed/", site: "500px.com", topics: ["photography"], blurb: "Photo stories, creative inspiration, and portrait galleries" },
+  { id: "feature-shoot", title: "Feature Shoot", url: "https://www.featureshoot.com/feed/", site: "featureshoot.com", topics: ["photography"], blurb: "International contemporary photography and photo essays" },
 ];
 
 const TOPIC_IDS = new Set(FEED_TOPICS.map((topic) => topic.id));
@@ -536,6 +544,13 @@ const SUBJECT_TO_TOPIC = {
   cars: "evs",
   tesla: "evs",
   music: "music",
+  photography: "photography",
+  photo: "photography",
+  photos: "photography",
+  camera: "photography",
+  cameras: "photography",
+  photographer: "photography",
+  photographers: "photography",
 };
 
 export function popularFeedCatalog() {
@@ -570,11 +585,15 @@ export function searchFeedCatalog({ query = "", topic = "" } = {}) {
   const words = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
   const popularRank = new Map(POPULAR_FEED_IDS.map((id, index) => [id, index]));
   if (selected === "popular") {
-    return popularFeedCatalog().filter((feed) => {
-      if (!words.length) return true;
-      const haystack = [feed.title, feed.site, feed.blurb, ...feed.topics].join(" ").toLowerCase();
-      return words.every((word) => haystack.includes(word));
-    });
+    if (words.length) {
+      const popularMatches = popularFeedCatalog().filter((feed) => {
+        const haystack = [feed.title, feed.site, feed.blurb, ...feed.topics].join(" ").toLowerCase();
+        return words.every((word) => haystack.includes(word));
+      });
+      if (popularMatches.length) return popularMatches;
+    } else {
+      return popularFeedCatalog();
+    }
   }
   let mapped = "";
   let topicFilter = "";
