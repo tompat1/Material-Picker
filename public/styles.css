@@ -1393,13 +1393,6 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   max-width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0;
-  transition: opacity 0.22s ease-in-out;
-}
-
-.yt-thumb img.is-loaded,
-.yt-thumb-fallback {
-  opacity: 1;
 }
 
 .yt-duration {
@@ -4129,7 +4122,14 @@ progress::-moz-progress-bar {
   border: 2px solid rgba(244, 235, 221, 0.28);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: thumb-spin 0.7s linear infinite;
+  animation: 
+    thumb-spin 0.7s linear infinite,
+    thumb-fade-in 0.2s 0.15s backwards;
+}
+
+@keyframes thumb-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes thumb-spin {
@@ -4170,12 +4170,6 @@ progress::-moz-progress-bar {
   align-self: stretch;
   justify-self: stretch;
   object-fit: cover;
-  opacity: 0;
-  transition: opacity 0.22s ease-in-out;
-}
-
-.card-thumb img.is-loaded {
-  opacity: 1;
 }
 
 .playing-mark {
@@ -8747,13 +8741,6 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   height: 100%;
   border-radius: 10px;
   object-fit: cover;
-  opacity: 0;
-  transition: opacity 0.22s ease-in-out;
-}
-
-.feed-row-thumb-wrap img.is-loaded,
-.feed-row img.is-loaded {
-  opacity: 1;
 }
 
 .feed-article-thumb-wrap {
@@ -8773,12 +8760,6 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   max-height: 380px;
   object-fit: cover;
   border-radius: 12px;
-  opacity: 0;
-  transition: opacity 0.22s ease-in-out;
-}
-
-.feed-article-thumb-wrap img.is-loaded {
-  opacity: 1;
 }
 
 .feeds-day {
