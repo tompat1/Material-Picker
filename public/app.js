@@ -538,7 +538,9 @@ function init() {
       history.replaceState(null, "", location.pathname);
     }
     if (youtubeConnected) void loadYouTubeHome();
-    return loadLibraryFeed();
+    // The latest-post feed is background content. Do not keep the page-level
+    // loader open while a remote search provider finishes responding.
+    void loadLibraryFeed();
   });
   void Promise.allSettled([loadCms(), accountReady]).finally(releaseBoot);
   void restorePersistedFolders().then(() => loadFolderScript(selectedVideo()));
@@ -2258,7 +2260,7 @@ function paintYouTubeGrid(message = "") {
     </div>
     <div class="yt-card-content">
       <button class="yt-thumb" type="button" data-youtube-open="${index}">
-        ${video.thumbnail ? `<span class="yt-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img alt="" src="${escapeHtml(video.thumbnail)}" loading="lazy" onload="this.classList.add('is-loaded')" onerror="this.remove()" /></span>` : `<span class="yt-thumb-fallback"></span>`}
+        ${video.thumbnail ? `<span class="yt-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img alt="" src="${escapeHtml(video.thumbnail)}" loading="lazy" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.previousElementSibling?.remove();this.remove()" /></span>` : `<span class="yt-thumb-fallback"></span>`}
         ${video.duration ? `<span class="yt-duration">${escapeHtml(video.duration)}</span>` : ""}
       </button>
       <div class="yt-card-body">

@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-10-03T08:53:42.585Z",
         "reason": "Agent: the only PNG reference is a visible navigation icon alpha mask; no raster background is buried under a wash."
+      },
+      {
+        "rule": "nested-cards",
+        "value": "*",
+        "files": [
+          "public/index.html"
+        ],
+        "createdAt": "2026-10-07T19:32:36.326Z",
+        "reason": "Agent: detector matches card-actions/card-download-progress utility regions inside the single video-card template; they are not nested visual surfaces."
       }
     ]
   }
