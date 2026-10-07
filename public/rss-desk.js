@@ -1305,7 +1305,7 @@ function renderList() {
         <strong>${feedState.starred[item.id] ? "★ " : ""}${escapeFeedText(item.title)}</strong>
         ${item.summary ? `<span>${escapeFeedText(item.summary)}</span>` : ""}
       </span>
-      ${itemImage ? `<span class="feed-row-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" onload="this.classList.add('is-loaded')" onerror="this.closest('.feed-row-thumb-wrap')?.remove()" /></span>` : `<span class="feed-row-thumb" aria-hidden="true"></span>`}
+      ${itemImage ? `<span class="feed-row-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.closest('.feed-row-thumb-wrap')?.remove()" /></span>` : `<span class="feed-row-thumb" aria-hidden="true"></span>`}
     </button>`;
   }).join("");
 
@@ -1342,7 +1342,7 @@ function renderReader() {
     <h3>${escapeFeedText(item.title)}</h3>
     ${item.author ? `<p class="feed-article-by">${escapeFeedText(item.author)}</p>` : ""}
     ${sourceHtml}
-    ${readerImage ? `<div class="feed-article-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(readerImage)}" alt="" loading="lazy" onload="this.classList.add('is-loaded')" onerror="this.closest('.feed-article-thumb-wrap')?.remove()" /></div>` : ""}
+    ${readerImage ? `<div class="feed-article-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(readerImage)}" alt="" loading="lazy" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.closest('.feed-article-thumb-wrap')?.remove()" /></div>` : ""}
     ${targetUrl ? `<a class="feed-article-link" href="${escapeFeedText(targetUrl)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(targetUrl) || "Open")} →</a>` : ""}
     ${item.summary ? `<p class="feed-article-body">${escapeFeedText(item.summary)}</p>` : ""}
     <div class="feed-article-actions">
@@ -1734,7 +1734,6 @@ async function pullFeeds(options = {}) {
       }
       done += 1;
       if (done < total) setFeedStatus(`Refreshing feeds… ${done} of ${total}`);
-      paintIncomingFeeds();
     }
   });
   await Promise.all(workers);
