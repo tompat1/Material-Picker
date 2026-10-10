@@ -890,14 +890,22 @@ async function freshAccessToken(userId, store, options, fetchImpl) {
   }
   if (tokens.accessToken && Date.parse(tokens.accessExpiresAt || 0) > Date.now() + 30_000) return tokens.accessToken;
   if (!tokens.refreshToken) return tokens.accessToken;
-  const refreshed = await refreshAccessToken({
-    refreshToken: tokens.refreshToken,
-    clientId: options.clientId,
-    clientSecret: options.clientSecret,
-    fetchImpl,
-  });
-  await store.saveTokens(userId, refreshed);
-  return refreshed.accessToken;
+  try {
+    const refreshed = await refreshAccessToken({
+      refreshToken: tokens.refreshToken,
+      clientId: options.clientId,
+      clientSecret: options.clientSecret,
+      fetchImpl,
+    });
+    await store.saveTokens(userId, refreshed);
+    return refreshed.accessToken;
+  } catch (error) {
+    if (error.status === 401) {
+      await store.saveTokens(userId, { refreshToken: "", accessToken: "", accessExpiresAt: "" });
+      throw Object.assign(new Error("Your YouTube session has expired. Please sign in again."), { status: 401 });
+    }
+    throw error;
+  }
 }
 
 async function exchangeCode({ code, redirectUri, clientId, clientSecret, fetchImpl }) {
@@ -933,7 +941,9 @@ async function refreshAccessToken({ refreshToken, clientId, clientSecret, fetchI
 async function readTokenResponse(response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload.access_token) {
-    throw new Error(payload.error_description || "Google did not return an access token.");
+    const error = new Error(payload.error_description || "Google did not return an access token.");
+    if (payload.error === "invalid_grant") error.status = 401;
+    throw error;
   }
   return {
     accessToken: payload.access_token,
