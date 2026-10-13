@@ -3362,6 +3362,10 @@ html[data-picker-theme="new-age"] .account-google {
   text-transform: none;
 }
 
+.paste-login-hint {
+  margin: 0.55rem 0 0.15rem;
+}
+
 .folder-scan-section {
   display: grid;
   gap: 0.75rem;

@@ -1613,6 +1613,42 @@ async function handleLocalFolderInput(event) {
   event.target.value = "";
 }
 
+function looksLikeLoginWall(html = "") {
+  const text = String(html || "");
+  if (!text.trim()) return false;
+  const lower = text.toLowerCase();
+  const hasPasswordField = /<input\b[^>]*\btype\s*=\s*["']?password["']?/i.test(text);
+  const authPhrases = [
+    "log in",
+    "logga in",
+    "sign in",
+    "sign-in",
+    "please enter your email",
+    "forgot password",
+    "keep me logged in",
+    "continue with google",
+    "magic link",
+    "username or email",
+    "inte kund än",
+  ];
+  const phraseHits = authPhrases.filter((phrase) => lower.includes(phrase)).length;
+  const thinksificLogin = lower.includes("thinkific") && (hasPasswordField || phraseHits >= 1);
+  return thinksificLogin || (hasPasswordField && phraseHits >= 2) || phraseHits >= 3;
+}
+
+function nudgePasteExtractor(message) {
+  const pasteBox = document.querySelector(".fallback-box");
+  if (pasteBox instanceof HTMLDetailsElement) pasteBox.open = true;
+  else pasteBox?.setAttribute("open", "");
+  const importBox = document.querySelector(".page-import-box");
+  if (importBox instanceof HTMLDetailsElement && !importBox.open) importBox.open = true;
+  if (message) setStatus(message);
+  requestAnimationFrame(() => {
+    els.htmlPaste?.focus?.();
+    els.htmlPaste?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  });
+}
+
 async function handleImport(event) {
   event.preventDefault();
   const url = els.sourceUrl.value.trim();
@@ -1628,6 +1664,20 @@ async function handleImport(event) {
     const page = await fetchPageForImport(url);
     cacheSourcePreview(url, page.html, page.finalUrl || url);
     const items = extractVideos(page.html, page.finalUrl || url);
+    const loginWall = !items.length && looksLikeLoginWall(page.html);
+    if (loginWall) {
+      recordScrape(url, {
+        status: "blocked-auth",
+        foundCount: 0,
+        addedCount: 0,
+        method: page.method,
+        message: "Login required",
+      });
+      nudgePasteExtractor(
+        "This page needs you signed in. Open the lesson while logged in, copy View Source (or the mp4/m3u8/embed URL), paste it below, then Extract."
+      );
+      return;
+    }
     const imported = addExtractedVideos(items, url);
     recordScrape(url, {
       status: "completed",
@@ -1636,11 +1686,13 @@ async function handleImport(event) {
       method: page.method,
     });
     if (imported.added) presentImportedVideos(imported.ids);
-    else {
+    else if (!items.length) {
+      nudgePasteExtractor(
+        "The page loaded, but no video links were found. Paste page HTML, embed code, or direct video URLs below, then Extract."
+      );
+    } else {
       setStatus(
-        items.length
-          ? "Those videos are already in the library. Mark the ones you want, choose a folder, and download them."
-          : "The page loaded, but no video links were found. Paste page HTML or embed code into the extractor."
+        "Those videos are already in the library. Mark the ones you want, choose a folder, and download them."
       );
     }
   } catch (error) {
@@ -1651,7 +1703,9 @@ async function handleImport(event) {
       method: "page scan",
       message: error.message,
     });
-    setStatus(`The page could not be scanned: ${error.message}. Paste the page HTML or video links below.`);
+    nudgePasteExtractor(
+      `The page could not be scanned: ${error.message}. Paste page HTML or video links below, then Extract.`
+    );
   }
 }
 
@@ -4094,7 +4148,11 @@ function renderScrapeHistory() {
     const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
       new Date(entry.scrapedAt)
     );
-    const result = entry.status === "blocked" ? "scan blocked" : `${entry.foundCount} found, ${entry.addedCount} added`;
+    const result = entry.status === "blocked-auth"
+      ? "login required"
+      : entry.status === "blocked"
+        ? "scan blocked"
+        : `${entry.foundCount} found, ${entry.addedCount} added`;
     item.innerHTML = `
       <a class="history-url" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(entry.url)}">${escapeHtml(entry.url)}</a>
       <span class="history-meta">${escapeHtml(when)} · ${escapeHtml(entry.method)} · ${escapeHtml(result)}</span>

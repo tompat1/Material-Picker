@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-130" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-131" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -226,6 +226,9 @@
             <summary>Paste page HTML or video links</summary>
             <label for="htmlPaste">HTML, iframe embeds, or one video URL per line</label>
             <textarea id="htmlPaste" rows="7" placeholder="Paste view-source HTML, embed code, m3u8, mp4, YouTube, Vimeo, or Wistia links"></textarea>
+            <p class="hint paste-login-hint">
+              For courses behind a login: open the lesson while signed in, use View Source or Save Page, paste here, then Extract. Direct mp4/m3u8/embed URLs from the Network panel also work.
+            </p>
             <div class="button-row">
               <button class="secondary-button" id="parsePasteButton" type="button">
                 <span>Extract</span>
@@ -981,7 +984,7 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-129" defer></script>
+    <script src="./app.js?v=picker-nav-130" defer></script>
     <script src="./rss-desk.js?v=picker-nav-33" defer></script>
   </body>
 </html>
