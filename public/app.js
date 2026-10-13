@@ -669,6 +669,9 @@ function bindEvents() {
     openTopicResult(openButton.closest(".topic-results"), openButton.dataset.openTopic);
   });
   els.parsePasteButton.addEventListener("click", handlePasteExtract);
+  els.htmlPaste?.addEventListener("input", () => {
+    if (els.htmlPaste.value.trim()) clearPasteNudge();
+  });
   els.addBlankButton.addEventListener("click", () => {
     addVideo({ title: "Untitled video" });
     setStatus("Created a blank video record.");
@@ -1636,12 +1639,34 @@ function looksLikeLoginWall(html = "") {
   return thinksificLogin || (hasPasswordField && phraseHits >= 2) || phraseHits >= 3;
 }
 
-function nudgePasteExtractor(message) {
+function showPasteNudge(message) {
+  const nudge = document.querySelector("#pasteNudge");
+  const text = nudge?.querySelector(".paste-nudge-text");
+  if (!nudge || !text) return;
+  text.textContent = message;
+  nudge.hidden = true;
+  void nudge.offsetWidth;
+  nudge.hidden = false;
+}
+
+function clearPasteNudge() {
+  const nudge = document.querySelector("#pasteNudge");
+  if (!nudge) return;
+  nudge.hidden = true;
+  const text = nudge.querySelector(".paste-nudge-text");
+  if (text) text.textContent = "";
+}
+
+function nudgePasteExtractor(message, nudgeText) {
   const pasteBox = document.querySelector(".fallback-box");
   if (pasteBox instanceof HTMLDetailsElement) pasteBox.open = true;
   const importBox = document.querySelector(".page-import-box");
   if (importBox instanceof HTMLDetailsElement && !importBox.open) importBox.open = true;
   if (message) setStatus(message);
+  showPasteNudge(
+    nudgeText ||
+      "Scan could not pull videos from that page. Paste View Source or media URLs here, then Extract."
+  );
   requestAnimationFrame(() => {
     els.htmlPaste?.focus?.();
     els.htmlPaste?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
@@ -1673,7 +1698,8 @@ async function handleImport(event) {
         message: "Login required",
       });
       nudgePasteExtractor(
-        "This page needs you signed in. Open the lesson while logged in, copy View Source (or the mp4/m3u8/embed URL), paste it below, then Extract."
+        "This page needs you signed in. Open the lesson while logged in, copy View Source (or the mp4/m3u8/embed URL), paste it below, then Extract.",
+        "Scan hit a login wall — paste View Source from the signed-in lesson here."
       );
       return;
     }
@@ -1684,12 +1710,16 @@ async function handleImport(event) {
       addedCount: imported.added,
       method: page.method,
     });
-    if (imported.added) presentImportedVideos(imported.ids);
-    else if (!items.length) {
+    if (imported.added) {
+      clearPasteNudge();
+      presentImportedVideos(imported.ids);
+    } else if (!items.length) {
       nudgePasteExtractor(
-        "The page loaded, but no video links were found. Paste page HTML, embed code, or direct video URLs below, then Extract."
+        "The page loaded, but no video links were found. Paste page HTML, embed code, or direct video URLs below, then Extract.",
+        "No video links on that page — paste HTML or direct media URLs here."
       );
     } else {
+      clearPasteNudge();
       setStatus(
         "Those videos are already in the library. Mark the ones you want, choose a folder, and download them."
       );
@@ -1703,7 +1733,8 @@ async function handleImport(event) {
       message: error.message,
     });
     nudgePasteExtractor(
-      `The page could not be scanned: ${error.message}. Paste page HTML or video links below, then Extract.`
+      `The page could not be scanned: ${error.message}. Paste page HTML or video links below, then Extract.`,
+      "Scan could not reach that page — paste HTML or video links here."
     );
   }
 }
@@ -1754,13 +1785,16 @@ function handlePasteExtract() {
       method: "pasted source",
     });
   }
-  if (imported.added) presentImportedVideos(imported.ids);
-  else {
+  if (imported.added) {
+    clearPasteNudge();
+    presentImportedVideos(imported.ids);
+  } else {
     setStatus(
       items.length
         ? "Those videos are already in the library. Mark the ones you want, choose a folder, and download them."
         : "No supported video links were found. Try pasting the page source or direct embed code."
     );
+    if (items.length) clearPasteNudge();
   }
 }
 
