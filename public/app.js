@@ -1639,7 +1639,6 @@ function looksLikeLoginWall(html = "") {
 function nudgePasteExtractor(message) {
   const pasteBox = document.querySelector(".fallback-box");
   if (pasteBox instanceof HTMLDetailsElement) pasteBox.open = true;
-  else pasteBox?.setAttribute("open", "");
   const importBox = document.querySelector(".page-import-box");
   if (importBox instanceof HTMLDetailsElement && !importBox.open) importBox.open = true;
   if (message) setStatus(message);
