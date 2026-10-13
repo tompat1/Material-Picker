@@ -5119,12 +5119,16 @@ function renderLibraryOfflineManager() {
     els.bulkOfflineStatus.textContent = `Download paused. ${savedParts ? `${savedParts} parts are already saved. ` : ""}Continue to pick up the rest.`;
   } else if (marked.length) {
     const saved = marked.filter((video) => video.offlineUrl && !video.offlineStale).length;
-    const place = offlineExportDirectoryHandle?.name
-      ? `“${offlineExportDirectoryHandle.name}”`
-      : "a folder you choose";
-    els.bulkOfflineStatus.textContent = pending.length
-      ? `${marked.length} marked · ${pending.length} ready to download to ${place}.`
-      : `${marked.length} marked · ${saved} already on disk.`;
+    if (!canPickDownloadFolder() && !isLocalServer()) {
+      els.bulkOfflineStatus.textContent = `${marked.length} marked · Use Chrome (or Edge / Brave), choose a folder on your Mac, and download directly from there.`;
+    } else {
+      const place = offlineExportDirectoryHandle?.name
+        ? `“${offlineExportDirectoryHandle.name}”`
+        : "a folder you choose";
+      els.bulkOfflineStatus.textContent = pending.length
+        ? `${marked.length} marked · ${pending.length} ready to download to ${place}.`
+        : `${marked.length} marked · ${saved} already on disk.`;
+    }
   } else {
     els.bulkOfflineStatus.textContent = "Mark videos below to save them to disk.";
   }
@@ -6910,8 +6914,8 @@ async function ensureDownloadFolder() {
   if (typeof window.showDirectoryPicker === "function" || isLocalServer()) {
     return chooseOfflineFolder();
   }
-  // No folder picker in this browser — downloads go to Material Picker storage.
-  return true;
+  setStatus("Use Chrome (or Edge / Brave), choose a folder on your Mac, and download directly from there.");
+  return false;
 }
 
 async function chooseOfflineFolderViaNativeDialog() {
@@ -6971,7 +6975,11 @@ async function chooseOfflineFolder() {
     }
   }
 
-  setStatus("This browser cannot pick a folder. Downloads stay in Material Picker storage on the computer running the app.");
+  setStatus(
+    isLocalServer()
+      ? "This browser cannot pick a folder. Downloads stay in Material Picker storage on the computer running the app."
+      : "Use Chrome (or Edge / Brave), choose a folder on your Mac, and download directly from there."
+  );
   renderOfflineDestination();
   return false;
 }
@@ -6986,7 +6994,9 @@ function renderOfflineDestination() {
     ? `Chosen folder: ${chosenName}`
     : supported
       ? "Choose a folder on this computer"
-      : "Material Picker storage (this browser cannot choose a folder)";
+      : isLocalServer()
+        ? "Material Picker storage (this browser cannot choose a folder)"
+        : "Use Chrome (or Edge / Brave), choose a folder on your Mac, and download directly from there.";
   els.libraryDestinationStatus.textContent = label;
   const buttonLabel = chosenName ? "Change folder" : "Choose folder";
   els.chooseLibraryFolderButton.textContent = buttonLabel;
@@ -7508,8 +7518,15 @@ async function loadDownloadPlan(video) {
 }
 
 async function saveOrExportOfflineVideo(video, preparedPlan) {
+  if (!isLocalServer() && typeof window.showDirectoryPicker !== "function" && !offlineExportDirectoryHandle) {
+    throw new Error("Use Chrome (or Edge / Brave), choose a folder on your Mac, and download directly from there.");
+  }
   if (!(await ensureDownloadFolder())) {
-    throw new Error("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
+    throw new Error(
+      !isLocalServer() && typeof window.showDirectoryPicker !== "function"
+        ? "Use Chrome (or Edge / Brave), choose a folder on your Mac, and download directly from there."
+        : "Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files."
+    );
   }
   const plan = preparedPlan === undefined ? await loadDownloadPlan(video) : preparedPlan;
   if (!plan) {
@@ -7935,7 +7952,7 @@ async function startOfflineDownload(video) {
   if (!response.ok) {
     throw new Error(
       response.status === 404
-        ? "Downloads to disk run in the local app. Start it with npm start, then choose a folder and download the marked videos."
+        ? "Use Chrome (or Edge / Brave), choose a folder on your Mac, and download directly from there (or run the app locally with npm start)."
         : job.error || `Offline save returned ${response.status}.`
     );
   }
