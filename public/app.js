@@ -10073,7 +10073,7 @@ function buildGlobalAppIndex() {
       subtitle: [speaker, folder, video.duration].filter(Boolean).join(" · ") || "Local video",
       text: `${title} ${speaker} ${folder} ${tags} ${transcript} ${notes}`.toLowerCase(),
       action: () => {
-        openVideoModal(video);
+        if (video.id) selectVideo(video.id, { autoplay: true });
       },
     });
   }
@@ -10084,7 +10084,7 @@ function buildGlobalAppIndex() {
     const title = feed.title || feed.url || "RSS Feed";
     const topics = Array.isArray(feed.topics) ? feed.topics.join(" ") : "";
     index.push({
-      id: `rss:${feed.url}`,
+      id: `rss:${feed.id || feed.url}`,
       category: "RSS Feeds",
       badge: "RSS",
       icon: "📰",
@@ -10092,11 +10092,7 @@ function buildGlobalAppIndex() {
       subtitle: feed.url,
       text: `${title} ${feed.url} ${topics}`.toLowerCase(),
       action: () => {
-        const deskFeeds = document.querySelector("#desk-feeds");
-        if (deskFeeds) {
-          deskFeeds.checked = true;
-          deskFeeds.dispatchEvent(new Event("change", { bubbles: true }));
-        }
+        activateDesk("feeds");
         if (typeof selectFeedByUrl === "function") selectFeedByUrl(feed.url);
       },
     });
@@ -10116,12 +10112,10 @@ function buildGlobalAppIndex() {
       subtitle: speaker,
       text: `${title} ${speaker}`.toLowerCase(),
       action: () => {
-        const deskYt = document.querySelector("#desk-youtube");
-        if (deskYt) {
-          deskYt.checked = true;
-          deskYt.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-        if (item.url) openTopicResult(document.querySelector("#youtubeGrid"), item.url, { autoplay: true });
+        if (!item.url) return;
+        startPlaybackOnLoad = true;
+        const id = ensureTopicVideo(item);
+        if (id) selectVideo(id, { autoplay: true });
       },
     });
   }
@@ -10138,12 +10132,8 @@ function buildGlobalAppIndex() {
       subtitle: "Subscribed Channel",
       text: `${title}`.toLowerCase(),
       action: () => {
-        const deskYt = document.querySelector("#desk-youtube");
-        if (deskYt) {
-          deskYt.checked = true;
-          deskYt.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-        if (typeof loadYouTubeChannel === "function") loadYouTubeChannel(channel.id);
+        activateDesk("youtube");
+        void loadYouTubeChannel(channel.id);
       },
     });
   }
@@ -10160,12 +10150,8 @@ function buildGlobalAppIndex() {
       subtitle: `${pl.count || 0} videos`,
       text: `${title}`.toLowerCase(),
       action: () => {
-        const deskYt = document.querySelector("#desk-youtube");
-        if (deskYt) {
-          deskYt.checked = true;
-          deskYt.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-        if (typeof loadYouTubePlaylist === "function") loadYouTubePlaylist(pl.id);
+        activateDesk("youtube");
+        void loadYouTubePlaylist(pl.id);
       },
     });
   }
@@ -10185,12 +10171,40 @@ function buildGlobalAppIndex() {
       subtitle: [price, lead].filter(Boolean).join(" · "),
       text: `${title} ${lead} merch shop`.toLowerCase(),
       action: () => {
+        activateDesk("shop");
         if (typeof openShopDrawer === "function") openShopDrawer();
       },
     });
   }
 
   return index;
+}
+
+function activateDesk(name) {
+  const tab = document.querySelector(`#desk-${name}`);
+  if (!tab) return;
+  const already = tab.checked;
+  tab.checked = true;
+  if (!already) tab.dispatchEvent(new Event("change", { bubbles: true }));
+  syncPlayBubble?.();
+  syncPlayerBack?.();
+  closeMobileMenus?.();
+}
+
+let globalSearchHitMap = new Map();
+
+function activateGlobalSearchHit(id, query = "") {
+  const targetItem = globalSearchHitMap.get(id);
+  if (!targetItem) return false;
+  if (query) saveRecentGlobalSearch(query);
+  document.querySelector("#globalSearchDialog")?.close();
+  try {
+    targetItem.action();
+  } catch (error) {
+    console.error("Global search action failed", error);
+    setStatus?.(error?.message || "That search result could not be opened.");
+  }
+  return true;
 }
 
 function renderGlobalSearchBody() {
@@ -10201,6 +10215,7 @@ function renderGlobalSearchBody() {
 
   const query = String(input.value || "").trim();
   if (clearBtn) clearBtn.hidden = !query;
+  globalSearchHitMap = new Map();
 
   if (!query) {
     const recent = getRecentGlobalSearches();
@@ -10282,10 +10297,12 @@ function renderGlobalSearchBody() {
     html += `
       <div class="global-search-group">
         <div class="global-search-section-title"><span>${escapeHtml(cat)} (${items.length})</span></div>
-        ${items.slice(0, 8).map((item) => {
+        ${items.slice(0, 8).map((item, offset) => {
+          const hitKey = `${cat}:${offset}`;
+          globalSearchHitMap.set(hitKey, item);
           const highlightedTitle = highlightSearchMatch(item.title, query);
           return `
-            <button type="button" class="global-search-item" data-search-index-id="${escapeHtml(item.id)}">
+            <button type="button" class="global-search-item" data-search-hit="${escapeHtml(hitKey)}">
               <span class="global-search-item-icon">${item.icon}</span>
               <div class="global-search-item-info">
                 <p class="global-search-item-title">${highlightedTitle}</p>
@@ -10300,18 +10317,6 @@ function renderGlobalSearchBody() {
   }
 
   body.innerHTML = html;
-
-  body.querySelectorAll("[data-search-index-id]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.searchIndexId;
-      const targetItem = index.find((it) => it.id === id);
-      if (targetItem) {
-        saveRecentGlobalSearch(query);
-        document.querySelector("#globalSearchDialog")?.close();
-        targetItem.action();
-      }
-    });
-  });
 }
 
 function highlightSearchMatch(text, query) {
@@ -10352,6 +10357,13 @@ function bindGlobalSearch() {
   });
 
   body?.addEventListener("click", (event) => {
+    const hitBtn = event.target.closest("[data-search-hit]");
+    if (hitBtn) {
+      event.preventDefault();
+      activateGlobalSearchHit(hitBtn.dataset.searchHit || "", String(input?.value || "").trim());
+      return;
+    }
+
     const termBtn = event.target.closest("[data-search-term]");
     if (termBtn) {
       const term = termBtn.dataset.searchTerm || "";

@@ -8202,7 +8202,7 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 
 .feeds-source-list button,
 .feeds-folder > button[data-source],
-.feeds-folder ul button {
+.feeds-folder ul button:not(.feeds-folder-action) {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -8231,6 +8231,47 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   font-variant-numeric: tabular-nums;
 }
 
+.feeds-manage-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin: 0.85rem 0 0.55rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+
+.feeds-manage-tabs button {
+  min-height: 2.35rem;
+  padding: 0.35rem 0.7rem;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--muted);
+  font: 650 0.92rem/1.2 var(--sans);
+  cursor: pointer;
+}
+
+.feeds-manage-tabs button em {
+  margin-left: 0.2rem;
+  color: inherit;
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.feeds-manage-tabs button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  color: var(--ink);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.feeds-manage-tabs button:hover,
+.feeds-manage-tabs button:focus-visible {
+  color: var(--ink);
+}
+
 .feeds-folder-heading {
   display: flex;
   align-items: center;
@@ -8239,6 +8280,12 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   margin: 1.1rem 0.45rem 0.35rem;
   color: var(--ink);
   font: 650 1.15rem/1 var(--sans);
+}
+
+.feeds-folder-heading--tab {
+  justify-content: flex-end;
+  margin-top: 0.15rem;
+  margin-bottom: 0.15rem;
 }
 
 .feeds-folder-heading button {
@@ -8443,6 +8490,47 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 .feeds-folder ul {
   grid-column: 1 / -1;
   margin-left: 5.1rem;
+}
+
+.feeds-folder-feed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2.75rem;
+  align-items: center;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.feeds-folder-feed > button[data-source] {
+  min-width: 0;
+}
+
+.feeds-folder-feed > .feeds-folder-action {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  min-height: 2.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.feeds-folder-feed > .feeds-folder-action svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.feeds-folder-feed > .feeds-folder-action:hover,
+.feeds-folder-feed > .feeds-folder-action:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
 }
 
 .feeds-folder-toggle-space {

@@ -36,8 +36,7 @@ let folderDraftFocus = false;
 let editingFolderId = "";
 let folderRenameFocus = false;
 let folderActionPointerDown = false;
-let foldersSectionCollapsed = false;
-let allFeedsSectionCollapsed = false;
+let sourcesManageTab = "folders";
 let selectedTopic = "popular";
 let catalogQuery = "";
 let catalogTopics = [];
@@ -410,7 +409,10 @@ function uniqueStories(items) {
 }
 
 function itemsForSource(source = selectedSource) {
-  if (source === "archive") return uniqueStories(feedState.items.filter((item) => feedState.archived[item.id]));
+  if (source === "archive") {
+    selectedSource = "all";
+    return uniqueStories(unreadItems());
+  }
   if (source === "all") return uniqueStories(unreadItems());
   if (source === "folders") {
     const feedIds = new Set(
@@ -884,7 +886,7 @@ function applyPane() {
       subtitle.textContent = article?.author || "";
     } else {
       const count = itemsForSource().length;
-      subtitle.textContent = selectedSource === "archive" ? `${countLabel(count)} archived` : `${countLabel(count)} unread`;
+      subtitle.textContent = `${countLabel(count)} unread`;
     }
   }
 }
@@ -974,7 +976,13 @@ function renderSources() {
       .map((feed) => {
         const unread = unreadCounts.get(feed.id) || 0;
         const feedId = escapeFeedText(feed.id);
-        return `<li><button type="button" data-source="feed:${feedId}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span>${escapeFeedText(feed.title)}</span><em>${unread ? countLabel(unread) : ""}</em></button></li>`;
+        const title = escapeFeedText(feed.title);
+        return `<li class="feeds-folder-feed">
+          <button type="button" data-source="feed:${feedId}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span>${title}</span><em>${unread ? countLabel(unread) : ""}</em></button>
+          <button class="feeds-folder-action feeds-folder-remove" type="button" data-delete-feed="${feedId}" aria-label="Delete ${title} feed" title="Delete feed">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14"/><path d="M9 7V4.8h6V7"/><path d="m7.2 7 .7 12h8.2l.7-12"/><path d="M10 10.5v5M14 10.5v5"/></svg>
+          </button>
+        </li>`;
       })
       .join("") || `<li class="feeds-feed-empty">No feeds in this folder.</li>`;
     return `<li class="feeds-folder${open ? "" : " is-collapsed"}${selected ? " is-filtered" : ""}">
@@ -1024,32 +1032,24 @@ function renderSources() {
         ${folderDraft && folderDraftMoves ? newFolderForm() : ""}
       </div>`
     : "";
+  const foldersTab = sourcesManageTab === "folders";
   root.innerHTML = `<ul class="feeds-source-list">
     <li><button type="button" data-source="all" aria-pressed="${selectedSource === "all" ? "true" : "false"}"><span>All items</span><em>${countLabel(allCount)}</em></button></li>
-    <li><button type="button" data-source="archive" aria-pressed="${selectedSource === "archive" ? "true" : "false"}"><span>Archive</span><em></em></button></li>
   </ul>
-  <div class="feeds-folder-heading">
-    <button type="button" class="feeds-section-toggle${foldersSectionCollapsed ? " is-collapsed" : ""}" data-toggle-section="folders" aria-expanded="${!foldersSectionCollapsed}">
-      <svg class="feeds-folder-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>Folders</span>
-      <em class="feeds-section-count">(${feedState.folders.length})</em>
-    </button>
-    <button type="button" data-start-folder>New folder</button>
+  <div class="feeds-manage-tabs" role="tablist" aria-label="Manage feeds">
+    <button type="button" role="tab" data-sources-tab="folders" aria-selected="${foldersTab ? "true" : "false"}">Folders <em>(${feedState.folders.length})</em></button>
+    <button type="button" role="tab" data-sources-tab="feeds" aria-selected="${foldersTab ? "false" : "true"}">All feeds <em>(${feedState.feeds.length})</em></button>
   </div>
-  ${foldersSectionCollapsed ? "" : `
+  ${foldersTab ? `
+    <div class="feeds-folder-heading feeds-folder-heading--tab">
+      <button type="button" data-start-folder>New folder</button>
+    </div>
     ${folderDraft && !folderDraftMoves ? newFolderForm() : ""}
     ${folderViewTools}
     ${selectionTools}
-    <ul class="feeds-source-list">${folders}</ul>
-  `}
-  <div class="feeds-folder-heading">
-    <button type="button" class="feeds-section-toggle${allFeedsSectionCollapsed ? " is-collapsed" : ""}" data-toggle-section="allFeeds" aria-expanded="${!allFeedsSectionCollapsed}">
-      <svg class="feeds-folder-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>All feeds</span>
-      <em class="feeds-section-count">(${feedState.feeds.length})</em>
-    </button>
-  </div>
-  ${allFeedsSectionCollapsed ? "" : `
+    <ul class="feeds-source-list">${folders || `<li class="feeds-feed-empty">No folders yet.</li>`}</ul>
+  ` : `
+    ${selectionTools}
     <ul class="feeds-source-list">${allFeeds.map((feed) => feedSourceRow(feed, { showDelete: true, showFolder: true, unreadCount: unreadCounts.get(feed.id) || 0 })).join("") || `<li class="feeds-feed-empty">Feeds you follow show up here.</li>`}</ul>
   `}`;
   if (folderDraftFocus) {
@@ -1516,6 +1516,19 @@ function renderFeeds() {
   renderFolderPicker();
   applyPane();
   if (brokenFeeds().length || deadFeeds().length) paintFeedHealth();
+}
+
+function selectFeedByUrl(url) {
+  const target = canonicalFeedUrl(url);
+  if (!target) return false;
+  const feed = feedState.feeds.find((entry) => canonicalFeedUrl(entry.url) === target);
+  if (!feed) return false;
+  selectedSource = `feed:${feed.id}`;
+  selectedItemId = "";
+  feedPane = 0;
+  revealFolders(feed);
+  renderFeeds();
+  return true;
 }
 
 async function loadDirectory() {
@@ -2331,14 +2344,9 @@ function bindFeedsDesk() {
       if (feed) void followUrl(feed.url);
       return;
     }
-    const sectionToggle = event.target.closest("[data-toggle-section]");
-    if (sectionToggle) {
-      const section = sectionToggle.dataset.toggleSection;
-      if (section === "folders") {
-        foldersSectionCollapsed = !foldersSectionCollapsed;
-      } else if (section === "allFeeds") {
-        allFeedsSectionCollapsed = !allFeedsSectionCollapsed;
-      }
+    const sourcesTab = event.target.closest("[data-sources-tab]");
+    if (sourcesTab) {
+      sourcesManageTab = sourcesTab.dataset.sourcesTab === "feeds" ? "feeds" : "folders";
       renderSources();
       return;
     }
