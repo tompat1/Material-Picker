@@ -409,7 +409,10 @@ function uniqueStories(items) {
 }
 
 function itemsForSource(source = selectedSource) {
-  if (source === "archive") return uniqueStories(feedState.items.filter((item) => feedState.archived[item.id]));
+  if (source === "archive") {
+    // Archive list was removed from the UI; treat as All unread.
+    return uniqueStories(unreadItems());
+  }
   if (source === "all") return uniqueStories(unreadItems());
   if (source === "folders") {
     const feedIds = new Set(
@@ -504,8 +507,7 @@ function dedupeFeedLibrary() {
 }
 
 function sourceTitle(source = selectedSource) {
-  if (source === "archive") return "Archive";
-  if (source === "all") return "All";
+  if (source === "archive" || source === "all") return "All";
   if (source === "folders") {
     const names = selectedFolderNames();
     if (folderFilterMode === "hide") {
@@ -883,7 +885,7 @@ function applyPane() {
       subtitle.textContent = article?.author || "";
     } else {
       const count = itemsForSource().length;
-      subtitle.textContent = selectedSource === "archive" ? `${countLabel(count)} archived` : `${countLabel(count)} unread`;
+      subtitle.textContent = `${countLabel(count)} unread`;
     }
   }
 }
@@ -1504,6 +1506,7 @@ function renderFeedChoices() {
 }
 
 function renderFeeds() {
+  if (selectedSource === "archive") selectedSource = "all";
   document.querySelector("#feedsPanel")?.classList.toggle("is-empty", feedState.feeds.length === 0);
   renderSources();
   renderList();
@@ -2391,7 +2394,7 @@ function bindFeedsDesk() {
         feedState.read[id] = true;
       }
       saveFeedState();
-      if (feedState.archived[id] && selectedSource !== "archive") selectedItemId = "";
+      if (feedState.archived[id]) selectedItemId = "";
       if (!selectedItemId) feedPane = 0;
       renderFeeds();
       return;

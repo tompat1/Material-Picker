@@ -10183,8 +10183,11 @@ function buildGlobalAppIndex() {
 function activateDesk(name) {
   const tab = document.querySelector(`#desk-${name}`);
   if (!tab) return;
+  const already = tab.checked;
   tab.checked = true;
-  tab.dispatchEvent(new Event("change", { bubbles: true }));
+  // Only notify listeners when the desk actually changes; re-firing
+  // (e.g. YouTube home reload) races with search result navigation.
+  if (!already) tab.dispatchEvent(new Event("change", { bubbles: true }));
   syncPlayBubble?.();
   syncPlayerBack?.();
   closeMobileMenus?.();
