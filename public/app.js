@@ -110,6 +110,7 @@ let playlistAddQuery = "";
 const playlistAddSelection = new Set();
 let offlineStoragePath = "";
 let offlineExportDirectoryHandle = null;
+let offlineExportDirectoryPath = "";
 let bulkOfflineRunning = false;
 let bulkOfflineMessage = "";
 let bulkOfflineCurrentId = "";
@@ -123,6 +124,9 @@ let bulkOfflineReport = null;
 let libraryMeasureRunning = false;
 let verificationRunning = false;
 let state = loadState();
+if (state.lastOfflineFolderPath && !offlineExportDirectoryHandle) {
+  offlineExportDirectoryPath = String(state.lastOfflineFolderPath || "");
+}
 let activeCollectionId = "all";
 let mobileLibraryFilter = "all";
 let topicSource = "youtube";
@@ -1720,6 +1724,8 @@ async function handleImport(event) {
       );
     } else {
       clearPasteNudge();
+      closeAddVideoDialog();
+      showDesk("downloads");
       setStatus(
         "Those videos are already in the library. Mark the ones you want, choose a folder, and download them."
       );
@@ -1839,19 +1845,36 @@ function addExtractedVideos(items, sourceUrl = "") {
   return { added: ids.length, ids };
 }
 
+function closeAddVideoDialog() {
+  const dialog = document.querySelector("#addVideoDialog");
+  if (dialog?.open) dialog.close();
+}
+
 function presentImportedVideos(ids) {
   ids.forEach((id) => selectedVideoIds.add(id));
   activeCollectionId = "all";
-  showDesk("reels");
+  closeAddVideoDialog();
+  showDesk("downloads");
   render();
   const count = ids.length;
-  const folder = offlineExportDirectoryHandle?.name;
+  const folder = offlineExportDirectoryHandle?.name || folderNameFromPath(offlineExportDirectoryPath);
   setStatus(
     folder
       ? `Marked ${count} video${count === 1 ? "" : "s"} from this scan. Confirm permission, then download them to “${folder}”. Uncheck any you want to skip.`
       : `Marked ${count} video${count === 1 ? "" : "s"} from this scan. Choose a folder on this computer, confirm permission, then download them. Uncheck any you want to skip.`
   );
   document.querySelector(".library-offline-bar")?.scrollIntoView({ block: "nearest" });
+}
+
+function folderNameFromPath(folderPath = "") {
+  const clean = String(folderPath || "").replace(/[/\\]+$/, "");
+  if (!clean) return "";
+  const parts = clean.split(/[/\\]/);
+  return parts[parts.length - 1] || clean;
+}
+
+function canPickDownloadFolder() {
+  return typeof window.showDirectoryPicker === "function" || isLocalServer();
 }
 
 async function submitAccountForm(path, form) {
@@ -4031,6 +4054,7 @@ function clearAll() {
     favourites: state.favourites || [],
     lastImportFolderName: state.lastImportFolderName || "",
     lastOfflineFolderName: state.lastOfflineFolderName || "",
+    lastOfflineFolderPath: state.lastOfflineFolderPath || "",
     lastScannedFolder: state.lastScannedFolder || "",
     thumbnailStyle: state.thumbnailStyle === "new-age" ? "new-age" : "cinematic",
   };
@@ -4150,9 +4174,16 @@ function renderRecentSources() {
 
 async function useLatestOfflineSource() {
   if (!state.lastOfflineFolderName) return;
+  if (state.lastOfflineFolderPath && !offlineExportDirectoryPath && !offlineExportDirectoryHandle) {
+    offlineExportDirectoryPath = state.lastOfflineFolderPath;
+  }
   const ready = await ensureDownloadFolder();
   if (!ready) return;
-  setStatus(`Downloads will be saved in “${offlineExportDirectoryHandle.name}”.`);
+  const folder =
+    offlineExportDirectoryHandle?.name ||
+    folderNameFromPath(offlineExportDirectoryPath) ||
+    state.lastOfflineFolderName;
+  setStatus(`Downloads will be saved in “${folder}”.`);
   renderOfflineDestination();
   renderLibraryOfflineManager();
 }
@@ -5035,7 +5066,7 @@ function renderLibraryOfflineManager() {
   const visible = visibleVideos();
   const marked = state.videos.filter((video) => selectedVideoIds.has(video.id));
   const pending = marked.filter((video) => canSaveOfflineUrl(video.url) && !hasDiskCopy(video));
-  const exportable = offlineExportDirectoryHandle
+  const exportable = offlineExportDirectoryHandle || offlineExportDirectoryPath
     ? marked.filter((video) => video.offlineUrl && !video.offlineStale && !video.offlineExportedTo)
     : [];
   const actionable = new Set([...pending, ...exportable].map((video) => video.id)).size;
@@ -5054,7 +5085,7 @@ function renderLibraryOfflineManager() {
   const paused = pending.filter((video) => canResumeDownload(video));
   els.saveSelectedOfflineButton.querySelector("span:last-child").textContent = paused.length
     ? "Continue"
-    : offlineExportDirectoryHandle && pending.length === 0
+    : (offlineExportDirectoryHandle || offlineExportDirectoryPath) && pending.length === 0
       ? "Copy marked to folder"
       : "Download marked";
   renderOfflineDestination();
@@ -6864,56 +6895,100 @@ async function reconnectSavedArchives() {
 
 async function ensureDownloadFolder() {
   if (offlineExportDirectoryHandle) return true;
+  if (offlineExportDirectoryPath) return true;
   const stored = await storedDownloadFolder().catch(() => null);
   if (stored?.requestPermission && (await stored.requestPermission({ mode: "readwrite" })) === "granted") {
     offlineExportDirectoryHandle = stored;
+    offlineExportDirectoryPath = "";
     state.lastOfflineFolderName = stored.name || state.lastOfflineFolderName || "";
+    state.lastOfflineFolderPath = "";
     saveState();
     renderRecentSources();
     renderOfflineDestination();
     return true;
   }
-  return chooseOfflineFolder();
+  if (typeof window.showDirectoryPicker === "function" || isLocalServer()) {
+    return chooseOfflineFolder();
+  }
+  // No folder picker in this browser — downloads go to Material Picker storage.
+  return true;
+}
+
+async function chooseOfflineFolderViaNativeDialog() {
+  const response = await fetch("/api/choose-folder?purpose=download", { signal: AbortSignal.timeout(120000) });
+  if (!response.ok) throw new Error("The folder dialog did not respond.");
+  const data = await response.json().catch(() => ({}));
+  if (data.cancelled) return false;
+  if (!data.supported) {
+    setStatus(data.message || "Native folder picking is not available on this computer.");
+    return false;
+  }
+  if (!data.chosenPath) return false;
+  offlineExportDirectoryHandle = null;
+  offlineExportDirectoryPath = data.chosenPath;
+  state.lastOfflineFolderName = folderNameFromPath(data.chosenPath);
+  state.lastOfflineFolderPath = data.chosenPath;
+  saveState();
+  renderRecentSources();
+  setStatus(`Downloads will be saved in “${state.lastOfflineFolderName}”.`);
+  renderOfflineDestination();
+  renderLibraryOfflineManager();
+  return true;
 }
 
 async function chooseOfflineFolder() {
-  if (!("showDirectoryPicker" in window)) {
-    setStatus("This browser cannot pick a folder. Downloads stay in Material Picker storage on the computer running the app.");
-    renderOfflineDestination();
-    return false;
-  }
-  try {
-    offlineExportDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: "downloads" });
-    state.lastOfflineFolderName = offlineExportDirectoryHandle.name;
-    saveState();
-    renderRecentSources();
-    await rememberDownloadFolder(offlineExportDirectoryHandle);
-    setStatus(`Downloads will be saved in “${offlineExportDirectoryHandle.name}”.`);
-    renderOfflineDestination();
-    renderLibraryOfflineManager();
-    return true;
-  } catch (error) {
-    if (error.name === "AbortError") {
-      setStatus("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
-    } else {
-      setStatus(`The download folder could not be opened: ${error.message}`);
+  if (typeof window.showDirectoryPicker === "function") {
+    try {
+      offlineExportDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite", startIn: "downloads" });
+      offlineExportDirectoryPath = "";
+      state.lastOfflineFolderName = offlineExportDirectoryHandle.name;
+      state.lastOfflineFolderPath = "";
+      saveState();
+      renderRecentSources();
+      await rememberDownloadFolder(offlineExportDirectoryHandle);
+      setStatus(`Downloads will be saved in “${offlineExportDirectoryHandle.name}”.`);
+      renderOfflineDestination();
+      renderLibraryOfflineManager();
+      return true;
+    } catch (error) {
+      if (error.name === "AbortError") {
+        setStatus("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
+        return false;
+      }
+      if (!isLocalServer()) {
+        setStatus(`The download folder could not be opened: ${error.message}`);
+        return false;
+      }
     }
-    return false;
   }
+
+  if (isLocalServer()) {
+    try {
+      return await chooseOfflineFolderViaNativeDialog();
+    } catch (error) {
+      setStatus(`The download folder could not be opened: ${error.message}`);
+      return false;
+    }
+  }
+
+  setStatus("This browser cannot pick a folder. Downloads stay in Material Picker storage on the computer running the app.");
+  renderOfflineDestination();
+  return false;
 }
 
 function renderOfflineDestination() {
-  const supported = "showDirectoryPicker" in window;
+  const supported = canPickDownloadFolder();
   const operationRunning = state.videos.some((video) =>
     ["downloading", "exporting"].includes(video.offlineDownloadStatus)
   );
-  const label = offlineExportDirectoryHandle
-    ? `Chosen folder: ${offlineExportDirectoryHandle.name}`
+  const chosenName = offlineExportDirectoryHandle?.name || folderNameFromPath(offlineExportDirectoryPath);
+  const label = chosenName
+    ? `Chosen folder: ${chosenName}`
     : supported
       ? "Choose a folder on this computer"
       : "Material Picker storage (this browser cannot choose a folder)";
   els.libraryDestinationStatus.textContent = label;
-  const buttonLabel = offlineExportDirectoryHandle ? "Change folder" : "Choose folder";
+  const buttonLabel = chosenName ? "Change folder" : "Choose folder";
   els.chooseLibraryFolderButton.textContent = buttonLabel;
   els.chooseLibraryFolderButton.disabled = !supported || bulkOfflineRunning || operationRunning;
 }
@@ -7100,6 +7175,14 @@ async function writeOfflineMetadata(destination, video, extra) {
 }
 
 async function writeDownloadPlan(video, plan) {
+  if (!offlineExportDirectoryHandle && offlineExportDirectoryPath) {
+    await writeDownloadPlanToPath(video, plan, offlineExportDirectoryPath);
+    return;
+  }
+  if (!offlineExportDirectoryHandle) {
+    await startOfflineDownload(video);
+    return;
+  }
   const folderName = video.offlineArchiveFolder || archiveFolderName(video.title, video.id);
   video.offlineArchiveFolder = folderName;
   const destination = await offlineExportDirectoryHandle.getDirectoryHandle(folderName, {
@@ -7187,6 +7270,134 @@ async function writeDownloadPlan(video, plan) {
   });
   renderLibrary();
   renderLibraryOfflineManager();
+}
+
+async function writeServerPlanFile(directory, folderName, file) {
+  const relativePath = [folderName, file.path].filter(Boolean).join("/");
+  const response = await fetch("/api/offline/write-file", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      directory,
+      relativePath,
+      text: typeof file.text === "string" ? file.text : undefined,
+      url: typeof file.text === "string" ? undefined : file.url,
+    }),
+    signal: AbortSignal.timeout(180000),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Could not write ${relativePath}.`);
+  return Number(data.bytes) || 0;
+}
+
+async function writeDownloadPlanToPath(video, plan, directoryPath) {
+  const folderName = video.offlineArchiveFolder || archiveFolderName(video.title, video.id);
+  video.offlineArchiveFolder = folderName;
+  video.offlineDownloadStatus = "exporting";
+  video.offlineFilesDone = 0;
+  video.offlineFilesTotal = plan.files.length;
+  video.offlineBytesDownloaded = 0;
+  video.offlineTotalBytes = Number(plan.estimatedBytes || 0);
+  video.offlineSpeedBytesPerSecond = 0;
+  video.offlineEtaSeconds = null;
+  video.offlineFormat = plan.format;
+  video.offlineProvider = plan.provider;
+  delete video.offlineError;
+  const startedAt = performance.now();
+  let lastRender = 0;
+  let sessionBytes = 0;
+  const noteProgress = (bytes) => {
+    video.offlineBytesDownloaded += bytes;
+    sessionBytes += bytes;
+    video.offlineStalled = false;
+    const elapsedSeconds = Math.max(0.1, (performance.now() - startedAt) / 1000);
+    if (sessionBytes > 0) video.offlineSpeedBytesPerSecond = sessionBytes / elapsedSeconds;
+    const remainingBytes = Number(video.offlineTotalBytes || 0) - video.offlineBytesDownloaded;
+    video.offlineEtaSeconds =
+      sessionBytes > 0 && remainingBytes > 0 ? remainingBytes / video.offlineSpeedBytesPerSecond : video.offlineEtaSeconds;
+    if (performance.now() - lastRender > 250) {
+      renderLibrary();
+      renderLibraryOfflineManager();
+      lastRender = performance.now();
+    }
+  };
+  renderLibrary();
+  renderLibraryOfflineManager();
+
+  const metadataText = offlineMetadataText(video, {
+    format: plan.format,
+    provider: plan.provider,
+    size: Number(plan.estimatedBytes) || 0,
+  });
+  noteProgress(await writeServerPlanFile(directoryPath, folderName, { path: "metadata.json", text: `${metadataText}\n` }));
+
+  for (const file of plan.files) {
+    noteProgress(await writeServerPlanFile(directoryPath, folderName, file));
+    video.offlineFilesDone += 1;
+    saveState();
+    renderLibrary();
+    renderLibraryOfflineManager();
+  }
+
+  const finalMeta = offlineMetadataText(video, {
+    format: plan.format,
+    provider: plan.provider,
+    size: video.offlineBytesDownloaded,
+    savedAt: new Date().toISOString(),
+  });
+  await writeServerPlanFile(directoryPath, folderName, { path: "metadata.json", text: `${finalMeta}\n` });
+
+  video.offlineDownloadStatus = "completed";
+  video.offlineExportedTo = folderNameFromPath(directoryPath) || directoryPath;
+  video.offlineExportedAt = new Date().toISOString();
+  video.offlineSize = video.offlineBytesDownloaded;
+  video.localFolderPath = [directoryPath.replace(/[/\\]+$/, ""), folderName].join("/");
+  delete video.offlineResumePaths;
+  delete video.offlineStalled;
+  saveState();
+  recordActivity({
+    action: "Downloaded",
+    title: video.title,
+    videoId: video.id,
+    detail: video.offlineExportedTo || "",
+  });
+  renderLibrary();
+  renderLibraryOfflineManager();
+}
+
+async function exportOfflineCopyToPath(video) {
+  const copyId = video.offlineCopyId || video.id;
+  const folderName = video.offlineArchiveFolder || archiveFolderName(video.title, copyId);
+  video.offlineArchiveFolder = folderName;
+  video.offlineDownloadStatus = "exporting";
+  renderLibrary();
+  renderLibraryOfflineManager();
+  const response = await fetch("/api/offline/export-copy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: copyId,
+      directory: offlineExportDirectoryPath,
+      folderName,
+    }),
+    signal: AbortSignal.timeout(180000),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "The offline copy could not be exported to the chosen folder.");
+  video.offlineDownloadStatus = "completed";
+  video.offlineExportedTo = folderNameFromPath(offlineExportDirectoryPath) || offlineExportDirectoryPath;
+  video.offlineExportedAt = new Date().toISOString();
+  video.localFolderPath = data.destination || "";
+  saveState();
+  recordActivity({
+    action: "Downloaded",
+    title: video.title,
+    videoId: video.id,
+    detail: video.offlineExportedTo || "",
+  });
+  renderLibrary();
+  renderLibraryOfflineManager();
+  setStatus(`Copied “${video.title || "Untitled video"}” to “${video.offlineExportedTo}”.`);
 }
 
 async function plannedFileSize(root, relativePath) {
@@ -7304,6 +7515,7 @@ async function saveOrExportOfflineVideo(video, preparedPlan) {
   if (!plan) {
     if (!video.offlineUrl || video.offlineStale) await startOfflineDownload(video);
     if (offlineExportDirectoryHandle) await exportOfflineCopy(video);
+    else if (offlineExportDirectoryPath) await exportOfflineCopyToPath(video);
     return;
   }
   await writeDownloadPlan(video, plan);

@@ -1754,11 +1754,13 @@ async function handleUpdateFolderMetadata(request, response) {
   }
 }
 
-function handleChooseFolder(response) {
+function handleChooseFolder(response, requestUrl) {
   if (process.platform !== "darwin") {
     return sendJson(response, 200, { supported: false, message: "Native dialog only supported on macOS." });
   }
-  const script = 'POSIX path of (choose folder with prompt "Select video folder:")';
+  const purpose = requestUrl?.searchParams?.get("purpose") === "download" ? "download" : "scan";
+  const prompt = purpose === "download" ? "Select download folder:" : "Select video folder:";
+  const script = `POSIX path of (choose folder with prompt "${prompt}")`;
   execFile("osascript", ["-e", script], { timeout: 60000 }, (error, stdout) => {
     if (error) {
       return sendJson(response, 200, { supported: true, cancelled: true });
@@ -1766,6 +1768,68 @@ function handleChooseFolder(response) {
     const chosenPath = stdout.trim().replace(/\/$/, "");
     return sendJson(response, 200, { supported: true, chosenPath });
   });
+}
+
+function sanitizeArchiveFolderName(value) {
+  const cleaned = String(value || "video")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return cleaned || "video";
+}
+
+async function handleOfflineExportCopy(request, response) {
+  try {
+    const body = await readJsonBody(request);
+    const id = safeVideoId(body.id || body.videoId);
+    const folderName = sanitizeArchiveFolderName(body.folderName || id);
+    const directory = resolveLocalPath(String(body.directory || ""));
+    if (!directory) return sendJson(response, 400, { error: "A download folder is required." });
+    const stats = await fsp.stat(directory);
+    if (!stats.isDirectory()) return sendJson(response, 400, { error: "That path is not a folder." });
+    const source = path.join(VIDEO_ROOT, id);
+    try {
+      await fsp.access(source);
+    } catch {
+      return sendJson(response, 404, { error: "That offline copy is not in Material Picker storage yet." });
+    }
+    const destination = path.join(directory, folderName);
+    await fsp.cp(source, destination, { recursive: true, force: true });
+    return sendJson(response, 200, { ok: true, destination, folderName });
+  } catch (error) {
+    return sendJson(response, 400, { error: error.message || "The offline copy could not be exported." });
+  }
+}
+
+async function handleOfflineWriteFile(request, response) {
+  try {
+    const body = await readJsonBody(request, MAX_PAGE_BYTES);
+    const directory = resolveLocalPath(String(body.directory || ""));
+    if (!directory) return sendJson(response, 400, { error: "A download folder is required." });
+    const rootStats = await fsp.stat(directory);
+    if (!rootStats.isDirectory()) return sendJson(response, 400, { error: "That path is not a folder." });
+    const relativePath = String(body.relativePath || body.path || "")
+      .split(/[/\\]+/)
+      .filter((part) => part && part !== "." && part !== "..")
+      .join(path.sep);
+    if (!relativePath) return sendJson(response, 400, { error: "A relative file path is required." });
+    const target = path.resolve(directory, relativePath);
+    if (!target.startsWith(`${path.resolve(directory)}${path.sep}`)) {
+      return sendJson(response, 403, { error: "Forbidden." });
+    }
+    await fsp.mkdir(path.dirname(target), { recursive: true });
+    if (typeof body.text === "string") {
+      await fsp.writeFile(target, body.text, "utf8");
+      return sendJson(response, 200, { ok: true, bytes: Buffer.byteLength(body.text, "utf8") });
+    }
+    const remoteUrl = String(body.url || "");
+    const job = { bytesDownloaded: 0 };
+    await downloadRemoteFile(remoteUrl, target, job);
+    return sendJson(response, 200, { ok: true, bytes: job.bytesDownloaded });
+  } catch (error) {
+    return sendJson(response, 400, { error: error.message || "The file could not be written." });
+  }
 }
 
 function imageContentType(bytes) {
@@ -2045,7 +2109,13 @@ function startServer() {
       return handleUpdateFolderMetadata(request, response);
     }
     if (request.method === "GET" && requestUrl.pathname === "/api/choose-folder") {
-      return handleChooseFolder(response);
+      return handleChooseFolder(response, requestUrl);
+    }
+    if (request.method === "POST" && requestUrl.pathname === "/api/offline/export-copy") {
+      return handleOfflineExportCopy(request, response);
+    }
+    if (request.method === "POST" && requestUrl.pathname === "/api/offline/write-file") {
+      return handleOfflineWriteFile(request, response);
     }
     if (IS_DEV && request.method === "GET" && requestUrl.pathname === "/api/dev-livereload") {
       if (requestUrl.searchParams.has("ping")) {
