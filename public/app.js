@@ -10133,7 +10133,7 @@ function buildGlobalAppIndex() {
       text: `${title}`.toLowerCase(),
       action: () => {
         activateDesk("youtube");
-        void loadYouTubeChannel(channel.id);
+        if (typeof loadYouTubeChannel === "function") void loadYouTubeChannel(channel.id);
       },
     });
   }
@@ -10151,7 +10151,7 @@ function buildGlobalAppIndex() {
       text: `${title}`.toLowerCase(),
       action: () => {
         activateDesk("youtube");
-        void loadYouTubePlaylist(pl.id);
+        if (typeof loadYouTubePlaylist === "function") void loadYouTubePlaylist(pl.id);
       },
     });
   }
@@ -10183,9 +10183,8 @@ function buildGlobalAppIndex() {
 function activateDesk(name) {
   const tab = document.querySelector(`#desk-${name}`);
   if (!tab) return;
-  const already = tab.checked;
   tab.checked = true;
-  if (!already) tab.dispatchEvent(new Event("change", { bubbles: true }));
+  tab.dispatchEvent(new Event("change", { bubbles: true }));
   syncPlayBubble?.();
   syncPlayerBack?.();
   closeMobileMenus?.();
@@ -10297,12 +10296,11 @@ function renderGlobalSearchBody() {
     html += `
       <div class="global-search-group">
         <div class="global-search-section-title"><span>${escapeHtml(cat)} (${items.length})</span></div>
-        ${items.slice(0, 8).map((item, offset) => {
-          const hitKey = `${cat}:${offset}`;
-          globalSearchHitMap.set(hitKey, item);
+        ${items.slice(0, 8).map((item) => {
+          globalSearchHitMap.set(item.id, item);
           const highlightedTitle = highlightSearchMatch(item.title, query);
           return `
-            <button type="button" class="global-search-item" data-search-hit="${escapeHtml(hitKey)}">
+            <button type="button" class="global-search-item" data-search-hit="${escapeHtml(item.id)}">
               <span class="global-search-item-icon">${item.icon}</span>
               <div class="global-search-item-info">
                 <p class="global-search-item-title">${highlightedTitle}</p>

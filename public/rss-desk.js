@@ -409,10 +409,7 @@ function uniqueStories(items) {
 }
 
 function itemsForSource(source = selectedSource) {
-  if (source === "archive") {
-    selectedSource = "all";
-    return uniqueStories(unreadItems());
-  }
+  if (source === "archive") return uniqueStories(feedState.items.filter((item) => feedState.archived[item.id]));
   if (source === "all") return uniqueStories(unreadItems());
   if (source === "folders") {
     const feedIds = new Set(
@@ -886,7 +883,7 @@ function applyPane() {
       subtitle.textContent = article?.author || "";
     } else {
       const count = itemsForSource().length;
-      subtitle.textContent = `${countLabel(count)} unread`;
+      subtitle.textContent = selectedSource === "archive" ? `${countLabel(count)} archived` : `${countLabel(count)} unread`;
     }
   }
 }
