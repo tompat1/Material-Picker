@@ -900,6 +900,36 @@ function getUnreadCountsMap() {
   return counts;
 }
 
+function feedIconUrl(feed) {
+  const candidates = [feed?.siteUrl, feed?.site ? `https://${feed.site}` : "", feed?.url];
+  for (const candidate of candidates) {
+    try {
+      const url = new URL(candidate);
+      if (url.protocol === "http:" || url.protocol === "https:") return `${url.origin}/favicon.ico`;
+    } catch {
+      // Keep looking for a usable site address.
+    }
+  }
+  return "";
+}
+
+function feedIconMarkup(feed) {
+  const title = String(feed?.title || "Feed").trim();
+  const initials = title
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase() || "F";
+  const hue = Array.from(title).reduce((total, character) => total + character.charCodeAt(0), 0) % 360;
+  const iconUrl = feedIconUrl(feed);
+  return `<span class="feeds-feed-icon" style="--feed-icon-hue:${hue}" aria-hidden="true">
+    <span>${escapeFeedText(initials)}</span>
+    ${iconUrl ? `<img src="${escapeFeedText(iconUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-feed-icon />` : ""}
+  </span>`;
+}
+
 function feedSourceRow(feed, options = {}) {
   const unread = options.unreadCount !== undefined ? options.unreadCount : itemsForSource(`feed:${feed.id}`).length;
   const checked = selectedFeedIds.has(feed.id);
@@ -928,7 +958,7 @@ function feedSourceRow(feed, options = {}) {
     </button>
     <div class="feeds-folder-name">
       <button class="feeds-folder-name-button" type="button" data-source="feed:${id}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}">
-        <span>${title}${folderNote}</span><em>${unread ? countLabel(unread) : ""}</em>
+        <span class="feeds-feed-label">${feedIconMarkup(feed)}<span class="feeds-feed-title">${title}${folderNote}</span></span><em>${unread ? countLabel(unread) : ""}</em>
       </button>
     </div>
     <div class="feeds-feed-health">${health}</div>
@@ -977,7 +1007,7 @@ function renderSources() {
         const feedId = escapeFeedText(feed.id);
         const title = escapeFeedText(feed.title);
         return `<li class="feeds-folder-feed">
-          <button type="button" data-source="feed:${feedId}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span>${title}</span><em>${unread ? countLabel(unread) : ""}</em></button>
+          <button type="button" data-source="feed:${feedId}" aria-pressed="${selectedSource === `feed:${feed.id}` ? "true" : "false"}"><span class="feeds-feed-label">${feedIconMarkup(feed)}<span class="feeds-feed-title">${title}</span></span><em>${unread ? countLabel(unread) : ""}</em></button>
           <button class="feeds-folder-action feeds-folder-remove" type="button" data-delete-feed="${feedId}" aria-label="Delete ${title} feed" title="Delete feed">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14"/><path d="M9 7V4.8h6V7"/><path d="m7.2 7 .7 12h8.2l.7-12"/><path d="M10 10.5v5M14 10.5v5"/></svg>
           </button>
@@ -1032,8 +1062,9 @@ function renderSources() {
       </div>`
     : "";
   const foldersTab = sourcesManageTab === "folders";
-  root.innerHTML = `<ul class="feeds-source-list">
-    <li><button type="button" data-source="all" aria-pressed="${selectedSource === "all" ? "true" : "false"}"><span>All items</span><em>${countLabel(allCount)}</em></button></li>
+  root.innerHTML = `<div class="feeds-sources-heading"><span>Feeds</span></div>
+  <ul class="feeds-source-list feeds-source-list--all">
+    <li><button type="button" data-source="all" aria-pressed="${selectedSource === "all" ? "true" : "false"}"><span class="feeds-all-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg><span>All items</span></span><em>${countLabel(allCount)}</em></button></li>
   </ul>
   <div class="feeds-manage-tabs" role="tablist" aria-label="Manage feeds">
     <button type="button" role="tab" data-sources-tab="folders" aria-selected="${foldersTab ? "true" : "false"}">Folders <em>(${feedState.folders.length})</em></button>
@@ -1481,7 +1512,7 @@ function renderDirectory() {
         <input type="checkbox" id="${inputId}" data-catalog-pick="${escapeFeedText(feed.url)}" data-catalog-title="${escapeFeedText(feed.title)}" data-catalog-topics="${escapeFeedText((feed.topics || []).join(","))}" ${picked ? "checked" : ""} ${following ? "disabled" : ""} />
         <label class="feed-directory-copy" for="${inputId}">
           <p class="feed-directory-tag">${escapeFeedText((feed.topics || []).map(topicLabel).join(" · "))}</p>
-          <h3 class="feed-directory-title">${escapeFeedText(feed.title)}</h3>
+          <h3 class="feed-directory-title">${feedIconMarkup(feed)}<span>${escapeFeedText(feed.title)}</span></h3>
           <p class="feed-directory-blurb">${escapeFeedText(feed.blurb)}</p>
         </label>
       </div>
@@ -1562,7 +1593,7 @@ function setFeedsDialogMode(mode) {
   const setup = document.querySelector("#feedsSetupBlock");
   const resolved = mode === "setup" ? "setup" : "discover";
   if (dialog) dialog.dataset.mode = resolved;
-  if (title) title.textContent = resolved === "setup" ? "Setup feeds" : "Find interesting feeds";
+  if (title) title.textContent = resolved === "setup" ? "Feeds & folders" : "Find interesting feeds";
   if (setup) setup.open = resolved === "setup";
   paintDiscoverSteps();
 }
@@ -1954,6 +1985,10 @@ function bindFeedsDesk() {
   const panel = document.querySelector("#feedsPanel");
   if (!panel || panel.dataset.bound === "true") return;
   panel.dataset.bound = "true";
+  panel.addEventListener("error", (event) => {
+    const image = event.target.closest?.("img[data-feed-icon]");
+    if (image) image.hidden = true;
+  }, true);
   dedupeFeedLibrary();
   normalizeFolderCollapse();
   feedState.feeds.forEach((feed) => {
