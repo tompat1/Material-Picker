@@ -1276,7 +1276,10 @@ async function processImportedFolderEntries(entries, rootFolderName, defaultColl
   setStatus(
     `${resultParts.length ? resultParts.join(", ") : "No videos found"} from “${rootFolderName}”.${reconnectedCount || addedCount ? " Ready to play!" : ""}`
   );
-  if (reconnectedCount || addedCount) showDesk(reconnectedCount + addedCount === 1 ? "screen" : "reels");
+  if (reconnectedCount || addedCount) {
+    closeAddVideoDialog();
+    showDesk(reconnectedCount + addedCount === 1 ? "screen" : "reels");
+  }
   return addedCount;
 }
 
@@ -1479,7 +1482,10 @@ async function scanFolderPath(folderPath) {
 
     const { folderName, videos = [], totalCount = 0 } = result;
     if (totalCount === 0 || videos.length === 0) {
-      setStatus(`Scanned “${folderName}” (including subfolders), but found no supported video files.`, false);
+      setStatus(
+        `Scanned “${folderName}” (including subfolders), but found no supported video files (mp4, mov, mkv, webm, m4v, or HLS packages).`,
+        false
+      );
       return;
     }
 
@@ -1572,17 +1578,18 @@ async function scanFolderPath(folderPath) {
     }
 
     saveState();
+    closeAddVideoDialog();
+    showDesk(addedCount === 1 || (!addedCount && videos.length === 1) ? "screen" : "reels");
     render();
 
     const distinctSubfolders = new Set(videos.map((v) => v.subfolder).filter(Boolean));
     const subfolderInfo = distinctSubfolders.size > 0 ? ` across ${distinctSubfolders.size} subfolders` : "";
 
     const countMsg = addedCount > 0
-      ? `Scraped ${addedCount} new video ${addedCount === 1 ? "file" : "files"}${subfolderInfo} into “${folderName}”. Ready to play!`
+      ? `Imported ${addedCount} new video ${addedCount === 1 ? "file" : "files"}${subfolderInfo} from “${folderName}”. Ready to play!`
       : `Refreshed ${videos.length} video ${videos.length === 1 ? "file" : "files"}${subfolderInfo} in “${folderName}”. Selected and ready to play!`;
 
     setStatus(countMsg, false);
-    showDesk("screen");
   } catch (error) {
     setStatus(`Folder scan error: ${error.message}`, false);
   } finally {

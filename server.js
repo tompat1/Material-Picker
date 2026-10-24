@@ -1802,6 +1802,46 @@ async function handleOfflineExportCopy(request, response) {
   }
 }
 
+async function handleOfflineCopyLocal(request, response) {
+  try {
+    const body = await readJsonBody(request, MAX_PAGE_BYTES);
+    const sourcePath = resolveLocalPath(String(body.sourcePath || ""));
+    const directory = resolveLocalPath(String(body.directory || ""));
+    const folderName = sanitizeArchiveFolderName(body.folderName || path.basename(sourcePath) || "video");
+    if (!sourcePath) return sendJson(response, 400, { error: "A source path is required." });
+    if (!directory) return sendJson(response, 400, { error: "A download folder is required." });
+    const [sourceStats, destStats] = await Promise.all([fsp.stat(sourcePath), fsp.stat(directory)]);
+    if (!destStats.isDirectory()) return sendJson(response, 400, { error: "That download path is not a folder." });
+    const destination = path.join(directory, folderName);
+    const resolvedDest = path.resolve(destination);
+    const resolvedRoot = path.resolve(directory);
+    if (!resolvedDest.startsWith(`${resolvedRoot}${path.sep}`)) {
+      return sendJson(response, 403, { error: "Forbidden." });
+    }
+    if (sourceStats.isDirectory()) {
+      await fsp.cp(sourcePath, destination, { recursive: true, force: true });
+    } else if (sourceStats.isFile()) {
+      await fsp.mkdir(destination, { recursive: true });
+      await fsp.copyFile(sourcePath, path.join(destination, path.basename(sourcePath)));
+    } else {
+      return sendJson(response, 400, { error: "That source path is not a file or folder." });
+    }
+    if (body.metadata && typeof body.metadata === "object") {
+      const metaPath = path.join(destination, "metadata.json");
+      let existing = {};
+      try {
+        existing = JSON.parse(await fsp.readFile(metaPath, "utf8"));
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      await fsp.writeFile(metaPath, `${JSON.stringify({ ...existing, ...body.metadata, savedAt: new Date().toISOString() }, null, 2)}\n`, "utf8");
+    }
+    return sendJson(response, 200, { ok: true, destination, folderName });
+  } catch (error) {
+    return sendJson(response, 400, { error: error.message || "The local media could not be copied." });
+  }
+}
+
 async function handleOfflineWriteFile(request, response) {
   try {
     const body = await readJsonBody(request, MAX_PAGE_BYTES);
@@ -2113,6 +2153,9 @@ function startServer() {
     }
     if (request.method === "POST" && requestUrl.pathname === "/api/offline/export-copy") {
       return handleOfflineExportCopy(request, response);
+    }
+    if (request.method === "POST" && requestUrl.pathname === "/api/offline/copy-local") {
+      return handleOfflineCopyLocal(request, response);
     }
     if (request.method === "POST" && requestUrl.pathname === "/api/offline/write-file") {
       return handleOfflineWriteFile(request, response);
