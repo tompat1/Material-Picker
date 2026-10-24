@@ -5071,13 +5071,11 @@ function visibleVideos() {
 
 function renderLibraryOfflineManager() {
   const visible = visibleVideos();
-  const marked = state.videos.filter((video) => selectedVideoIds.has(video.id));
-  const pending = marked.filter((video) => canSaveOfflineUrl(video.url) && !hasDiskCopy(video));
-  const exportable = offlineExportDirectoryHandle || offlineExportDirectoryPath
-    ? marked.filter((video) => video.offlineUrl && !video.offlineStale && !video.offlineExportedTo)
-    : [];
-  const actionable = new Set([...pending, ...exportable].map((video) => video.id)).size;
-  const eligibleVisible = visible.filter((video) => canSaveOfflineUrl(video.url));
+  const { marked, pending, copyable, videos: actionableVideos } = markedDownloadJobs();
+  const actionable = actionableVideos.length;
+  const eligibleVisible = visible.filter(
+    (video) => canSaveOfflineUrl(video.url) || isLocalOrOfflineSource(video)
+  );
   const allVisibleMarked =
     eligibleVisible.length > 0 && eligibleVisible.every((video) => selectedVideoIds.has(video.id));
   els.markAllOfflineButton.disabled = !eligibleVisible.length || bulkOfflineRunning || verificationRunning;
@@ -5085,16 +5083,23 @@ function renderLibraryOfflineManager() {
   if (els.verifyOfflineButton) {
     els.verifyOfflineButton.disabled = bulkOfflineRunning || verificationRunning;
   }
-  els.libraryOfflinePermission.disabled = !pending.length || bulkOfflineRunning || verificationRunning;
-  if (offlineExportDirectoryHandle) els.libraryOfflinePermission.disabled = !actionable || bulkOfflineRunning || verificationRunning;
+  const hasDestination = Boolean(offlineExportDirectoryHandle || offlineExportDirectoryPath);
+  els.libraryOfflinePermission.disabled = !actionable || bulkOfflineRunning || verificationRunning;
   els.saveSelectedOfflineButton.disabled =
     !actionable || !els.libraryOfflinePermission.checked || bulkOfflineRunning || verificationRunning;
   const paused = pending.filter((video) => canResumeDownload(video));
+  const copyOnly = pending.length === 0 && copyable.length > 0;
   els.saveSelectedOfflineButton.querySelector("span:last-child").textContent = paused.length
     ? "Continue"
-    : (offlineExportDirectoryHandle || offlineExportDirectoryPath) && pending.length === 0
+    : copyOnly
       ? "Copy marked to folder"
       : "Download marked";
+  const permissionLabel = els.libraryOfflinePermission?.closest("label")?.querySelector("span:last-child");
+  if (permissionLabel) {
+    permissionLabel.textContent = copyOnly
+      ? "I have permission to copy the marked videos to this computer."
+      : "I have permission to download the marked videos.";
+  }
   renderOfflineDestination();
   renderBulkOfflineReport();
   els.bulkDownloadProgress.hidden = !bulkOfflineRunning && !paused.length;
@@ -5125,19 +5130,27 @@ function renderLibraryOfflineManager() {
       : "Saved pieces are still in the folder";
     els.bulkOfflineStatus.textContent = `Download paused. ${savedParts ? `${savedParts} parts are already saved. ` : ""}Continue to pick up the rest.`;
   } else if (marked.length) {
-    const saved = marked.filter((video) => video.offlineUrl && !video.offlineStale).length;
     if (!canPickDownloadFolder() && !isLocalServer()) {
       els.bulkOfflineStatus.textContent = `${marked.length} marked · Use Chrome (or Edge / Brave), choose a folder on your Mac, and download directly from there.`;
     } else {
-      const place = offlineExportDirectoryHandle?.name
-        ? `“${offlineExportDirectoryHandle.name}”`
-        : "a folder you choose";
-      els.bulkOfflineStatus.textContent = pending.length
-        ? `${marked.length} marked · ${pending.length} ready to download to ${place}.`
-        : `${marked.length} marked · ${saved} already on disk.`;
+      const place = offlineExportDirectoryHandle?.name || folderNameFromPath(offlineExportDirectoryPath);
+      const placeLabel = place ? `“${place}”` : "a folder you choose";
+      if (pending.length && copyable.length) {
+        els.bulkOfflineStatus.textContent = `${marked.length} marked · ${pending.length} to download and ${copyable.length} to copy into ${placeLabel}.`;
+      } else if (pending.length) {
+        els.bulkOfflineStatus.textContent = `${marked.length} marked · ${pending.length} ready to download to ${placeLabel}.`;
+      } else if (copyable.length) {
+        els.bulkOfflineStatus.textContent = hasDestination
+          ? `${marked.length} marked · ${copyable.length} ready to copy into ${placeLabel}.`
+          : `${marked.length} marked · choose a folder, then copy these local/offline videos onto this computer.`;
+      } else {
+        const saved = marked.filter((video) => video.offlineExportedTo || (video.offlineUrl && !video.offlineStale)).length;
+        els.bulkOfflineStatus.textContent = `${marked.length} marked · ${saved} already saved on this computer.`;
+      }
     }
   } else {
-    els.bulkOfflineStatus.textContent = "Mark videos below to save them to disk.";
+    els.bulkOfflineStatus.textContent =
+      "Mark videos below to download online videos or copy local/offline ones into a folder on this computer.";
   }
 }
 
@@ -5205,7 +5218,9 @@ function offlineProgressLabel(video) {
 }
 
 function toggleMarkAllOffline() {
-  const visible = visibleVideos().filter((video) => canSaveOfflineUrl(video.url));
+  const visible = visibleVideos().filter(
+    (video) => canSaveOfflineUrl(video.url) || isLocalOrOfflineSource(video)
+  );
   const shouldUnmark = visible.length > 0 && visible.every((video) => selectedVideoIds.has(video.id));
   visible.forEach((video) => {
     if (shouldUnmark) selectedVideoIds.delete(video.id);
@@ -6538,15 +6553,53 @@ function hasDiskCopy(video) {
   return Boolean((video?.offlineUrl && !video.offlineStale) || video?.offlineExportedTo);
 }
 
-async function saveSelectedOfflineVideos() {
-  const videos = state.videos.filter(
-    (video) => selectedVideoIds.has(video.id) && canSaveOfflineUrl(video.url) && !hasDiskCopy(video)
+function parseLocalMediaUrl(url = "") {
+  const raw = String(url || "");
+  if (!raw.startsWith("/local-media/")) return null;
+  const remainder = raw.slice("/local-media/".length);
+  const slashIdx = remainder.indexOf("/");
+  if (slashIdx < 0) {
+    return { baseDir: decodeURIComponent(remainder), fileName: "" };
+  }
+  return {
+    baseDir: decodeURIComponent(remainder.slice(0, slashIdx)),
+    fileName: decodeURIComponent(remainder.slice(slashIdx + 1)),
+  };
+}
+
+function isLocalOrOfflineSource(video) {
+  const url = String(video?.offlineUrl || video?.url || "");
+  return (
+    url.startsWith("/local-media/") ||
+    url.startsWith("/offline-media/") ||
+    url.includes("/hls-package/") ||
+    Boolean(video?.offlineUrl && !video.offlineStale)
   );
+}
+
+function canCopyOfflineToFolder(video) {
+  if (!video || video.offlineExportedTo) return false;
+  if (!(offlineExportDirectoryHandle || offlineExportDirectoryPath)) return false;
+  return isLocalOrOfflineSource(video);
+}
+
+function markedDownloadJobs() {
+  const marked = state.videos.filter((video) => selectedVideoIds.has(video.id));
+  const pending = marked.filter((video) => canSaveOfflineUrl(video.url) && !hasDiskCopy(video));
+  const pendingIds = new Set(pending.map((video) => video.id));
+  const copyable = marked.filter((video) => canCopyOfflineToFolder(video) && !pendingIds.has(video.id));
+  return { marked, pending, copyable, videos: [...pending, ...copyable] };
+}
+
+async function saveSelectedOfflineVideos() {
+  const { pending, copyable, videos } = markedDownloadJobs();
   if (!videos.length || !els.libraryOfflinePermission.checked || bulkOfflineRunning) return;
   if (!(await ensureDownloadFolder())) {
     setStatus("Create a new folder, such as Movies/Material Picker, and choose that. Chrome blocks folders that contain system files.");
     return;
   }
+  const copyIds = new Set(copyable.map((video) => video.id));
+  const isCopyOnly = pending.length === 0 && copyable.length > 0;
   bulkOfflineRunning = true;
   bulkOfflineTotal = videos.length;
   bulkOfflineIndex = 0;
@@ -6559,32 +6612,42 @@ async function saveSelectedOfflineVideos() {
   const failures = [];
   const jobs = [];
   for (let index = 0; index < videos.length; index += 1) {
+    const video = videos[index];
+    if (copyIds.has(video.id)) {
+      jobs.push({ video, copyOnly: true });
+      continue;
+    }
     bulkOfflineMessage = `Estimating download ${index + 1} of ${videos.length}...`;
     renderLibraryOfflineManager();
     try {
-      jobs.push({ video: videos[index], plan: await loadDownloadPlan(videos[index]) });
+      jobs.push({ video, plan: await loadDownloadPlan(video) });
     } catch (error) {
-      jobs.push({ video: videos[index], planError: error });
+      jobs.push({ video, planError: error });
     }
   }
   const byteEstimates = jobs.map((job) => Number(job.plan?.estimatedBytes || 0));
-  bulkOfflineEstimateByFiles = byteEstimates.some((value) => value <= 0);
+  bulkOfflineEstimateByFiles = isCopyOnly || byteEstimates.some((value) => value <= 0);
   bulkOfflineEstimatedBytes = bulkOfflineEstimateByFiles
     ? jobs.reduce((total, job) => total + (job.plan?.files?.length || 1), 0)
     : byteEstimates.reduce((total, value) => total + value, 0);
-  const sizeNote = bulkOfflineEstimateByFiles ? "" : ` About ${formatBytes(bulkOfflineEstimatedBytes)} in total.`;
-  setStatus(`Starting the download.${sizeNote} The remaining time appears once the first data arrives.`);
+  const sizeNote = bulkOfflineEstimateByFiles || isCopyOnly ? "" : ` About ${formatBytes(bulkOfflineEstimatedBytes)} in total.`;
+  setStatus(
+    isCopyOnly
+      ? `Copying ${videos.length} marked ${videos.length === 1 ? "video" : "videos"} to your chosen folder...`
+      : `Starting the download.${sizeNote} The remaining time appears once the first data arrives.`
+  );
   renderLibraryOfflineManager();
 
   for (let index = 0; index < jobs.length; index += 1) {
-    const { video, plan } = jobs[index];
+    const { video, plan, copyOnly } = jobs[index];
     bulkOfflineIndex = index;
     bulkOfflineCurrentId = video.id;
-    bulkOfflineMessage = `Saving ${index + 1} of ${videos.length}: ${video.title || "Untitled video"}`;
+    bulkOfflineMessage = `${copyOnly ? "Copying" : "Saving"} ${index + 1} of ${videos.length}: ${video.title || "Untitled video"}`;
     renderLibraryOfflineManager();
     try {
       if (jobs[index].planError) throw jobs[index].planError;
-      await saveOrExportOfflineVideo(video, plan);
+      if (copyOnly) await copyOfflineVideoToChosenFolder(video);
+      else await saveOrExportOfflineVideo(video, plan);
       bulkOfflineCompletedBytes += bulkOfflineEstimateByFiles
         ? plan?.files?.length || 1
         : Number(video.offlineBytesDownloaded || plan?.estimatedBytes || 0);
@@ -6614,10 +6677,22 @@ async function saveSelectedOfflineVideos() {
         message: f.error.message || "The video could not be saved.",
       })),
     };
-    setStatus(`Saved ${saved} of ${videos.length} marked videos. ${failures.length} could not be saved. See the offline copies report.`);
+    setStatus(
+      isCopyOnly
+        ? `Copied ${saved} of ${videos.length} marked videos. ${failures.length} could not be copied.`
+        : `Saved ${saved} of ${videos.length} marked videos. ${failures.length} could not be saved. See the offline copies report.`
+    );
   } else {
     bulkOfflineReport = null;
-    setStatus(`Saved all ${videos.length} marked videos to disk for offline playback.`);
+    const folder =
+      offlineExportDirectoryHandle?.name ||
+      folderNameFromPath(offlineExportDirectoryPath) ||
+      "your folder";
+    setStatus(
+      isCopyOnly
+        ? `Copied all ${videos.length} marked ${videos.length === 1 ? "video" : "videos"} to “${folder}”.`
+        : `Saved all ${videos.length} marked videos to disk for offline playback.`
+    );
   }
   renderLibraryOfflineManager();
 }
@@ -7415,6 +7490,200 @@ async function exportOfflineCopyToPath(video) {
   renderLibrary();
   renderLibraryOfflineManager();
   setStatus(`Copied “${video.title || "Untitled video"}” to “${video.offlineExportedTo}”.`);
+}
+
+async function copyOfflineVideoToChosenFolder(video) {
+  if (!(await ensureDownloadFolder())) {
+    throw new Error("Choose a folder on this computer first.");
+  }
+  const url = String(video.offlineUrl || video.url || "");
+  if (url.includes("/hls-package/")) {
+    await copyHlsPackageToChosenFolder(video);
+    return;
+  }
+  if (url.startsWith("/local-media/")) {
+    await copyLocalMediaToChosenFolder(video);
+    return;
+  }
+  if (offlineExportDirectoryHandle) {
+    await exportOfflineCopy(video);
+    return;
+  }
+  if (offlineExportDirectoryPath) {
+    await exportOfflineCopyToPath(video);
+    return;
+  }
+  throw new Error("Choose a folder on this computer first.");
+}
+
+async function markVideoCopiedToFolder(video, destinationPath = "") {
+  const folder =
+    offlineExportDirectoryHandle?.name ||
+    folderNameFromPath(offlineExportDirectoryPath) ||
+    folderNameFromPath(destinationPath) ||
+    "download";
+  video.offlineDownloadStatus = "completed";
+  video.offlineExportedTo = folder;
+  video.offlineExportedAt = new Date().toISOString();
+  if (destinationPath) video.localFolderPath = destinationPath;
+  if (!video.offlineUrl) video.offlineUrl = video.url;
+  delete video.offlineError;
+  saveState();
+  recordActivity({
+    action: "Copied",
+    title: video.title,
+    videoId: video.id,
+    detail: folder,
+  });
+  renderLibrary();
+  renderLibraryOfflineManager();
+}
+
+async function writeBytesToDirectoryHandle(root, relativePath, bytesOrResponse) {
+  const parts = String(relativePath || "").split("/").filter(Boolean);
+  const filename = parts.pop();
+  if (!filename) throw new Error("Missing file name.");
+  let folder = root;
+  for (const part of parts) folder = await folder.getDirectoryHandle(part, { create: true });
+  const fileHandle = await folder.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  try {
+    if (bytesOrResponse instanceof Response) {
+      if (!bytesOrResponse.ok || !bytesOrResponse.body) {
+        throw new Error(`Could not read ${relativePath}.`);
+      }
+      const reader = bytesOrResponse.body.getReader();
+      let copied = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        await writable.write(value);
+        copied += value.byteLength;
+      }
+      await writable.close();
+      return copied;
+    }
+    await writable.write(bytesOrResponse);
+    await writable.close();
+    return bytesOrResponse.byteLength || bytesOrResponse.length || 0;
+  } catch (error) {
+    await writable.abort().catch(() => {});
+    throw error;
+  }
+}
+
+async function copyLocalMediaToChosenFolder(video) {
+  const parsed = parseLocalMediaUrl(video.offlineUrl || video.url);
+  if (!parsed?.baseDir) throw new Error("This local video has no folder path to copy from.");
+  const folderName = video.offlineArchiveFolder || archiveFolderName(video.title, video.id);
+  video.offlineArchiveFolder = folderName;
+  video.offlineDownloadStatus = "exporting";
+  video.offlineBytesDownloaded = 0;
+  video.offlineFilesDone = 0;
+  video.offlineFilesTotal = 1;
+  renderLibrary();
+  renderLibraryOfflineManager();
+
+  const isHls = video.format === "hls" || /\.m3u8(?:[?#].*)?$/i.test(parsed.fileName);
+  const sourcePath = isHls ? parsed.baseDir : [parsed.baseDir.replace(/[/\\]+$/, ""), parsed.fileName].filter(Boolean).join("/");
+
+  if (offlineExportDirectoryPath && isLocalServer()) {
+    const response = await fetch("/api/offline/copy-local", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sourcePath,
+        directory: offlineExportDirectoryPath,
+        folderName,
+        metadata: offlineMetadataRecord(video, {
+          format: video.format || video.offlineFormat || "",
+          size: Number(video.offlineSize || video.estimatedBytes) || 0,
+        }),
+      }),
+      signal: AbortSignal.timeout(300000),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "The local video could not be copied.");
+    video.offlineFilesDone = 1;
+    video.offlineBytesDownloaded = Number(video.offlineSize || 0);
+    await markVideoCopiedToFolder(video, data.destination || "");
+    return;
+  }
+
+  if (!offlineExportDirectoryHandle) {
+    throw new Error("Choose a folder on this computer first.");
+  }
+
+  const destination = await offlineExportDirectoryHandle.getDirectoryHandle(folderName, { create: true });
+  if (isHls) {
+    const listResponse = await fetch(`/api/offline/files?path=${encodeURIComponent(parsed.baseDir)}`, {
+      signal: AbortSignal.timeout(30000),
+    });
+    const archive = await listResponse.json().catch(() => ({}));
+    if (!listResponse.ok) throw new Error(archive.error || "Could not list the local HLS package.");
+    const files = archive.files || [];
+    video.offlineFilesTotal = files.length || 1;
+    video.offlineTotalBytes = Number(archive.size || 0);
+    let copied = 0;
+    for (const file of files) {
+      const fileUrl = `/local-media/${encodeURIComponent(parsed.baseDir)}/${file.path.split("/").map(encodeURIComponent).join("/")}`;
+      const fileResponse = await fetch(fileUrl, { signal: AbortSignal.timeout(180000) });
+      const bytes = await writeBytesToDirectoryHandle(destination, file.path, fileResponse);
+      copied += bytes;
+      video.offlineBytesDownloaded = copied;
+      video.offlineFilesDone += 1;
+      renderLibraryOfflineManager();
+    }
+  } else {
+    const fileResponse = await fetch(video.offlineUrl || video.url, { signal: AbortSignal.timeout(180000) });
+    const bytes = await writeBytesToDirectoryHandle(destination, parsed.fileName || "video.mp4", fileResponse);
+    video.offlineBytesDownloaded = bytes;
+    video.offlineFilesDone = 1;
+  }
+  await writeOfflineMetadata(destination, video, {
+    size: video.offlineBytesDownloaded,
+    savedAt: new Date().toISOString(),
+  });
+  await connectSavedArchive(video, destination);
+  await markVideoCopiedToFolder(video);
+}
+
+async function copyHlsPackageToChosenFolder(video) {
+  const packageId = hlsPackageId(video.offlineUrl) || hlsPackageId(video.url) || video.packageId;
+  const fileMap = packageId ? offlinePackageFiles.get(packageId) : null;
+  if (!fileMap?.size) {
+    throw new Error("That imported HLS package is no longer in memory. Scan the folder again, then copy it.");
+  }
+  if (!offlineExportDirectoryHandle) {
+    throw new Error("Choose a download folder in Chrome (or Edge / Brave), then copy this package.");
+  }
+  const folderName = video.offlineArchiveFolder || archiveFolderName(video.title, video.id);
+  video.offlineArchiveFolder = folderName;
+  video.offlineDownloadStatus = "exporting";
+  video.offlineFilesDone = 0;
+  video.offlineFilesTotal = fileMap.size;
+  video.offlineBytesDownloaded = 0;
+  renderLibrary();
+  renderLibraryOfflineManager();
+
+  const destination = await offlineExportDirectoryHandle.getDirectoryHandle(folderName, { create: true });
+  let copied = 0;
+  for (const [relativePath, entry] of fileMap.entries()) {
+    const file = entry?.file || (entry?.handle ? await entry.handle.getFile() : null);
+    if (!file) continue;
+    const buffer = new Uint8Array(await file.arrayBuffer());
+    copied += await writeBytesToDirectoryHandle(destination, relativePath, buffer);
+    video.offlineBytesDownloaded = copied;
+    video.offlineFilesDone += 1;
+    renderLibraryOfflineManager();
+  }
+  await writeOfflineMetadata(destination, video, {
+    format: "hls",
+    size: copied,
+    savedAt: new Date().toISOString(),
+  });
+  await connectSavedArchive(video, destination);
+  await markVideoCopiedToFolder(video);
 }
 
 async function plannedFileSize(root, relativePath) {
