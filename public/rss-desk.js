@@ -408,12 +408,20 @@ function uniqueStories(items) {
   return unique;
 }
 
+function withOpenStory(items) {
+  if (!selectedItemId) return items;
+  if (items.some((item) => item.id === selectedItemId)) return items;
+  const selected = itemById(selectedItemId);
+  if (!selected || feedState.archived[selected.id]) return items;
+  return uniqueStories([selected, ...items]);
+}
+
 function itemsForSource(source = selectedSource) {
   if (source === "archive") {
     // Archive list was removed from the UI; treat as All unread.
-    return uniqueStories(unreadItems());
+    return withOpenStory(uniqueStories(unreadItems()));
   }
-  if (source === "all") return uniqueStories(unreadItems());
+  if (source === "all") return withOpenStory(uniqueStories(unreadItems()));
   if (source === "folders") {
     const feedIds = new Set(
       feedState.feeds
@@ -421,20 +429,20 @@ function itemsForSource(source = selectedSource) {
         .map((feed) => feed.id)
     );
     if (folderFilterMode === "hide") {
-      return uniqueStories(unreadItems().filter((item) => !feedIds.has(item.feedId)));
+      return withOpenStory(uniqueStories(unreadItems().filter((item) => !feedIds.has(item.feedId))));
     }
-    return uniqueStories(unreadItems().filter((item) => feedIds.has(item.feedId)));
+    return withOpenStory(uniqueStories(unreadItems().filter((item) => feedIds.has(item.feedId))));
   }
   if (source.startsWith("folder:")) {
     const folderId = source.slice(7);
     const feedIds = new Set(feedState.feeds.filter((feed) => (feed.folderIds || []).includes(folderId)).map((feed) => feed.id));
-    return uniqueStories(unreadItems().filter((item) => feedIds.has(item.feedId)));
+    return withOpenStory(uniqueStories(unreadItems().filter((item) => feedIds.has(item.feedId))));
   }
   if (source.startsWith("feed:")) {
     const feedId = source.slice(5);
-    return uniqueStories(unreadItems().filter((item) => item.feedId === feedId));
+    return withOpenStory(uniqueStories(unreadItems().filter((item) => item.feedId === feedId)));
   }
-  return uniqueStories(unreadItems());
+  return withOpenStory(uniqueStories(unreadItems()));
 }
 
 function dedupeFeedLibrary() {
@@ -1923,14 +1931,39 @@ async function importOpmlFile(file) {
   renderFeeds();
 }
 
+function revealOpenStory() {
+  if (isPhoneFeeds()) return;
+  const list = document.querySelector("#feedRiver");
+  const row = list?.querySelector(".feed-row.is-selected");
+  const reader = document.querySelector("#feedReader");
+  if (row && list) {
+    const rowTop = row.offsetTop;
+    const rowBottom = rowTop + row.offsetHeight;
+    const viewTop = list.scrollTop;
+    const viewBottom = viewTop + list.clientHeight;
+    if (rowTop < viewTop || rowBottom > viewBottom) {
+      row.scrollIntoView({ block: "nearest", behavior: "auto" });
+    }
+  }
+  if (reader) reader.scrollTop = 0;
+}
+
 function openStory(id) {
   const item = itemById(id);
   if (!item) return;
+  const list = document.querySelector("#feedRiver");
+  const priorScroll = list?.scrollTop || 0;
   selectedItemId = id;
   if (!feedState.archived[id]) feedState.read[id] = true;
   saveFeedState();
   feedPane = 1;
   renderFeeds();
+  if (!isPhoneFeeds() && list) {
+    list.scrollTop = priorScroll;
+  }
+  requestAnimationFrame(() => {
+    revealOpenStory();
+  });
 }
 
 function showPane(index) {

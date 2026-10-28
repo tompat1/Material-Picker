@@ -8848,7 +8848,8 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 }
 
 .feed-row.is-selected {
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .feed-row-copy {
@@ -9244,6 +9245,21 @@ button[value="close"]:active {
   .feeds-pane--list,
   .feeds-pane--reader {
     min-width: 0;
+  }
+
+  .feeds-track.is-reading {
+    align-items: stretch;
+    min-height: calc(100dvh - 11rem);
+  }
+
+  .feeds-track.is-reading .feeds-pane--list,
+  .feeds-track.is-reading .feeds-pane--reader {
+    max-height: calc(100dvh - 11rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+    position: sticky;
+    top: 0.85rem;
+    align-self: start;
   }
 
   .feeds-track:not(.is-reading) {
