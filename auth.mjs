@@ -106,8 +106,15 @@ export async function fetchSubscriptionFeed(accessToken, fetchImpl = fetch, opti
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (allChannels.length > 0) break;
-      const error = new Error(payload.error?.message || "YouTube could not load subscriptions.");
-      error.status = response.status === 401 ? 401 : 502;
+      const googleMessage = String(payload.error?.message || "");
+      const insufficientScopes = /insufficient authentication scopes/i.test(googleMessage);
+      const error = new Error(
+        insufficientScopes
+          ? "YouTube access is missing from this Google sign-in. Reconnect Google and allow YouTube."
+          : googleMessage || "YouTube could not load subscriptions."
+      );
+      error.status = response.status === 401 || insufficientScopes ? 401 : 502;
+      error.code = insufficientScopes ? "youtube_scopes" : "";
       throw error;
     }
     const pageChannels = parseYouTubeSubscriptions(payload);
@@ -725,7 +732,10 @@ export async function handleAuthRequest(request, options) {
     try {
       return await handleYouTubeHome(request, store, options);
     } catch (error) {
-      return json(error.status || 502, { error: error.message || "YouTube could not be loaded." });
+      return json(error.status || 502, {
+        error: error.message || "YouTube could not be loaded.",
+        code: error.code || "",
+      });
     }
   }
   if (request.method === "GET" && url.pathname === "/api/youtube/channel") {

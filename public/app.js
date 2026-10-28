@@ -2662,11 +2662,22 @@ function loadYouTubeHome() {
   youtubeHomeTask = (async () => {
     const response = await fetch("/api/youtube/home");
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "YouTube could not be loaded.");
+    if (!response.ok) {
+      const err = new Error(data.error || "YouTube could not be loaded.");
+      err.code = data.code || "";
+      throw err;
+    }
     applyYouTubeHome(data);
   })().catch((error) => {
     if (document.querySelector("#desk-youtube")?.checked && !document.querySelector("#youtubeGrid")) {
-      mount.innerHTML = `<p class="hint">${escapeHtml(error.message || "YouTube could not be loaded.")}</p>`;
+      const message = String(error.message || "YouTube could not be loaded.");
+      const needsReconnect = /insufficient authentication scopes|youtube is not connected|session has expired|sign in again/i.test(message);
+      mount.innerHTML = needsReconnect
+        ? `<div class="feed-connect">
+            <p>Google signed you in, but YouTube access is missing or outdated. Connect Google again and allow YouTube when prompted.</p>
+            <a class="primary-button" href="/api/auth/google/start">Reconnect Google for YouTube</a>
+          </div>`
+        : `<p class="hint">${escapeHtml(message)}</p>`;
     }
   }).finally(() => {
     youtubeHomeTask = null;
