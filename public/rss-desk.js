@@ -716,6 +716,60 @@ function setFeedStatus(message) {
   window.paintPickerLoader?.();
 }
 
+let feedsAddNoticeTimer = 0;
+
+function feedAddedMessage({ count = 1, title = "", folderNames = [] } = {}) {
+  const folder = String(folderNames?.[0] || "").trim();
+  const label = String(title || "").trim();
+  if (count <= 1) {
+    if (folder && label) return `Added “${label}” to “${folder}”`;
+    if (folder) return `Added feed to “${folder}”`;
+    if (label) return `Added “${label}”`;
+    return "Feed added";
+  }
+  if (folder) return `Added ${count} feeds to “${folder}”`;
+  return `Added ${count} feeds`;
+}
+
+function showFeedsAddNotice(message, anchor) {
+  if (!message) return;
+  const dialog = document.querySelector("#feedsAddDialog");
+  let notice = dialog?.querySelector(".feeds-add-notice");
+  if (dialog && !notice) {
+    notice = document.createElement("p");
+    notice.className = "feeds-add-notice";
+    notice.setAttribute("role", "status");
+    notice.setAttribute("aria-live", "polite");
+    dialog.querySelector(".feeds-add-close")?.after(notice);
+  }
+  if (notice) {
+    notice.textContent = message;
+    notice.hidden = false;
+    notice.classList.remove("is-shown");
+    void notice.offsetWidth;
+    notice.classList.add("is-shown");
+    window.clearTimeout(feedsAddNoticeTimer);
+    feedsAddNoticeTimer = window.setTimeout(() => {
+      notice.classList.remove("is-shown");
+      notice.hidden = true;
+    }, 2600);
+  }
+  const rect = (anchor || document.querySelector("#discoverAdd") || document.querySelector("#followFeedForm button[type='submit']") || document.querySelector("#feedsAdd"))?.getBoundingClientRect?.();
+  if (rect && typeof showActionNotice === "function") showActionNotice(rect, message);
+  else if (rect && typeof window.showActionNotice === "function") window.showActionNotice(rect, message);
+}
+
+function notifyFeedAdded(details = {}) {
+  const message = feedAddedMessage(details);
+  setFeedStatus(`${message}.`);
+  showFeedsAddNotice(message, details.anchor);
+  return message;
+}
+
+function closeFeedsAddDialogSoon(delayMs = 900) {
+  window.setTimeout(() => document.querySelector("#feedsAddDialog")?.close(), delayMs);
+}
+
 async function requestFeed(url) {
   const response = await fetch(`/api/rss?url=${encodeURIComponent(url)}`);
   const data = await response.json().catch(() => ({}));
@@ -1075,11 +1129,10 @@ function renderSources() {
       <button type="button" data-start-folder>New folder</button>
     </div>
     ${folderDraft && !folderDraftMoves ? newFolderForm() : ""}
-    ${folderViewTools}
-    ${selectionTools}
+    ${folderViewTools || selectionTools ? `<div class="feeds-sticky-tools">${folderViewTools}${selectionTools}</div>` : ""}
     <ul class="feeds-source-list">${folders || `<li class="feeds-feed-empty">No folders yet.</li>`}</ul>
   ` : `
-    ${selectionTools}
+    ${selectionTools ? `<div class="feeds-sticky-tools">${selectionTools}</div>` : ""}
     <ul class="feeds-source-list">${allFeeds.map((feed) => feedSourceRow(feed, { showDelete: true, showFolder: true, unreadCount: unreadCounts.get(feed.id) || 0 })).join("") || `<li class="feeds-feed-empty">Feeds you follow show up here.</li>`}</ul>
   `}`;
   if (folderDraftFocus) {
@@ -1649,10 +1702,15 @@ async function followUrl(value, options = {}) {
       selectedItemId = "";
       const input = document.querySelector("#followFeedInput");
       if (input) input.value = "";
-      setFeedStatus(`Following ${record.title}.`);
       feedPane = 0;
       renderFeeds();
-      if (!options.keepOpen) document.querySelector("#feedsAddDialog")?.close();
+      notifyFeedAdded({
+        count: 1,
+        title: record.title,
+        folderNames,
+        anchor: document.querySelector("#followFeedForm button[type='submit']"),
+      });
+      if (!options.keepOpen) closeFeedsAddDialogSoon();
     }
     return record;
   } catch (error) {
@@ -1707,11 +1765,17 @@ async function followCatalogPicks() {
     return;
   }
   if (failures.length) {
-    setFeedStatus(`Added ${added}. Could not add: ${failures.slice(0, 2).join(", ")}`);
+    const partial = feedAddedMessage({ count: added, folderNames });
+    setFeedStatus(`${partial}. Could not add: ${failures.slice(0, 2).join(", ")}`);
+    showFeedsAddNotice(`${partial} · some feeds failed`, document.querySelector("#discoverAdd"));
   } else {
-    const folderNote = folderNames.length ? ` into ${folderNames[0]}` : "";
-    setFeedStatus(added === 1 ? `Added 1 feed${folderNote}.` : `Added ${added} feeds${folderNote}.`);
-    document.querySelector("#feedsAddDialog")?.close();
+    notifyFeedAdded({
+      count: added,
+      title: picks[0]?.title || "",
+      folderNames,
+      anchor: document.querySelector("#discoverAdd"),
+    });
+    closeFeedsAddDialogSoon();
   }
   void refreshFeeds({ force: true });
 }
@@ -1829,9 +1893,17 @@ async function importOpmlFile(file) {
   feedPane = 0;
   saveFeedState();
   const countLabel = imported.length === 1 ? "1 feed" : `${imported.length} feeds`;
+  notifyFeedAdded({
+    count: imported.length,
+    title: imported[0]?.title || "",
+    folderNames: imported[0]?.folderIds?.length
+      ? [feedState.folders.find((folder) => folder.id === imported[0].folderIds[0])?.name].filter(Boolean)
+      : [],
+    anchor: document.querySelector("#feedsAdd"),
+  });
   setFeedStatus(`Added ${countLabel}. Loading stories…`);
   renderFeeds();
-  document.querySelector("#feedsAddDialog")?.close();
+  closeFeedsAddDialogSoon(700);
   const queue = [...imported];
   const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
     while (queue.length) {

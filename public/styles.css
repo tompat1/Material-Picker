@@ -8662,7 +8662,40 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   padding: 0.65rem 0.7rem;
   border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
   border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+
+.feeds-sticky-tools {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.feeds-sticky-tools .feeds-folder-view,
+.feeds-sticky-tools .feeds-selection {
+  margin-bottom: 0;
+}
+
+.feeds-add-dialog[data-mode="setup"] .feeds-setup-block,
+.feeds-add-dialog[data-mode="setup"] .feeds-setup-sources {
+  overflow: visible;
+}
+
+.feeds-add-dialog[data-mode="setup"] .feeds-sticky-tools {
+  position: sticky;
+  top: 4.15rem;
+  z-index: 3;
+  margin: 0.35rem 0 0.55rem;
+  padding: 0.55rem 0.85rem 0.65rem;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--bg) 70%, transparent);
+}
+
+.feeds-add-dialog[data-mode="setup"] .feeds-sticky-tools .feeds-selection {
+  padding: 0.65rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
 }
 
 .feeds-folder-view p {
@@ -9016,6 +9049,32 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 .feeds-add-close {
   display: flex;
   justify-content: flex-end;
+}
+
+.feeds-add-notice {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  color: var(--ink);
+  font: 600 0.86rem/1.35 var(--sans);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.feeds-add-notice.is-shown {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.feeds-add-notice[hidden] {
+  display: none;
+}
+
+.feeds-add-dialog[data-mode="setup"] .feeds-add-notice {
+  margin: 0.15rem 1.15rem 0.65rem;
 }
 
 .feeds-add-close button,
