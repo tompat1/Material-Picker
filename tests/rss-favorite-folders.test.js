@@ -7,7 +7,7 @@ function favoriteFolderApp() {
   const folders = ["Apple", "Music", "Film & TV", "Tech", "Gaming", "Science"]
     .map((name, index) => ({ id: `folder-${index + 1}`, name }));
   const saved = new Map([["material-picker:feeds", JSON.stringify({
-    feeds: [],
+    feeds: [{ id: "apple-in-tech", folderIds: ["folder-4"], topics: ["apple"] }],
     folders,
     favoriteFolderIds: folders.map((folder) => folder.id),
     items: [],

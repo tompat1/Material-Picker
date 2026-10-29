@@ -589,21 +589,26 @@ function countLabel(count) {
 }
 
 function folderIconKind(folder) {
+  const matchIconKind = (value) => {
+    const text = String(value || "").toLowerCase();
+    if (/apple|mac|iphone|ipad|ios/.test(text)) return "apple";
+    if (/music|audio|podcast|radio/.test(text)) return "music";
+    if (/film|movie|cinema|television|\btv\b|video|stream/.test(text)) return "film";
+    if (/tech|code|software|developer|gadget|\bai\b|artificial intelligence/.test(text)) return "tech";
+    if (/game|gaming|playstation|xbox|nintendo/.test(text)) return "gaming";
+    if (/photo|camera|image|design|art/.test(text)) return "photo";
+    if (/science|space|nature|research/.test(text)) return "science";
+    if (/sport|football|soccer|tennis|basketball|cycling/.test(text)) return "sports";
+    if (/business|finance|market|money|econom/.test(text)) return "business";
+    if (/news|politic|world|current/.test(text)) return "news";
+    return "";
+  };
+  const nameKind = matchIconKind(folder.name);
+  if (nameKind) return nameKind;
   const topics = feedState.feeds
     .filter((feed) => (feed.folderIds || []).includes(folder.id))
     .flatMap((feed) => feed.topics || []);
-  const text = `${folder.name || ""} ${topics.join(" ")}`.toLowerCase();
-  if (/apple|mac|iphone|ipad|ios/.test(text)) return "apple";
-  if (/music|audio|podcast|radio/.test(text)) return "music";
-  if (/film|movie|cinema|television|\btv\b|video|stream/.test(text)) return "film";
-  if (/tech|code|software|developer|gadget|\bai\b|artificial intelligence/.test(text)) return "tech";
-  if (/game|gaming|playstation|xbox|nintendo/.test(text)) return "gaming";
-  if (/photo|camera|image|design|art/.test(text)) return "photo";
-  if (/science|space|nature|research/.test(text)) return "science";
-  if (/sport|football|soccer|tennis|basketball|cycling/.test(text)) return "sports";
-  if (/business|finance|market|money|econom/.test(text)) return "business";
-  if (/news|politic|world|current/.test(text)) return "news";
-  return "folder";
+  return matchIconKind(topics.join(" ")) || "folder";
 }
 
 function folderIconMarkup(folder, className = "") {
