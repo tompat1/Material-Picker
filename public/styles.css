@@ -7822,10 +7822,16 @@ label.cms-image-choose {
   min-width: 0;
 }
 
+.feeds-sort-block {
+  display: grid;
+  gap: 0.28rem;
+  margin-top: 0.35rem;
+  justify-items: start;
+}
+
 .feeds-sort {
   display: inline-flex;
   gap: 0.25rem;
-  margin-top: 0.35rem;
 }
 
 .feeds-sort button {
@@ -7843,6 +7849,13 @@ label.cms-image-choose {
   border-color: transparent;
   background: color-mix(in srgb, var(--ink) 10%, transparent);
   color: var(--ink);
+}
+
+.feeds-sort-hint {
+  margin: 0;
+  max-width: 22rem;
+  color: var(--muted);
+  font: 500 0.72rem/1.35 var(--sans);
 }
 
 .feeds-reeder-title h2,
@@ -9481,6 +9494,11 @@ button[value="close"]:active {
     font-size: 12px;
   }
 
+  .feeds-sort-block {
+    margin: 0;
+    max-width: 100%;
+  }
+
   .feeds-sort {
     margin: 0;
     flex-wrap: wrap;
@@ -9489,6 +9507,10 @@ button[value="close"]:active {
   .feeds-sort button {
     min-height: 44px;
     padding-inline: 10px;
+  }
+
+  .feeds-sort-hint {
+    font-size: 0.7rem;
   }
 
   .feeds-reeder-actions {

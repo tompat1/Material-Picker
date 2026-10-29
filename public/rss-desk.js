@@ -1348,6 +1348,12 @@ function renderList() {
   sortButtons.forEach((button) => {
     button.setAttribute("aria-pressed", button.dataset.feedSort === feedSort ? "true" : "false");
   });
+  const sortHint = document.querySelector("#feedsSortHint");
+  if (sortHint) {
+    sortHint.textContent = feedSort === "active"
+      ? "Feeds with the most unread first — not global popularity."
+      : "Newest first, grouped by day.";
+  }
 
   const currentKey = `${selectedSource}|${Array.from(selectedFolderIds).sort().join(",")}|${folderFilterMode}|${feedSort}`;
   if (currentKey !== lastRenderedSourceKey) {

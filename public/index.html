@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-136" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-137" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -393,9 +393,22 @@
                 <h2 id="feedsTitle">Feeds</h2>
                 <p class="feeds-count" id="feedsSubtitle"></p>
               </div>
-              <div class="feeds-sort" id="feedsSort" role="group" aria-label="Sort stories">
-                <button type="button" data-feed-sort="latest" aria-pressed="true">Latest</button>
-                <button type="button" data-feed-sort="active" aria-pressed="false">Active</button>
+              <div class="feeds-sort-block">
+                <div class="feeds-sort" id="feedsSort" role="group" aria-label="Order unread stories">
+                  <button
+                    type="button"
+                    data-feed-sort="latest"
+                    aria-pressed="true"
+                    title="Newest stories first, grouped by day"
+                  >Newest</button>
+                  <button
+                    type="button"
+                    data-feed-sort="active"
+                    aria-pressed="false"
+                    title="Feeds with the most unread rise to the top"
+                  >Busiest</button>
+                </div>
+                <p class="feeds-sort-hint" id="feedsSortHint">Newest first, grouped by day.</p>
               </div>
             </div>
             <div class="feeds-reeder-actions">
@@ -995,6 +1008,6 @@
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
     <script src="./app.js?v=picker-nav-135" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-37" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-38" defer></script>
   </body>
 </html>
