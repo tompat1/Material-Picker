@@ -184,7 +184,7 @@ export function createFileAccountStore(filePath) {
     async feedLibraryForUser(userId) {
       return update((data) => {
         const row = (data.feedLibraries || []).find((item) => item.userId === userId);
-        if (!row?.library) return { feeds: [], folders: [], removedUrls: [], updatedAt: "" };
+        if (!row?.library) return { feeds: [], folders: [], favoriteFolderIds: [], removedUrls: [], updatedAt: "" };
         return row.library;
       });
     },
@@ -221,7 +221,12 @@ function normalizeLibrary(incoming) {
   const removedUrls = (Array.isArray(incoming?.removedUrls) ? incoming.removedUrls : [])
     .map((url) => String(url || ""))
     .filter((url) => /^https?:\/\//i.test(url));
-  return { feeds: feeds.slice(0, 400), folders: folders.slice(0, 80), removedUrls: removedUrls.slice(0, 400), updatedAt: new Date().toISOString() };
+  const folderIds = new Set(folders.map((folder) => folder.id));
+  const favoriteFolderIds = [...new Set(Array.isArray(incoming?.favoriteFolderIds) ? incoming.favoriteFolderIds : [])]
+    .map((id) => String(id || ""))
+    .filter((id) => folderIds.has(id))
+    .slice(0, 5);
+  return { feeds: feeds.slice(0, 400), folders: folders.slice(0, 80), favoriteFolderIds, removedUrls: removedUrls.slice(0, 400), updatedAt: new Date().toISOString() };
 }
 
 async function readStore(filePath) {

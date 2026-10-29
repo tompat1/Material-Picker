@@ -636,12 +636,19 @@ export function createD1AccountStore(db) {
 }
 
 function emptyFeedLibrary() {
-  return { feeds: [], folders: [], removedUrls: [], updatedAt: "" };
+  return { feeds: [], folders: [], favoriteFolderIds: [], removedUrls: [], updatedAt: "" };
 }
 
 function normalizeFeedLibrary(value) {
   const feeds = Array.isArray(value?.feeds) ? value.feeds : [];
   const folders = Array.isArray(value?.folders) ? value.folders : [];
+  const normalizedFolders = folders.slice(0, 80).flatMap((folder) => {
+    const id = String(folder?.id || "").slice(0, 80);
+    const name = String(folder?.name || "").slice(0, 80);
+    if (!id || !name) return [];
+    return [{ id, name }];
+  });
+  const folderIds = new Set(normalizedFolders.map((folder) => folder.id));
   return {
     feeds: feeds.slice(0, 400).flatMap((feed) => {
       const url = String(feed?.url || "").trim();
@@ -656,12 +663,11 @@ function normalizeFeedLibrary(value) {
         addedAt: String(feed.addedAt || "").slice(0, 40),
       }];
     }),
-    folders: folders.slice(0, 80).flatMap((folder) => {
-      const id = String(folder?.id || "").slice(0, 80);
-      const name = String(folder?.name || "").slice(0, 80);
-      if (!id || !name) return [];
-      return [{ id, name }];
-    }),
+    folders: normalizedFolders,
+    favoriteFolderIds: [...new Set(Array.isArray(value?.favoriteFolderIds) ? value.favoriteFolderIds : [])]
+      .map((id) => String(id || "").slice(0, 80))
+      .filter((id) => folderIds.has(id))
+      .slice(0, 5),
     removedUrls: (Array.isArray(value?.removedUrls) ? value.removedUrls : [])
       .map((url) => String(url || "").slice(0, 500))
       .filter((url) => /^https?:\/\//i.test(url))

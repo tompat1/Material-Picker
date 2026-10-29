@@ -249,11 +249,14 @@ test("login, logout, and RSS add/remove persist through the feed library API", a
     assert.equal((await (await call("/api/auth/me", { headers: { cookie } })).json()).user.email, credentials.email, kind);
 
     const feed = { id: "notes", url: "https://notes.example/feed.xml", title: "Desk notes", folderIds: [] };
+    const folders = Array.from({ length: 6 }, (_, index) => ({ id: `folder-${index + 1}`, name: `Folder ${index + 1}` }));
     const put = (body) => call("/api/feeds/library", {
       method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body),
     });
-    assert.equal((await put({ feeds: [feed], folders: [] })).status, 200, kind);
-    assert.deepEqual((await (await call("/api/feeds/library", { headers: { cookie } })).json()).feeds.map((item) => item.url), [feed.url], kind);
+    assert.equal((await put({ feeds: [feed], folders, favoriteFolderIds: folders.map((folder) => folder.id) })).status, 200, kind);
+    const library = await (await call("/api/feeds/library", { headers: { cookie } })).json();
+    assert.deepEqual(library.feeds.map((item) => item.url), [feed.url], kind);
+    assert.deepEqual(library.favoriteFolderIds, folders.slice(0, 5).map((folder) => folder.id), kind);
     const removed = await put({ feeds: [], folders: [], removedUrls: [feed.url] });
     assert.equal(removed.status, 200, kind);
     const saved = await (await call("/api/feeds/library", { headers: { cookie } })).json();

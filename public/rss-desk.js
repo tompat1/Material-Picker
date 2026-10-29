@@ -1,6 +1,7 @@
 const FEEDS_KEY = "material-picker:feeds";
 const FEED_ITEM_CAP = 40;
 const FEED_REFRESH_MS = 15 * 60 * 1000;
+const MAX_FAVORITE_FOLDERS = 5;
 const TOPIC_LABELS = {
   news: "News",
   tech: "Tech",
@@ -63,6 +64,11 @@ function cleanImageUrl(value) {
 function loadFeedState() {
   try {
     const saved = JSON.parse(localStorage.getItem(FEEDS_KEY) || "{}");
+    const folders = Array.isArray(saved.folders) ? saved.folders : [];
+    const folderIds = new Set(folders.map((folder) => folder?.id).filter(Boolean));
+    const favoriteFolderIds = [...new Set(Array.isArray(saved.favoriteFolderIds) ? saved.favoriteFolderIds : [])]
+      .filter((id) => folderIds.has(id))
+      .slice(0, MAX_FAVORITE_FOLDERS);
     const items = (Array.isArray(saved.items) ? saved.items : []).map((item) => {
       if (!item) return item;
       const image = cleanImageUrl(item.image);
@@ -70,7 +76,8 @@ function loadFeedState() {
     });
     return {
       feeds: Array.isArray(saved.feeds) ? saved.feeds : [],
-      folders: Array.isArray(saved.folders) ? saved.folders : [],
+      folders,
+      favoriteFolderIds,
       items,
       read: saved.read && typeof saved.read === "object" ? saved.read : {},
       archived: saved.archived && typeof saved.archived === "object" ? saved.archived : {},
@@ -78,7 +85,7 @@ function loadFeedState() {
       removedUrls: new Set(Array.isArray(saved.removedUrls) ? saved.removedUrls : []),
     };
   } catch {
-    return { feeds: [], folders: [], items: [], read: {}, archived: {}, starred: {}, removedUrls: new Set() };
+    return { feeds: [], folders: [], favoriteFolderIds: [], items: [], read: {}, archived: {}, starred: {}, removedUrls: new Set() };
   }
 }
 
@@ -90,7 +97,8 @@ function feedLibrarySignature() {
     .map((feed) => `${canonicalFeedUrl(feed.url)}|${feed.title}|${(feed.folderIds || []).join(",")}`)
     .sort();
   const folders = feedState.folders.map((folder) => `${folder.id}|${folder.name}`).sort();
-  return JSON.stringify([feeds, folders]);
+  const favoriteFolderIds = [...(feedState.favoriteFolderIds || [])];
+  return JSON.stringify([feeds, folders, favoriteFolderIds]);
 }
 
 function libraryPayload() {
@@ -105,6 +113,7 @@ function libraryPayload() {
       addedAt: feed.addedAt || "",
     })),
     folders: feedState.folders.map((folder) => ({ id: folder.id, name: folder.name })),
+    favoriteFolderIds: [...(feedState.favoriteFolderIds || [])].slice(0, MAX_FAVORITE_FOLDERS),
     removedUrls: Array.from(feedState.removedUrls || []),
   };
 }
@@ -178,14 +187,24 @@ async function syncFeedLibrary() {
     folderIds.add(folder.id);
     feedState.folders.push({ id: folder.id, name: folder.name });
   });
+  let favoriteFoldersChanged = false;
+  const remoteHasFavoriteFolders = Object.prototype.hasOwnProperty.call(remote, "favoriteFolderIds");
+  if (remoteHasFavoriteFolders) {
+    const validFolderIds = new Set(feedState.folders.map((folder) => folder.id));
+    const nextFavoriteFolderIds = [...new Set(Array.isArray(remote.favoriteFolderIds) ? remote.favoriteFolderIds : [])]
+      .filter((id) => validFolderIds.has(id))
+      .slice(0, MAX_FAVORITE_FOLDERS);
+    favoriteFoldersChanged = JSON.stringify(nextFavoriteFolderIds) !== JSON.stringify(feedState.favoriteFolderIds || []);
+    feedState.favoriteFolderIds = nextFavoriteFolderIds;
+  }
   const localOnly = feedState.feeds.some((feed) => !remoteFeeds.some((item) => canonicalFeedUrl(item.url) === canonicalFeedUrl(feed.url)));
   librarySignature = feedLibrarySignature();
-  if (added || removed || feedState.removedUrls.size !== beforeRemovedCount) {
+  if (added || removed || favoriteFoldersChanged || feedState.removedUrls.size !== beforeRemovedCount) {
     saveFeedState();
     renderFeeds();
     if (added) void refreshFeeds({ force: true });
   }
-  if (localOnly || added) scheduleLibraryPush();
+  if (localOnly || added || (!remoteHasFavoriteFolders && feedState.favoriteFolderIds?.length)) scheduleLibraryPush();
 }
 
 function saveFeedState() {
@@ -287,6 +306,39 @@ function normalizeFolderCollapse() {
   feedState.folders.forEach((folder, index) => {
     if (typeof folder.collapsed !== "boolean") folder.collapsed = index >= 3;
   });
+}
+
+function normalizeFavoriteFolders() {
+  const folderIds = new Set(feedState.folders.map((folder) => folder.id));
+  feedState.favoriteFolderIds = [...new Set(feedState.favoriteFolderIds || [])]
+    .filter((id) => folderIds.has(id))
+    .slice(0, MAX_FAVORITE_FOLDERS);
+}
+
+function isFavoriteFolder(id) {
+  return (feedState.favoriteFolderIds || []).includes(id);
+}
+
+function toggleFavoriteFolder(id) {
+  const folder = feedState.folders.find((item) => item.id === id);
+  if (!folder) return;
+  normalizeFavoriteFolders();
+  if (isFavoriteFolder(id)) {
+    feedState.favoriteFolderIds = feedState.favoriteFolderIds.filter((folderId) => folderId !== id);
+    if (selectedSource === `folder:${id}`) selectedSource = "all";
+    saveFeedState();
+    setFeedStatus(`Removed “${folder.name}” from the main feed filters.`);
+    renderFeeds();
+    return;
+  }
+  if (feedState.favoriteFolderIds.length >= MAX_FAVORITE_FOLDERS) {
+    setFeedStatus(`You can keep up to ${MAX_FAVORITE_FOLDERS} favorite folder filters. Remove one before adding “${folder.name}”.`);
+    return;
+  }
+  feedState.favoriteFolderIds.push(id);
+  saveFeedState();
+  setFeedStatus(`Added “${folder.name}” to the main feed filters.`);
+  renderFeeds();
 }
 
 function toggleFolderSelection(id) {
@@ -534,6 +586,65 @@ function sourceTitle(source = selectedSource) {
 
 function countLabel(count) {
   return new Intl.NumberFormat(undefined).format(count);
+}
+
+function folderIconKind(folder) {
+  const topics = feedState.feeds
+    .filter((feed) => (feed.folderIds || []).includes(folder.id))
+    .flatMap((feed) => feed.topics || []);
+  const text = `${folder.name || ""} ${topics.join(" ")}`.toLowerCase();
+  if (/apple|mac|iphone|ipad|ios/.test(text)) return "apple";
+  if (/music|audio|podcast|radio/.test(text)) return "music";
+  if (/film|movie|cinema|television|\btv\b|video|stream/.test(text)) return "film";
+  if (/tech|code|software|developer|gadget|\bai\b|artificial intelligence/.test(text)) return "tech";
+  if (/game|gaming|playstation|xbox|nintendo/.test(text)) return "gaming";
+  if (/photo|camera|image|design|art/.test(text)) return "photo";
+  if (/science|space|nature|research/.test(text)) return "science";
+  if (/sport|football|soccer|tennis|basketball|cycling/.test(text)) return "sports";
+  if (/business|finance|market|money|econom/.test(text)) return "business";
+  if (/news|politic|world|current/.test(text)) return "news";
+  return "folder";
+}
+
+function folderIconMarkup(folder, className = "") {
+  const kind = folderIconKind(folder);
+  const paths = {
+    apple: `<path d="M12 7c-2.8-2.2-7-1-7 3.7 0 4.5 3.4 8.3 5.1 8.3.8 0 1.2-.6 1.9-.6s1.1.6 1.9.6c1.7 0 5.1-3.8 5.1-8.3 0-4.7-4.2-5.9-7-3.7Z"/><path d="M12.2 6.1c.2-2 1.5-3.4 3.5-3.8-.1 2-1.4 3.4-3.5 3.8Z"/>`,
+    music: `<path d="M9 18V6l10-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/>`,
+    film: `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 9 4-4 4 4 4-4 4 4M8 13h8v6H8z"/>`,
+    tech: `<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v3m6-3v3M9 20v3m6-3v3M1 9h3m-3 6h3m16-6h3m-3 6h3M10 10h4v4h-4z"/>`,
+    gaming: `<path d="M8.5 8h7c3 0 5.5 2.4 5.5 5.5S19.5 19 17.5 19c-1.8 0-2.4-2-3.8-2h-3.4c-1.4 0-2 2-3.8 2C4.5 19 3 16.6 3 13.5S5.5 8 8.5 8Z"/><path d="M8 11v5m-2.5-2.5h5M16 12h.01M18.5 14.5h.01"/>`,
+    photo: `<path d="M4 7h4l1.5-2h5L16 7h4a2 2 0 0 1 2 2v9H2V9a2 2 0 0 1 2-2Z"/><circle cx="12" cy="12.5" r="3.5"/>`,
+    science: `<circle cx="12" cy="12" r="1.5"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(120 12 12)"/>`,
+    sports: `<circle cx="12" cy="12" r="9"/><path d="m8.5 4.8 2.2 3.1-1.4 4.2-3.8.8-2.4-2.3m17.8 0-2.4 2.3-3.8-.8-1.4-4.2 2.2-3.1M9.3 12.1l2.7 2 2.7-2M12 14.1V21"/>`,
+    business: `<path d="M4 20V10m6 10V4m6 16v-7m5 7H2"/>`,
+    news: `<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M7 9h5v4H7zm8 0h3m-3 4h3M7 17h11"/>`,
+    folder: `<path d="M3.5 7.5h6l2-2h3.2c1.1 0 2 .9 2 2v1"/><path d="M4.8 18.5h12.9a2 2 0 0 0 1.9-1.5l1.2-5.2a1.5 1.5 0 0 0-1.5-1.8H5.2a1.8 1.8 0 0 0-1.8 2.2l1.4 6.3Z"/>`,
+  };
+  return `<svg class="feeds-favorite-icon${className ? ` ${className}` : ""}" viewBox="0 0 24 24" aria-hidden="true" data-folder-icon="${kind}">${paths[kind]}</svg>`;
+}
+
+function renderFavoriteFolderTabs() {
+  const root = document.querySelector("#feedsFavoriteTabs");
+  if (!root) return;
+  normalizeFavoriteFolders();
+  const favoriteFolders = feedState.favoriteFolderIds
+    .map((id) => feedState.folders.find((folder) => folder.id === id))
+    .filter(Boolean);
+  root.hidden = !favoriteFolders.length;
+  if (!favoriteFolders.length) {
+    root.innerHTML = "";
+    return;
+  }
+  const allActive = selectedSource === "all";
+  const allIcon = `<svg class="feeds-favorite-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg>`;
+  const allTab = `<button type="button" data-favorite-source="all" aria-pressed="${allActive ? "true" : "false"}" aria-label="Show all feeds" title="All feeds">${allIcon}<span class="feeds-favorite-tab-label">All</span></button>`;
+  const folderTabs = favoriteFolders.map((folder) => {
+    const source = `folder:${folder.id}`;
+    const active = selectedSource === source;
+    return `<button type="button" data-favorite-source="${escapeFeedText(source)}" aria-pressed="${active ? "true" : "false"}" aria-label="Show ${escapeFeedText(folder.name)} feeds" title="${escapeFeedText(folder.name)}">${folderIconMarkup(folder)}<span class="feeds-favorite-tab-label">${escapeFeedText(folder.name)}</span></button>`;
+  }).join("");
+  root.innerHTML = allTab + folderTabs;
 }
 
 function folderFilterBanner() {
@@ -915,8 +1026,13 @@ function applyPane() {
   const title = document.querySelector("#feedsTitle");
   const subtitle = document.querySelector("#feedsSubtitle");
   const kicker = document.querySelector("#feedsKicker");
+  const favoriteTabs = document.querySelector("#feedsFavoriteTabs");
   const article = itemById(selectedItemId);
   const onArticle = isPhoneFeeds() && feedPane === 1;
+
+  if (favoriteTabs) {
+    favoriteTabs.hidden = onArticle || !(feedState.favoriteFolderIds || []).length;
+  }
 
   if (kicker) {
     if (onArticle) {
@@ -1047,6 +1163,7 @@ function renderSources() {
     folderFeeds.forEach((feed) => { count += (unreadCounts.get(feed.id) || 0); });
     const open = folderIsOpen(folder);
     const selected = selectedFolderIds.has(folder.id);
+    const favorite = isFavoriteFolder(folder.id);
     const hasFeeds = folderFeeds.length > 0;
     const id = escapeFeedText(folder.id);
     const name = escapeFeedText(folder.name);
@@ -1084,6 +1201,9 @@ function renderSources() {
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/>${selectionMark}</svg>
       </button>
       <div class="feeds-folder-name">${folderName}</div>
+      <button class="feeds-folder-action feeds-folder-favorite" type="button" data-favorite-folder="${id}" aria-pressed="${favorite ? "true" : "false"}" aria-label="${favorite ? "Remove" : "Add"} ${name} ${favorite ? "from" : "to"} main feed filters" title="${favorite ? "Remove from" : "Add to"} main feed filters">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z"/></svg>
+      </button>
       <button class="feeds-folder-action feeds-folder-show" type="button" data-show-folder="${id}" aria-label="Show ${name} and its feeds" title="Show folder and feeds">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h3.2c1.1 0 2 .9 2 2v1"/><path d="M4.8 18.5h12.9a2 2 0 0 0 1.9-1.5l1.2-5.2a1.5 1.5 0 0 0-1.5-1.8H5.2a1.8 1.8 0 0 0-1.8 2.2l1.4 6.3Z"/></svg>
       </button>
@@ -1244,6 +1364,7 @@ function removeFolder(id) {
     feed.folderIds = (feed.folderIds || []).filter((folderId) => folderId !== id);
   });
   selectedFolderIds.delete(id);
+  feedState.favoriteFolderIds = (feedState.favoriteFolderIds || []).filter((folderId) => folderId !== id);
   if (selectedSource === "folders" && !selectedFolderIds.size) selectedSource = "all";
   if (selectedSource === `folder:${id}`) selectedSource = "all";
   if (editingFolderId === id) editingFolderId = "";
@@ -1607,6 +1728,7 @@ function renderFeeds() {
   if (selectedSource === "archive") selectedSource = "all";
   document.querySelector("#feedsPanel")?.classList.toggle("is-empty", feedState.feeds.length === 0);
   renderSources();
+  renderFavoriteFolderTabs();
   renderList();
   renderReader();
   renderDirectory();
@@ -2109,6 +2231,7 @@ function bindFeedsDesk() {
       if (!feed.folderIds.includes(folder.id)) feed.folderIds.push(folder.id);
     });
   });
+  normalizeFavoriteFolders();
   bindSwipe();
   document.querySelector("#feedsDiscoverCta")?.addEventListener("click", () => openFeedsDiscover());
   document.querySelector("#feedsAdd")?.addEventListener("click", () => openFeedsSetup());
@@ -2264,7 +2387,7 @@ function bindFeedsDesk() {
   });
   panel.addEventListener("pointerdown", (event) => {
     folderActionPointerDown = Boolean(event.target.closest(
-      "[data-folder-toggle], [data-select-folder], [data-rename-folder], [data-show-folder], [data-remove-folder]"
+      "[data-folder-toggle], [data-select-folder], [data-rename-folder], [data-favorite-folder], [data-show-folder], [data-remove-folder]"
     ));
     window.setTimeout(() => {
       folderActionPointerDown = false;
@@ -2284,7 +2407,7 @@ function bindFeedsDesk() {
     const id = renameForm.dataset.renameFolderForm;
     const value = event.target.value;
     const restoreFocus = !folderActionPointerDown && event.relatedTarget
-      ? ["data-folder-toggle", "data-select-folder", "data-rename-folder", "data-show-folder", "data-remove-folder"]
+      ? ["data-folder-toggle", "data-select-folder", "data-rename-folder", "data-favorite-folder", "data-show-folder", "data-remove-folder"]
           .map((attribute) => ({ attribute, value: event.relatedTarget.getAttribute?.(attribute) }))
           .find((entry) => entry.value)
       : null;
@@ -2372,6 +2495,11 @@ function bindFeedsDesk() {
     const selectFolder = event.target.closest("[data-select-folder]");
     if (selectFolder) {
       toggleFolderSelection(selectFolder.dataset.selectFolder);
+      return;
+    }
+    const favoriteFolder = event.target.closest("[data-favorite-folder]");
+    if (favoriteFolder) {
+      toggleFavoriteFolder(favoriteFolder.dataset.favoriteFolder);
       return;
     }
     const selectFeed = event.target.closest("[data-select-feed]");
@@ -2515,6 +2643,16 @@ function bindFeedsDesk() {
       feedPane = 0;
       renderFeeds();
       document.querySelector("#feedsAddDialog")?.close();
+      return;
+    }
+    const favoriteSource = event.target.closest("[data-favorite-source]");
+    if (favoriteSource) {
+      previousSource = null;
+      selectedSource = favoriteSource.dataset.favoriteSource || "all";
+      if (selectedSource === "all") selectedFolderIds.clear();
+      selectedItemId = "";
+      feedPane = 0;
+      renderFeeds();
       return;
     }
     const story = event.target.closest("[data-open-story]");
