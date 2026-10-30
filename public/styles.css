@@ -9683,13 +9683,16 @@ button[value="close"]:active {
   }
 
   .feeds-sort-block {
+    display: contents;
     margin: 0;
     max-width: 100%;
   }
 
   .feeds-sort {
+    grid-column: 1 / -1;
+    justify-self: start;
     margin: 0;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
 
   .feeds-sort button {
@@ -9698,10 +9701,13 @@ button[value="close"]:active {
   }
 
   .feeds-sort-hint {
+    grid-column: 1;
+    min-width: 0;
     font-size: 0.875rem;
   }
 
   .feeds-reeder-actions {
+    grid-column: 2;
     gap: 4px;
   }
 
@@ -9737,7 +9743,15 @@ button[value="close"]:active {
   }
 
   .feeds-reeder-bar:has(#feedsBack:not([hidden])) .feeds-sort {
+    grid-column: 1 / -1;
+  }
+
+  .feeds-reeder-bar:has(#feedsBack:not([hidden])) .feeds-sort-hint {
     grid-column: 1 / 3;
+  }
+
+  .feeds-reeder-bar:has(#feedsBack:not([hidden])) .feeds-reeder-actions {
+    grid-column: 3;
   }
 
   .mast button:focus-visible,

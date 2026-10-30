@@ -36,3 +36,24 @@ test("empty library action opens the import flow on a phone", async ({ page }) =
   await page.locator(".empty-add-video").click();
   await expect(page.locator("#addVideoDialog")).toBeVisible();
 });
+
+for (const width of [320, 390]) {
+  test(`feed filter pills stay on one row at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    await page.locator("#desk-feeds").evaluate((input) => {
+      input.checked = true;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const pills = page.locator("#feedsSort > button");
+    await expect(pills).toHaveCount(3);
+    const boxes = await pills.evaluateAll((buttons) => buttons.map((button) => {
+      const box = button.getBoundingClientRect();
+      return { top: Math.round(box.top), right: box.right };
+    }));
+
+    expect(new Set(boxes.map(({ top }) => top)).size).toBe(1);
+    expect(Math.max(...boxes.map(({ right }) => right))).toBeLessThanOrEqual(width);
+  });
+}
