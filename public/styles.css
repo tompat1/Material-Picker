@@ -7853,15 +7853,23 @@ label.cms-image-choose {
 
 .feeds-sort .feeds-read-pill {
   margin-left: 0.35rem;
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
-  color: color-mix(in srgb, var(--accent) 76%, var(--ink));
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.feeds-read-check {
+  display: none;
 }
 
 .feeds-sort .feeds-read-pill[aria-pressed="true"] {
-  border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
-  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
-  color: var(--ink);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+
+.feeds-read-pill[aria-pressed="true"] .feeds-read-check {
+  display: inline;
 }
 
 .feeds-sort-hint {

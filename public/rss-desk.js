@@ -461,6 +461,14 @@ function currentFeedItems() {
   return showReadPosts ? readItems() : allFeedItems();
 }
 
+function toggleReadPostsView() {
+  showReadPosts = !showReadPosts;
+  if (showReadPosts) feedSort = "latest";
+  selectedItemId = "";
+  feedPane = 0;
+  renderFeeds();
+}
+
 function uniqueStories(items) {
   const seen = new Set();
   const unique = [];
@@ -1495,25 +1503,22 @@ function renderList() {
   if (!river) return;
   const sortButtons = document.querySelectorAll("#feedsSort [data-feed-sort]");
   sortButtons.forEach((button) => {
-    button.setAttribute("aria-pressed", button.dataset.feedSort === feedSort ? "true" : "false");
+    button.setAttribute("aria-pressed", !showReadPosts && button.dataset.feedSort === feedSort ? "true" : "false");
   });
   const readToggle = document.querySelector("#feedsReadToggle");
   if (readToggle) {
     readToggle.setAttribute("aria-pressed", showReadPosts ? "true" : "false");
+    readToggle.setAttribute("aria-label", showReadPosts ? "Show all posts" : "Show only read posts");
     readToggle.title = showReadPosts ? "Return to all posts" : "Show only posts you have already read";
   }
   const activeSort = document.querySelector("#feedsSort [data-feed-sort='active']");
   if (activeSort) {
-    activeSort.title = showReadPosts
-      ? "Sources with the most read posts rise to the top"
-      : "Sources with the most posts rise to the top";
+    activeSort.title = "Sources with the most posts rise to the top";
   }
   const sortHint = document.querySelector("#feedsSortHint");
   if (sortHint) {
     if (showReadPosts) {
-      sortHint.textContent = feedSort === "active"
-        ? "Sources with the most read posts first."
-        : "Previously read posts, newest first.";
+      sortHint.textContent = "Previously read posts, newest first.";
     } else {
       sortHint.textContent = feedSort === "active"
         ? "Sources with the most posts first — not global popularity."
@@ -2315,13 +2320,14 @@ function bindFeedsDesk() {
   });
   document.querySelector("#discoverTopicPack")?.addEventListener("click", () => selectTopicPack());
   document.querySelector("#feedsSort")?.addEventListener("click", (event) => {
+    if (event.target.closest("#feedsReadToggle")) {
+      toggleReadPostsView();
+      return;
+    }
     const button = event.target.closest("[data-feed-sort]");
     if (!button) return;
+    showReadPosts = false;
     feedSort = button.dataset.feedSort === "active" ? "active" : "latest";
-    renderList();
-  });
-  document.querySelector("#feedsReadToggle")?.addEventListener("click", () => {
-    showReadPosts = !showReadPosts;
     selectedItemId = "";
     feedPane = 0;
     renderFeeds();

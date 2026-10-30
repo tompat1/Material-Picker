@@ -21,7 +21,7 @@ function readPostApp() {
   })]]);
   const context = vm.createContext({
     document: { body: { dataset: {} }, addEventListener() {}, querySelector: () => null, querySelectorAll: () => [] },
-    window: { clearTimeout, setTimeout },
+    window: { clearTimeout, setTimeout, matchMedia: () => ({ matches: false }) },
     localStorage: {
       getItem: (key) => saved.get(key) || null,
       setItem: (key, value) => saved.set(key, value),
@@ -39,6 +39,7 @@ function readPostApp() {
     globalThis.readPostTest = {
       items: itemsForSource,
       setReadView(value) { showReadPosts = Boolean(value); },
+      toggleReadView: toggleReadPostsView,
       state: feedState,
       store: storeFeed,
     };
@@ -51,7 +52,7 @@ test("read feed view keeps opened posts available and excludes archived posts", 
   assert.deepEqual([...app.items("all")].map((item) => item.id), ["unread-tech", "read-tech", "read-news"]);
   assert.deepEqual([...app.items("folder:tech")].map((item) => item.id), ["unread-tech", "read-tech"]);
 
-  app.setReadView(true);
+  app.toggleReadView();
   assert.deepEqual([...app.items("all")].map((item) => item.id), ["read-tech", "read-news"]);
   assert.deepEqual([...app.items("folder:tech")].map((item) => item.id), ["read-tech"]);
   assert.deepEqual([...app.items("folder:news")].map((item) => item.id), ["read-news"]);
