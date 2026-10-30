@@ -1567,13 +1567,17 @@ function renderList() {
     if (feedSort === "latest") lastDay = day;
     const when = formatClock(item.publishedAt);
     const itemImage = cleanImageUrl(item.image);
-    return `${heading}<button class="feed-row${feedState.read[item.id] && !showReadPosts ? " is-read" : ""}${selectedItemId === item.id ? " is-selected" : ""}" type="button" data-open-story="${escapeFeedText(item.id)}">
+    const isReadInAll = Boolean(feedState.read[item.id] && !showReadPosts);
+    const readMark = isReadInAll
+      ? `<span class="feed-row-read-mark" aria-hidden="true">✓ Read</span>`
+      : "";
+    return `${heading}<button class="feed-row${isReadInAll ? " is-read" : ""}${selectedItemId === item.id ? " is-selected" : ""}" type="button" data-open-story="${escapeFeedText(item.id)}">
       <span class="feed-row-copy">
         <span class="feed-row-source"><span>${escapeFeedText(feed?.title || "Feed")}</span>${when ? `<time>${escapeFeedText(when)}</time>` : ""}</span>
         <strong>${feedState.starred[item.id] ? "★ " : ""}${escapeFeedText(item.title)}</strong>
         ${item.summary ? `<span>${escapeFeedText(item.summary)}</span>` : ""}
       </span>
-      ${itemImage ? `<span class="feed-row-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.closest('.feed-row-thumb-wrap')?.remove()" /></span>` : `<span class="feed-row-thumb" aria-hidden="true"></span>`}
+      ${itemImage ? `<span class="feed-row-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.closest('.feed-row-thumb-wrap')?.remove()" />${readMark}</span>` : `<span class="feed-row-thumb" aria-hidden="true">${readMark}</span>`}
     </button>`;
   }).join("");
 
