@@ -7380,31 +7380,39 @@ label.cms-image-choose {
 
 .feeds-discover-steps {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.55rem;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0;
   margin: 0.55rem 0 0.65rem;
   padding: 0;
   list-style: none;
 }
 
 .feeds-discover-steps li {
-  padding: 0.28rem 0.55rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--muted);
   font: 600 0.75rem/1 var(--sans);
   letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.feeds-discover-steps li + li::before {
+  content: "\2192";
+  margin: 0 0.5rem;
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+  font-weight: 400;
 }
 
 .feeds-discover-steps li.is-current {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
   color: var(--ink);
+  font-weight: 700;
 }
 
 .feeds-discover-steps li.is-done {
-  border-color: transparent;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
   color: var(--ink);
 }
 

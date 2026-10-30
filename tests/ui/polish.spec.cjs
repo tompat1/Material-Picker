@@ -57,3 +57,21 @@ for (const width of [320, 390]) {
     expect(Math.max(...boxes.map(({ right }) => right))).toBeLessThanOrEqual(width);
   });
 }
+
+test("feed discovery presents its three steps as plain text", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#feedsAddDialog").evaluate((dialog) => dialog.showModal());
+
+  const steps = page.locator("#feedsDiscoverSteps > li");
+  await expect(steps).toHaveText(["Choose topic", "Select feeds", "Pick folder"]);
+  const presentation = await steps.evaluateAll((items) => items.map((item) => ({
+    border: getComputedStyle(item).borderTopWidth,
+    background: getComputedStyle(item).backgroundColor,
+    arrow: getComputedStyle(item, "::before").content,
+  })));
+
+  expect(presentation.every(({ border }) => border === "0px")).toBe(true);
+  expect(presentation.every(({ background }) => background === "rgba(0, 0, 0, 0)")).toBe(true);
+  expect(presentation.slice(1).every(({ arrow }) => arrow.includes("→"))).toBe(true);
+});
