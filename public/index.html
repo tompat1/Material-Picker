@@ -394,7 +394,7 @@
                 <p class="feeds-count" id="feedsSubtitle"></p>
               </div>
               <div class="feeds-sort-block">
-                <div class="feeds-sort" id="feedsSort" role="group" aria-label="Order unread stories">
+                <div class="feeds-sort" id="feedsSort" role="group" aria-label="Filter and order stories">
                   <button
                     type="button"
                     data-feed-sort="latest"
@@ -405,10 +405,18 @@
                     type="button"
                     data-feed-sort="active"
                     aria-pressed="false"
-                    title="Feeds with the most unread rise to the top"
+                    title="Sources with the most posts rise to the top"
                   >Busiest</button>
+                  <button
+                    class="feeds-read-pill"
+                    id="feedsReadToggle"
+                    type="button"
+                    aria-pressed="false"
+                    aria-controls="feedRiver"
+                    title="Show only posts you have already read"
+                  ><span aria-hidden="true">✓</span> Read</button>
                 </div>
-                <p class="feeds-sort-hint" id="feedsSortHint">Newest first, grouped by day.</p>
+                <p class="feeds-sort-hint" id="feedsSortHint">All posts, newest first. Read posts are muted.</p>
               </div>
             </div>
             <div class="feeds-reeder-actions">

@@ -45,6 +45,7 @@ let directoryFeeds = [];
 let directoryRequest = 0;
 let catalogPicks = new Map();
 let feedSort = "latest";
+let showReadPosts = false;
 let touchStart = null;
 
 function cleanImageUrl(value) {
@@ -448,6 +449,18 @@ function unreadItems() {
   return feedState.items.filter(isUnread);
 }
 
+function readItems() {
+  return feedState.items.filter((item) => item && feedState.read[item.id] && !feedState.archived[item.id]);
+}
+
+function allFeedItems() {
+  return feedState.items.filter((item) => item && !feedState.archived[item.id]);
+}
+
+function currentFeedItems() {
+  return showReadPosts ? readItems() : allFeedItems();
+}
+
 function uniqueStories(items) {
   const seen = new Set();
   const unique = [];
@@ -469,11 +482,12 @@ function withOpenStory(items) {
 }
 
 function itemsForSource(source = selectedSource) {
+  const availableItems = currentFeedItems();
   if (source === "archive") {
-    // Archive list was removed from the UI; treat as All unread.
-    return withOpenStory(uniqueStories(unreadItems()));
+    // Archive list was removed from the UI; treat as the current All view.
+    return withOpenStory(uniqueStories(availableItems));
   }
-  if (source === "all") return withOpenStory(uniqueStories(unreadItems()));
+  if (source === "all") return withOpenStory(uniqueStories(availableItems));
   if (source === "folders") {
     const feedIds = new Set(
       feedState.feeds
@@ -481,20 +495,20 @@ function itemsForSource(source = selectedSource) {
         .map((feed) => feed.id)
     );
     if (folderFilterMode === "hide") {
-      return withOpenStory(uniqueStories(unreadItems().filter((item) => !feedIds.has(item.feedId))));
+      return withOpenStory(uniqueStories(availableItems.filter((item) => !feedIds.has(item.feedId))));
     }
-    return withOpenStory(uniqueStories(unreadItems().filter((item) => feedIds.has(item.feedId))));
+    return withOpenStory(uniqueStories(availableItems.filter((item) => feedIds.has(item.feedId))));
   }
   if (source.startsWith("folder:")) {
     const folderId = source.slice(7);
     const feedIds = new Set(feedState.feeds.filter((feed) => (feed.folderIds || []).includes(folderId)).map((feed) => feed.id));
-    return withOpenStory(uniqueStories(unreadItems().filter((item) => feedIds.has(item.feedId))));
+    return withOpenStory(uniqueStories(availableItems.filter((item) => feedIds.has(item.feedId))));
   }
   if (source.startsWith("feed:")) {
     const feedId = source.slice(5);
-    return withOpenStory(uniqueStories(unreadItems().filter((item) => item.feedId === feedId)));
+    return withOpenStory(uniqueStories(availableItems.filter((item) => item.feedId === feedId)));
   }
-  return withOpenStory(uniqueStories(unreadItems()));
+  return withOpenStory(uniqueStories(availableItems));
 }
 
 function dedupeFeedLibrary() {
@@ -1008,12 +1022,20 @@ function storeFeed(feed, options = {}) {
     seenIncoming.add(itemKey);
     return true;
   });
+  const isUserKeptItem = (item) => Boolean(
+    feedState.read[item.id] || feedState.starred[item.id] || feedState.archived[item.id]
+  );
   const kept = new Map(incoming.map((item) => [item.id, item]));
+  let transientCount = incoming.filter((item) => !isUserKeptItem(item)).length;
   feedState.items
     .filter((item) => item.feedId === record.id && !kept.has(item.id))
-    .slice(0, FEED_ITEM_CAP)
-    .forEach((item) => kept.set(item.id, item));
-  const merged = [...kept.values()].sort((a, b) => feedTime(b) - feedTime(a)).slice(0, FEED_ITEM_CAP);
+    .sort((a, b) => feedTime(b) - feedTime(a))
+    .forEach((item) => {
+      if (!isUserKeptItem(item) && transientCount >= FEED_ITEM_CAP) return;
+      kept.set(item.id, item);
+      if (!isUserKeptItem(item)) transientCount += 1;
+    });
+  const merged = [...kept.values()].sort((a, b) => feedTime(b) - feedTime(a));
   feedState.items = feedState.items.filter((item) => item.feedId !== record.id).concat(merged);
   if ((feed.items || []).length) setFeedHealth(record, "ok");
   saveFeedState();
@@ -1068,7 +1090,7 @@ function applyPane() {
       subtitle.textContent = article?.author || "";
     } else {
       const count = itemsForSource().length;
-      subtitle.textContent = `${countLabel(count)} unread`;
+      subtitle.textContent = `${countLabel(count)} ${showReadPosts ? "read" : "posts"}`;
     }
   }
 }
@@ -1402,6 +1424,7 @@ function feedsSignInNote() {
 
 function feedsDiscoverInvite() {
   if (!pickerIsSignedIn()) return "";
+  if (showReadPosts) return "";
   if (feedState.dismissedDiscoverInvite) return "";
   const fewFeeds = feedState.feeds.length < 12;
   const allWithUnread = selectedSource === "all" && unreadItems().length > 0;
@@ -1474,26 +1497,43 @@ function renderList() {
   sortButtons.forEach((button) => {
     button.setAttribute("aria-pressed", button.dataset.feedSort === feedSort ? "true" : "false");
   });
+  const readToggle = document.querySelector("#feedsReadToggle");
+  if (readToggle) {
+    readToggle.setAttribute("aria-pressed", showReadPosts ? "true" : "false");
+    readToggle.title = showReadPosts ? "Return to all posts" : "Show only posts you have already read";
+  }
+  const activeSort = document.querySelector("#feedsSort [data-feed-sort='active']");
+  if (activeSort) {
+    activeSort.title = showReadPosts
+      ? "Sources with the most read posts rise to the top"
+      : "Sources with the most posts rise to the top";
+  }
   const sortHint = document.querySelector("#feedsSortHint");
   if (sortHint) {
-    sortHint.textContent = feedSort === "active"
-      ? "Feeds with the most unread first — not global popularity."
-      : "Newest first, grouped by day.";
+    if (showReadPosts) {
+      sortHint.textContent = feedSort === "active"
+        ? "Sources with the most read posts first."
+        : "Previously read posts, newest first.";
+    } else {
+      sortHint.textContent = feedSort === "active"
+        ? "Sources with the most posts first — not global popularity."
+        : "All posts, newest first. Read posts are muted.";
+    }
   }
 
-  const currentKey = `${selectedSource}|${Array.from(selectedFolderIds).sort().join(",")}|${folderFilterMode}|${feedSort}`;
+  const currentKey = `${selectedSource}|${Array.from(selectedFolderIds).sort().join(",")}|${folderFilterMode}|${feedSort}|${showReadPosts ? "read" : "all"}`;
   if (currentKey !== lastRenderedSourceKey) {
     lastRenderedSourceKey = currentKey;
     riverRenderLimit = 40;
   }
 
-  const unreadWeights = new Map();
-  unreadItems().forEach((item) => {
-    unreadWeights.set(item.feedId, (unreadWeights.get(item.feedId) || 0) + 1);
+  const sourceWeights = new Map();
+  currentFeedItems().forEach((item) => {
+    sourceWeights.set(item.feedId, (sourceWeights.get(item.feedId) || 0) + 1);
   });
   const items = itemsForSource().sort((a, b) => {
     if (feedSort === "active") {
-      const weight = (unreadWeights.get(b.feedId) || 0) - (unreadWeights.get(a.feedId) || 0);
+      const weight = (sourceWeights.get(b.feedId) || 0) - (sourceWeights.get(a.feedId) || 0);
       if (weight) return weight;
     }
     return feedTime(b) - feedTime(a);
@@ -1505,7 +1545,7 @@ function renderList() {
       riverObserver = null;
     }
     river.innerHTML = feedState.feeds.length
-      ? `${filterBanner}${feedsDiscoverInvite()}<p class="feeds-river-empty">Nothing unread in this view.</p>${feedsSignInNote()}`
+      ? `${filterBanner}${feedsDiscoverInvite()}<p class="feeds-river-empty">${showReadPosts ? "Nothing read" : "No posts"} in this view.</p>${feedsSignInNote()}`
       : feedsWelcome();
     return;
   }
@@ -1522,7 +1562,7 @@ function renderList() {
     if (feedSort === "latest") lastDay = day;
     const when = formatClock(item.publishedAt);
     const itemImage = cleanImageUrl(item.image);
-    return `${heading}<button class="feed-row${selectedItemId === item.id ? " is-selected" : ""}" type="button" data-open-story="${escapeFeedText(item.id)}">
+    return `${heading}<button class="feed-row${feedState.read[item.id] && !showReadPosts ? " is-read" : ""}${selectedItemId === item.id ? " is-selected" : ""}" type="button" data-open-story="${escapeFeedText(item.id)}">
       <span class="feed-row-copy">
         <span class="feed-row-source"><span>${escapeFeedText(feed?.title || "Feed")}</span>${when ? `<time>${escapeFeedText(when)}</time>` : ""}</span>
         <strong>${feedState.starred[item.id] ? "★ " : ""}${escapeFeedText(item.title)}</strong>
@@ -2279,6 +2319,12 @@ function bindFeedsDesk() {
     if (!button) return;
     feedSort = button.dataset.feedSort === "active" ? "active" : "latest";
     renderList();
+  });
+  document.querySelector("#feedsReadToggle")?.addEventListener("click", () => {
+    showReadPosts = !showReadPosts;
+    selectedItemId = "";
+    feedPane = 0;
+    renderFeeds();
   });
   document.addEventListener("picker-account", () => {
     renderFeeds();
