@@ -1839,6 +1839,14 @@ function setFeedsDialogMode(mode) {
   if (title) title.textContent = resolved === "setup" ? "Feeds & folders" : "Find interesting feeds";
   if (setup) setup.open = resolved === "setup";
   paintDiscoverSteps();
+  syncFeedsActionState();
+}
+
+function syncFeedsActionState() {
+  const dialog = document.querySelector("#feedsAddDialog");
+  const openMode = dialog?.open ? dialog.dataset.mode : "";
+  document.querySelector("#feedsDiscoverCta")?.setAttribute("aria-expanded", String(openMode === "discover"));
+  document.querySelector("#feedsAdd")?.setAttribute("aria-expanded", String(openMode === "setup"));
 }
 
 function openFeedsDiscover() {
@@ -1851,7 +1859,9 @@ function openFeedsDiscover() {
     const query = document.querySelector("#feedTopicQuery");
     if (query && !catalogQuery) query.value = "";
     setFeedsDialogMode("discover");
-    document.querySelector("#feedsAddDialog")?.showModal();
+    const dialog = document.querySelector("#feedsAddDialog");
+    if (dialog && !dialog.open) dialog.showModal();
+    syncFeedsActionState();
     document.querySelector("#feedsDiscover")?.scrollIntoView({ block: "nearest" });
     void loadDirectory();
   });
@@ -1864,7 +1874,9 @@ function openFeedsSetup() {
       return;
     }
     setFeedsDialogMode("setup");
-    document.querySelector("#feedsAddDialog")?.showModal();
+    const dialog = document.querySelector("#feedsAddDialog");
+    if (dialog && !dialog.open) dialog.showModal();
+    syncFeedsActionState();
     document.querySelector("#feedsSetupBlock")?.scrollIntoView({ block: "nearest" });
   });
 }
@@ -2294,8 +2306,8 @@ function bindFeedsDesk() {
     document.querySelector("#feedsSetupBlock")?.scrollIntoView({ block: "nearest" });
   });
   const addDialog = document.querySelector("#feedsAddDialog");
+  addDialog?.addEventListener("close", syncFeedsActionState);
   addDialog?.addEventListener("click", (event) => {
-    if (!window.matchMedia("(min-width: 761px)").matches) return;
     const box = addDialog.getBoundingClientRect();
     const outside = event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom;
     if (outside) addDialog.close();

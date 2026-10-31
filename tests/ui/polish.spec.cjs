@@ -75,3 +75,41 @@ test("feed discovery presents its three steps as plain text", async ({ page }) =
   expect(presentation.every(({ background }) => background === "rgba(0, 0, 0, 0)")).toBe(true);
   expect(presentation.slice(1).every(({ arrow }) => arrow.includes("→"))).toBe(true);
 });
+
+test("mobile feed tools use a right-edge tab rail and slide panel", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  const discover = page.getByRole("button", { name: "Discover", exact: true });
+  const settings = page.getByRole("button", { name: "Feed settings" });
+  const [discoverBox, settingsBox] = await Promise.all([
+    discover.boundingBox(),
+    settings.boundingBox(),
+  ]);
+  expect(Math.round(discoverBox.x + discoverBox.width)).toBe(390);
+  expect(Math.round(settingsBox.x + settingsBox.width)).toBe(390);
+  expect(settingsBox.y).toBeGreaterThanOrEqual(discoverBox.y + discoverBox.height);
+  await expect(discover).toHaveAttribute("aria-controls", "feedsAddDialog");
+  await expect(settings).toHaveAttribute("aria-controls", "feedsAddDialog");
+
+  const drawer = page.locator("#feedsAddDialog");
+  await drawer.evaluate((dialog) => {
+    dialog.dataset.mode = "discover";
+    dialog.showModal();
+  });
+  await expect(drawer).toBeVisible();
+  await expect.poll(async () => {
+    const box = await drawer.boundingBox();
+    return {
+      right: Math.round(box.x + box.width),
+      top: Math.round(box.y),
+      height: Math.round(box.height),
+    };
+  }).toEqual({ right: 390, top: 0, height: 844 });
+  await drawer.getByRole("button", { name: "Close" }).click();
+  await expect(drawer).not.toBeVisible();
+});
