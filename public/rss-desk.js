@@ -606,6 +606,22 @@ function sourceTitle(source = selectedSource) {
   return "All";
 }
 
+function feedSortDescription() {
+  const subject = sourceTitle().trim();
+  const allPosts = subject === "All";
+  if (showReadPosts) {
+    return allPosts
+      ? "Posts you’ve read, newest first."
+      : `${subject} posts you’ve read, newest first.`;
+  }
+  if (feedSort === "active") {
+    return allPosts
+      ? "Sources with the most posts first — based on this view."
+      : `Sources with the most posts in ${subject} first — based on this view.`;
+  }
+  return `${allPosts ? "All posts" : `${subject} posts`}, newest first. Read posts are muted.`;
+}
+
 function countLabel(count) {
   return new Intl.NumberFormat(undefined).format(count);
 }
@@ -1517,13 +1533,7 @@ function renderList() {
   }
   const sortHint = document.querySelector("#feedsSortHint");
   if (sortHint) {
-    if (showReadPosts) {
-      sortHint.textContent = "Previously read posts, newest first.";
-    } else {
-      sortHint.textContent = feedSort === "active"
-        ? "Sources with the most posts first — not global popularity."
-        : "All posts, newest first. Read posts are muted.";
-    }
+    sortHint.textContent = feedSortDescription();
   }
 
   const currentKey = `${selectedSource}|${Array.from(selectedFolderIds).sort().join(",")}|${folderFilterMode}|${feedSort}|${showReadPosts ? "read" : "all"}`;

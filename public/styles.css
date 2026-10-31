@@ -10190,16 +10190,21 @@ button[value="close"]:active {
 
 /* Mobile feed tools: stacked edge tabs opening full-height side panels. */
 @media (max-width: 760px) {
+  body:has(#desk-feeds:checked) .feeds-reeder-bar {
+    position: relative;
+    padding-right: 112px;
+  }
+
   body:has(#desk-feeds:checked) .feeds-reeder-actions {
-    position: fixed;
-    top: 48%;
-    right: 0;
+    position: absolute;
+    top: 8px;
+    right: -16px;
     z-index: 8;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
     gap: 6px;
-    transform: translateY(-50%);
+    transform: none;
   }
 
   body:has(#desk-feeds:checked) .feeds-discover-cta,
@@ -10297,6 +10302,34 @@ button[value="close"]:active {
 
   .feeds-add-dialog[data-mode="discover"] .feeds-discover-more {
     margin: 0.85rem 1rem;
+  }
+}
+
+@media (max-width: 360px) {
+  body:has(#desk-feeds:checked) .feeds-reeder-bar {
+    padding-right: 52px;
+  }
+
+  body:has(#desk-feeds:checked) .feeds-discover-cta {
+    width: 52px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  body:has(#desk-feeds:checked) .feeds-discover-cta span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  body:has(#desk-feeds:checked) .feeds-discover-cta svg {
+    display: block;
   }
 }
 

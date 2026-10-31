@@ -55,6 +55,7 @@ for (const width of [320, 390]) {
 
     expect(new Set(boxes.map(({ top }) => top)).size).toBe(1);
     expect(Math.max(...boxes.map(({ right }) => right))).toBeLessThanOrEqual(width);
+    await expect(page.locator("#feedsDiscoverCta svg")).toBeVisible();
   });
 }
 
@@ -86,13 +87,17 @@ test("mobile feed tools use a right-edge tab rail and slide panel", async ({ pag
 
   const discover = page.getByRole("button", { name: "Discover", exact: true });
   const settings = page.getByRole("button", { name: "Feed settings" });
-  const [discoverBox, settingsBox] = await Promise.all([
+  const [headerBox, discoverBox, settingsBox] = await Promise.all([
+    page.locator(".feeds-reeder-bar").boundingBox(),
     discover.boundingBox(),
     settings.boundingBox(),
   ]);
   expect(Math.round(discoverBox.x + discoverBox.width)).toBe(390);
   expect(Math.round(settingsBox.x + settingsBox.width)).toBe(390);
   expect(settingsBox.y).toBeGreaterThanOrEqual(discoverBox.y + discoverBox.height);
+  expect(discoverBox.y).toBeGreaterThanOrEqual(headerBox.y);
+  expect(settingsBox.y + settingsBox.height).toBeLessThanOrEqual(headerBox.y + headerBox.height);
+  await expect(page.locator(".feeds-reeder-actions")).toHaveCSS("position", "absolute");
   await expect(discover).toHaveAttribute("aria-controls", "feedsAddDialog");
   await expect(settings).toHaveAttribute("aria-controls", "feedsAddDialog");
 
@@ -112,4 +117,31 @@ test("mobile feed tools use a right-edge tab rail and slide panel", async ({ pag
   }).toEqual({ right: 390, top: 0, height: 844 });
   await drawer.getByRole("button", { name: "Close" }).click();
   await expect(drawer).not.toBeVisible();
+});
+
+test("feed filter descriptions follow the selected subject", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("material-picker:feeds", JSON.stringify({
+      feeds: [{ id: "tech-feed", title: "Tech Feed", url: "https://tech.example/feed", folderIds: ["tech"] }],
+      folders: [{ id: "tech", name: "Tech" }],
+      favoriteFolderIds: ["tech"],
+      items: [{ id: "tech-story", feedId: "tech-feed", title: "A tech story", publishedAt: "2026-10-31T10:00:00Z" }],
+      read: { "tech-story": true },
+      archived: {},
+    }));
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.getByRole("button", { name: "Show Tech feeds" }).click();
+
+  const hint = page.locator("#feedsSortHint");
+  await expect(hint).toHaveText("Tech posts, newest first. Read posts are muted.");
+  await page.getByRole("button", { name: "Busiest" }).click();
+  await expect(hint).toHaveText("Sources with the most posts in Tech first — based on this view.");
+  await page.getByRole("button", { name: "Read" }).click();
+  await expect(hint).toHaveText("Tech posts you’ve read, newest first.");
 });
