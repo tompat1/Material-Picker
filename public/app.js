@@ -2030,6 +2030,7 @@ let youtubeShelf = {
   channelVideos: [],
   channelVideosId: "",
   channelCache: {},
+  isManagingSubs: false,
 };
 
 async function selectYouTubeTopic(subject) {
@@ -2101,25 +2102,27 @@ function youtubeShelfVideos() {
     return cached.filter((item) => youtubeTextMatches(item));
   }
 
+  const removedChannels = new Set(getYouTubeRemovedChannels());
+
   if (youtubeShelf.topic === "Recently uploaded") {
-    const videos = youtubeShelf.subscriptions.filter((v) => v?.url && core.feedVoteForUrl(state, v.url) !== -1 && youtubeTextMatches(v));
+    const videos = youtubeShelf.subscriptions.filter((v) => !removedChannels.has(v?.channelId) && v?.url && core.feedVoteForUrl(state, v.url) !== -1 && youtubeTextMatches(v));
     return videos.slice().sort((a, b) => Date.parse(b.publishedAt || 0) - Date.parse(a.publishedAt || 0));
   }
 
   if (youtubeShelf.topic === "Posts") {
-    return youtubeShelf.subscriptions.filter((v) => v?.url && core.feedVoteForUrl(state, v.url) !== -1 && youtubeTextMatches(v));
+    return youtubeShelf.subscriptions.filter((v) => !removedChannels.has(v?.channelId) && v?.url && core.feedVoteForUrl(state, v.url) !== -1 && youtubeTextMatches(v));
   }
 
   if (youtubeShelf.view === "liked") return youtubeShelf.liked.filter((item) => youtubeTextMatches(item));
   if (youtubeShelf.view === "shorts") {
-    return youtubeShelf.subscriptions.filter((video) => video?.short === true && video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
+    return youtubeShelf.subscriptions.filter((video) => !removedChannels.has(video?.channelId) && video?.short === true && video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
   }
   if (youtubeShelf.view === "playlist") return youtubeShelf.playlistVideos.filter((item) => youtubeTextMatches(item));
   const videos = youtubeShelf.view === "channel"
     ? (youtubeShelf.channelVideosId === youtubeShelf.channelId && youtubeShelf.channelVideos.length
       ? youtubeShelf.channelVideos
       : youtubeShelf.subscriptions.filter((video) => video.channelId === youtubeShelf.channelId))
-    : youtubeShelf.subscriptions;
+    : youtubeShelf.subscriptions.filter((video) => !removedChannels.has(video?.channelId));
   const filtered = videos.filter((video) => video?.url && core.feedVoteForUrl(state, video.url) !== -1 && youtubeTextMatches(video));
   if (youtubeShelf.view === "all") {
     const regular = filtered.filter((v) => !v?.short);
@@ -2339,6 +2342,11 @@ function paintYouTubeGrid(message = "") {
       : view === youtubeShelf.view || (view === "playlists" && youtubeShelf.view === "playlist");
     button.setAttribute("aria-pressed", pressed ? "true" : "false");
   });
+  document.querySelectorAll(".yt-channel-item").forEach((item) => {
+    const channelId = item.dataset.channelItemId;
+    const isSelected = youtubeShelf.view === "channel" && channelId === youtubeShelf.channelId;
+    item.classList.toggle("is-selected", Boolean(isSelected));
+  });
   if (message) {
     grid.className = "yt-grid";
     grid.dataset.results = "[]";
@@ -2463,6 +2471,319 @@ function checkYouTubeSwipeHint() {
   });
 }
 
+function getYouTubeFavoriteChannels() {
+  if (!Array.isArray(state.youtubeFavoriteChannels)) state.youtubeFavoriteChannels = [];
+  return state.youtubeFavoriteChannels;
+}
+
+function getYouTubeRemovedChannels() {
+  if (!Array.isArray(state.youtubeRemovedChannels)) state.youtubeRemovedChannels = [];
+  return state.youtubeRemovedChannels;
+}
+
+function getYouTubeSubFilter() {
+  return state.youtubeSubFilter || "latest";
+}
+
+function setYouTubeSubFilter(filter) {
+  const valid = ["latest", "favourites", "alphabetical", "new"];
+  state.youtubeSubFilter = valid.includes(filter) ? filter : "latest";
+  saveState();
+  renderYouTubeChannels();
+}
+
+function toggleYouTubeFavoriteChannel(channelId, buttonEl) {
+  if (!channelId) return;
+  const favs = getYouTubeFavoriteChannels();
+  const index = favs.indexOf(channelId);
+  const channel = youtubeShelf.channels.find((c) => c.id === channelId);
+  const title = channel?.title || "Channel";
+  let noticeMsg = "";
+  if (index >= 0) {
+    favs.splice(index, 1);
+    noticeMsg = `Removed ${title} from favourites`;
+  } else {
+    favs.push(channelId);
+    noticeMsg = `Added ${title} to favourites`;
+  }
+  saveState();
+  if (buttonEl) pulseAction(buttonEl);
+  showActionNotice(buttonEl?.getBoundingClientRect() || document.querySelector("#youtubeSubsPanel")?.getBoundingClientRect(), noticeMsg);
+  renderYouTubeChannels();
+}
+
+function removeYouTubeChannel(channelId, buttonEl) {
+  if (!channelId) return;
+  const removed = getYouTubeRemovedChannels();
+  if (!removed.includes(channelId)) {
+    removed.push(channelId);
+  }
+  saveState();
+  const channel = youtubeShelf.channels.find((c) => c.id === channelId);
+  const title = channel?.title || "Channel";
+  if (buttonEl) pulseAction(buttonEl);
+  showActionNotice(buttonEl?.getBoundingClientRect() || document.querySelector("#youtubeSubsPanel")?.getBoundingClientRect(), `Removed ${title} from subscriptions`);
+  if (youtubeShelf.view === "channel" && youtubeShelf.channelId === channelId) {
+    youtubeShelf.view = "all";
+    youtubeShelf.channelId = "";
+  }
+  renderYouTubeChannels();
+  paintYouTubeGrid();
+}
+
+function restoreRemovedYouTubeChannels(targetId) {
+  if (targetId) {
+    state.youtubeRemovedChannels = getYouTubeRemovedChannels().filter((id) => id !== targetId);
+    const ch = youtubeShelf.channels.find((c) => c.id === targetId);
+    showActionNotice(document.querySelector("#youtubeSubsPanel")?.getBoundingClientRect(), `Restored ${ch?.title || "channel"}`);
+  } else {
+    state.youtubeRemovedChannels = [];
+    showActionNotice(document.querySelector("#youtubeSubsPanel")?.getBoundingClientRect(), "Restored all subscriptions");
+  }
+  saveState();
+  renderYouTubeChannels();
+  paintYouTubeGrid();
+  const dialog = document.querySelector("#ytRestoreSubsDialog");
+  if (dialog?.open) {
+    const remaining = getYouTubeRemovedChannels();
+    if (remaining.length === 0) {
+      dialog.close();
+    } else {
+      openYouTubeRestoreModal();
+    }
+  }
+}
+
+function openYouTubeRestoreModal() {
+  const removedIds = getYouTubeRemovedChannels();
+  if (removedIds.length === 0) return;
+  if (removedIds.length === 1) {
+    restoreRemovedYouTubeChannels(removedIds[0]);
+    return;
+  }
+  let dialog = document.querySelector("#ytRestoreSubsDialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "ytRestoreSubsDialog";
+    dialog.className = "yt-restore-dialog";
+    document.body.append(dialog);
+    dialog.addEventListener("click", (e) => {
+      const rect = dialog.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+        dialog.close();
+      }
+    });
+  }
+  const removedChannels = removedIds.map((id) => youtubeShelf.channels.find((c) => c.id === id) || { id, title: "Channel" });
+  dialog.innerHTML = `
+    <div class="yt-restore-dialog-inner">
+      <div class="yt-restore-dialog-header">
+        <h3>Hidden Subscriptions (${removedChannels.length})</h3>
+        <button type="button" class="yt-restore-dialog-close" data-restore-dialog-close aria-label="Close">✕</button>
+      </div>
+      <p class="yt-restore-dialog-lead">These channels are hidden from your subscriptions panel and feed. Tap restore to bring them back.</p>
+      <div class="yt-restore-dialog-list">
+        ${removedChannels.map((ch) => `
+          <div class="yt-restore-dialog-item">
+            <div class="yt-restore-channel-info">
+              ${youtubeChannelMark(ch.thumbnail, ch.title)}
+              <span>${escapeHtml(ch.title)}</span>
+            </div>
+            <button type="button" class="primary-button yt-restore-single-btn" data-youtube-restore-specific="${escapeHtml(ch.id)}">Restore</button>
+          </div>
+        `).join("")}
+      </div>
+      <div class="yt-restore-dialog-actions">
+        <button type="button" class="primary-button" data-youtube-restore-all>Restore All</button>
+        <button type="button" class="secondary-button" data-restore-dialog-close>Cancel</button>
+      </div>
+    </div>
+  `;
+  dialog.querySelectorAll("[data-restore-dialog-close]").forEach((btn) => btn.addEventListener("click", () => dialog.close()));
+  dialog.showModal();
+}
+
+function getChannelLatestTime(channelId, channelTitle) {
+  let latest = 0;
+  const subs = Array.isArray(youtubeShelf.subscriptions) ? youtubeShelf.subscriptions : [];
+  for (const v of subs) {
+    if (v.channelId === channelId || (channelTitle && v.speaker === channelTitle)) {
+      const t = Date.parse(v.publishedAt || 0);
+      if (t > latest) latest = t;
+    }
+  }
+  const cached = youtubeShelf.channelCache?.[channelId];
+  if (Array.isArray(cached)) {
+    for (const v of cached) {
+      const t = Date.parse(v.publishedAt || 0);
+      if (t > latest) latest = t;
+    }
+  }
+  return latest;
+}
+
+let ytChannelPressTimer = null;
+let ytChannelPressTarget = null;
+let ytTouchMoved = false;
+
+function bindYouTubeChannelTouch(root) {
+  if (!root || root.dataset.subTouchBound === "true") return;
+  root.dataset.subTouchBound = "true";
+
+  root.addEventListener("touchstart", (e) => {
+    const item = e.target.closest(".yt-channel-item");
+    if (!item || e.target.closest(".yt-channel-actions")) return;
+    ytTouchMoved = false;
+    ytChannelPressTarget = item;
+    clearTimeout(ytChannelPressTimer);
+    ytChannelPressTimer = setTimeout(() => {
+      if (!ytTouchMoved && ytChannelPressTarget === item) {
+        youtubeShelf.isManagingSubs = true;
+        renderYouTubeChannels();
+        if (navigator.vibrate) navigator.vibrate(40);
+        showActionNotice(item.getBoundingClientRect(), "Manage mode active. Tap ✕ to remove or ★ to favourite.");
+      }
+    }, 550);
+  }, { passive: true });
+
+  root.addEventListener("touchmove", () => {
+    ytTouchMoved = true;
+    clearTimeout(ytChannelPressTimer);
+    ytChannelPressTarget = null;
+  }, { passive: true });
+
+  root.addEventListener("touchend", () => {
+    clearTimeout(ytChannelPressTimer);
+    ytChannelPressTarget = null;
+  }, { passive: true });
+
+  root.addEventListener("touchcancel", () => {
+    clearTimeout(ytChannelPressTimer);
+    ytChannelPressTarget = null;
+  }, { passive: true });
+}
+
+function renderYouTubeChannels() {
+  const panel = document.querySelector("#youtubeSubsPanel");
+  if (!panel) return;
+
+  const rawChannels = Array.isArray(youtubeShelf.channels) ? youtubeShelf.channels : [];
+  const removedSet = new Set(getYouTubeRemovedChannels());
+  const favSet = new Set(getYouTubeFavoriteChannels());
+  const activeChannels = rawChannels.filter((c) => !removedSet.has(c.id));
+
+  const channelsWithNewPosts = new Set(
+    youtubeShelf.subscriptions
+      .filter((v) => v?.url && core.feedVoteForUrl(state, v.url) !== -1)
+      .map((video) => video.channelId || video.speaker)
+      .filter(Boolean)
+  );
+
+  const subFilter = getYouTubeSubFilter();
+  let displayedChannels = activeChannels.slice();
+
+  if (subFilter === "favourites") {
+    displayedChannels = displayedChannels.filter((c) => favSet.has(c.id));
+    displayedChannels.sort((a, b) => {
+      const timeA = getChannelLatestTime(a.id, a.title);
+      const timeB = getChannelLatestTime(b.id, b.title);
+      if (timeB !== timeA) return timeB - timeA;
+      return String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" });
+    });
+  } else if (subFilter === "new") {
+    displayedChannels = displayedChannels.filter((c) => channelsWithNewPosts.has(c.id) || channelsWithNewPosts.has(c.title));
+    displayedChannels.sort((a, b) => {
+      const timeA = getChannelLatestTime(a.id, a.title);
+      const timeB = getChannelLatestTime(b.id, b.title);
+      if (timeB !== timeA) return timeB - timeA;
+      return String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" });
+    });
+  } else if (subFilter === "alphabetical") {
+    displayedChannels.sort((a, b) =>
+      String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" })
+    );
+  } else {
+    // "latest"
+    displayedChannels.sort((a, b) => {
+      const timeA = getChannelLatestTime(a.id, a.title);
+      const timeB = getChannelLatestTime(b.id, b.title);
+      if (timeB !== timeA) return timeB - timeA;
+      return String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" });
+    });
+  }
+
+  const isManaging = Boolean(youtubeShelf.isManagingSubs);
+  const favCount = activeChannels.filter((c) => favSet.has(c.id)).length;
+  const newCount = activeChannels.filter((c) => channelsWithNewPosts.has(c.id) || channelsWithNewPosts.has(c.title)).length;
+  const removedCount = removedSet.size;
+
+  let channelsHtml = "";
+  if (displayedChannels.length === 0) {
+    if (subFilter === "favourites") {
+      channelsHtml = `<div class="yt-subs-empty"><p class="hint">No favourite subscriptions yet.<br><span class="yt-subs-empty-sub">Tap ★ on any channel to add it to favourites.</span></p></div>`;
+    } else if (subFilter === "new") {
+      channelsHtml = `<div class="yt-subs-empty"><p class="hint">No channels with new content right now.</p></div>`;
+    } else if (activeChannels.length === 0 && rawChannels.length > 0) {
+      channelsHtml = `<div class="yt-subs-empty"><p class="hint">All subscriptions are currently hidden. <button type="button" class="yt-sub-restore-link" data-youtube-restore-subs>Restore all</button></p></div>`;
+    } else {
+      channelsHtml = `<div class="yt-subs-empty"><p class="hint">No subscriptions yet.</p></div>`;
+    }
+  } else {
+    channelsHtml = displayedChannels.map((channel) => {
+      const hasNew = channelsWithNewPosts.has(channel.id) || channelsWithNewPosts.has(channel.title);
+      const isFav = favSet.has(channel.id);
+      const isSelected = youtubeShelf.view === "channel" && youtubeShelf.channelId === channel.id;
+      const favLabel = isFav ? `Remove ${channel.title} from favourites` : `Add ${channel.title} to favourites`;
+      return `
+        <div class="yt-channel-item${isFav ? " is-favourite" : ""}${isSelected ? " is-selected" : ""}" data-channel-item-id="${escapeHtml(channel.id)}">
+          <button class="yt-channel" type="button" data-youtube-channel="${escapeHtml(channel.id)}" aria-pressed="${isSelected ? "true" : "false"}" title="${escapeHtml(channel.title)}">
+            <div class="yt-avatar-wrap">
+              ${youtubeChannelMark(channel.thumbnail, channel.title)}
+              ${hasNew ? `<span class="yt-channel-badge" title="New videos" aria-label="New videos"></span>` : ""}
+              ${isFav ? `<span class="yt-channel-fav-badge" title="Favourite" aria-label="Favourite">★</span>` : ""}
+            </div>
+            <span class="yt-channel-name">${escapeHtml(channel.title)}</span>
+          </button>
+          <div class="yt-channel-actions">
+            <button class="yt-channel-action-btn yt-channel-fav-btn${isFav ? " is-active" : ""}" type="button" data-youtube-toggle-fav="${escapeHtml(channel.id)}" title="${escapeHtml(favLabel)}" aria-label="${escapeHtml(favLabel)}" aria-pressed="${isFav ? "true" : "false"}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </button>
+            <button class="yt-channel-action-btn yt-channel-remove-btn" type="button" data-youtube-remove-channel="${escapeHtml(channel.id)}" title="Remove ${escapeHtml(channel.title)}" aria-label="Remove ${escapeHtml(channel.title)}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  panel.innerHTML = `
+    <div class="yt-subs-section${isManaging ? " is-managing" : ""}">
+      <div class="yt-subs-header">
+        <div class="yt-subs-header-left">
+          <span class="yt-rail-label">Subscriptions</span>
+          <span class="yt-subs-count">${activeChannels.length}</span>
+        </div>
+        <div class="yt-subs-header-actions">
+          ${removedCount > 0 ? `<button type="button" class="yt-subs-action-pill yt-subs-restore-btn" data-youtube-restore-subs title="Restore ${removedCount} hidden subscriptions">Restore (${removedCount})</button>` : ""}
+          <button type="button" class="yt-subs-action-pill yt-subs-manage-btn${isManaging ? " is-active" : ""}" data-youtube-manage-subs aria-pressed="${isManaging ? "true" : "false"}" title="${isManaging ? "Done managing" : "Manage subscriptions"}">
+            ${isManaging ? "Done" : "Manage"}
+          </button>
+        </div>
+      </div>
+      <div class="yt-subs-filter-bar" role="group" aria-label="Filter subscriptions">
+        <button type="button" class="yt-sub-filter-chip${subFilter === "latest" ? " is-active" : ""}" data-youtube-sub-filter="latest" aria-pressed="${subFilter === "latest" ? "true" : "false"}">Latest</button>
+        <button type="button" class="yt-sub-filter-chip${subFilter === "favourites" ? " is-active" : ""}" data-youtube-sub-filter="favourites" aria-pressed="${subFilter === "favourites" ? "true" : "false"}">★ Favourites${favCount ? ` (${favCount})` : ""}</button>
+        <button type="button" class="yt-sub-filter-chip${subFilter === "alphabetical" ? " is-active" : ""}" data-youtube-sub-filter="alphabetical" aria-pressed="${subFilter === "alphabetical" ? "true" : "false"}">A–Z</button>
+        <button type="button" class="yt-sub-filter-chip${subFilter === "new" ? " is-active" : ""}" data-youtube-sub-filter="new" aria-pressed="${subFilter === "new" ? "true" : "false"}">New content${newCount ? ` (${newCount})` : ""}</button>
+      </div>
+      <div class="yt-channels-scroll">
+        <div class="yt-channels" id="youtubeChannelsList">${channelsHtml}</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderYouTubeHome(data) {
   const mount = document.querySelector("#youtubeHome");
   if (!mount) return;
@@ -2487,27 +2808,17 @@ function renderYouTubeHome(data) {
     channelVideos: [],
     channelVideosId: "",
     channelCache: {},
+    isManagingSubs: false,
   };
-  const channelsWithNewPosts = new Set(
-    youtubeShelf.subscriptions.map((video) => video.channelId || video.speaker).filter(Boolean)
-  );
-  const channels = youtubeShelf.channels.map((channel) => {
-    const hasNew = channelsWithNewPosts.has(channel.id) || channelsWithNewPosts.has(channel.title);
-    const badge = hasNew ? `<span class="yt-channel-badge" title="New videos" aria-label="New videos"></span>` : "";
-    return `<button class="yt-channel" type="button" data-youtube-channel="${escapeHtml(channel.id)}" aria-pressed="false" title="${escapeHtml(channel.title)}">
-      ${youtubeChannelMark(channel.thumbnail, channel.title)}
-      <span class="yt-channel-name">${escapeHtml(channel.title)}</span>
-      ${badge}
-    </button>`;
-  }).join("");
   mount.innerHTML = `
     <div class="yt-home">
       <aside class="yt-rail" aria-label="Your YouTube">
-        <p class="yt-rail-label">Subscriptions</p>
-        <div class="yt-channels">${channels || `<p class="hint">No subscriptions yet.</p>`}</div>
-        <p class="yt-rail-label">Your YouTube</p>
-        <button class="yt-rail-link" type="button" data-youtube-view="playlists" aria-pressed="false"><span class="yt-rail-icon" aria-hidden="true"></span>Playlists</button>
-        <button class="yt-rail-link" type="button" data-youtube-view="liked" aria-pressed="false"><span class="yt-rail-icon yt-rail-icon-liked" aria-hidden="true"></span>Liked videos</button>
+        <div class="yt-subs-panel" id="youtubeSubsPanel"></div>
+        <div class="yt-rail-desktop-links">
+          <p class="yt-rail-label">Your YouTube</p>
+          <button class="yt-rail-link" type="button" data-youtube-view="playlists" aria-pressed="false"><span class="yt-rail-icon" aria-hidden="true"></span>Playlists</button>
+          <button class="yt-rail-link" type="button" data-youtube-view="liked" aria-pressed="false"><span class="yt-rail-icon yt-rail-icon-liked" aria-hidden="true"></span>Liked videos</button>
+        </div>
       </aside>
       <div class="yt-main">
         <div class="yt-chips" role="group" aria-label="YouTube filters">
@@ -2521,10 +2832,59 @@ function renderYouTubeHome(data) {
       </div>
     </div>
   `;
+  renderYouTubeChannels();
+  bindYouTubeChannelTouch(document.querySelector("#youtubeSubsPanel"));
   paintYouTubeGrid();
 }
 
 function onYouTubeHomeClick(event) {
+  const favToggle = event.target.closest("[data-youtube-toggle-fav]");
+  if (favToggle) {
+    event.stopPropagation();
+    const channelId = favToggle.dataset.youtubeToggleFav;
+    toggleYouTubeFavoriteChannel(channelId, favToggle);
+    return;
+  }
+  const removeBtn = event.target.closest("[data-youtube-remove-channel]");
+  if (removeBtn) {
+    event.stopPropagation();
+    const channelId = removeBtn.dataset.youtubeRemoveChannel;
+    removeYouTubeChannel(channelId, removeBtn);
+    return;
+  }
+  const filterBtn = event.target.closest("[data-youtube-sub-filter]");
+  if (filterBtn) {
+    event.stopPropagation();
+    const filter = filterBtn.dataset.youtubeSubFilter;
+    setYouTubeSubFilter(filter);
+    return;
+  }
+  const manageBtn = event.target.closest("[data-youtube-manage-subs]");
+  if (manageBtn) {
+    event.stopPropagation();
+    youtubeShelf.isManagingSubs = !youtubeShelf.isManagingSubs;
+    renderYouTubeChannels();
+    return;
+  }
+  const restoreBtn = event.target.closest("[data-youtube-restore-subs]");
+  if (restoreBtn) {
+    event.stopPropagation();
+    openYouTubeRestoreModal();
+    return;
+  }
+  const restoreSpecificBtn = event.target.closest("[data-youtube-restore-specific]");
+  if (restoreSpecificBtn) {
+    event.stopPropagation();
+    const channelId = restoreSpecificBtn.dataset.youtubeRestoreSpecific;
+    restoreRemovedYouTubeChannels(channelId);
+    return;
+  }
+  const restoreAllBtn = event.target.closest("[data-youtube-restore-all]");
+  if (restoreAllBtn) {
+    event.stopPropagation();
+    restoreRemovedYouTubeChannels();
+    return;
+  }
   const topicBtn = event.target.closest("[data-youtube-topic]");
   if (topicBtn) {
     const selected = topicBtn.dataset.youtubeTopic || "";
@@ -2651,6 +3011,7 @@ function applyYouTubeHome(data) {
   youtubeShelf.subscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
   youtubeShelf.playlists = Array.isArray(data.playlists) ? data.playlists : [];
   youtubeShelf.liked = Array.isArray(data.liked) ? data.liked : [];
+  renderYouTubeChannels();
   paintYouTubeGrid();
 }
 
@@ -10751,7 +11112,7 @@ function buildGlobalAppIndex() {
     const title = feed.title || feed.url || "RSS Feed";
     const topics = Array.isArray(feed.topics) ? feed.topics.join(" ") : "";
     index.push({
-      id: `rss:${feed.id || feed.url}`,
+      id: `rss:${feed.url || feed.id}`,
       category: "RSS Feeds",
       badge: "RSS",
       icon: "📰",
