@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createMemoryAccountStore, fetchChannelUploads, fetchSubscriptionFeed, fetchYouTubeHome, formatYouTubeDuration, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
+import { createD1AccountStore, createMemoryAccountStore, fetchChannelUploads, fetchSubscriptionFeed, fetchYouTubeHome, formatYouTubeDuration, googleAuthUrl, handleAuthRequest, parseYouTubeSubscriptions } from "../auth.mjs";
 import { createFileAccountStore } from "../account-file.mjs";
 
 test("google sign-in asks for offline YouTube read access", () => {
@@ -350,4 +350,146 @@ test("google callback creates a session and marks YouTube connected", async () =
   const body = await me.json();
   assert.equal(body.user.email, "ada@example.com");
   assert.equal(body.user.youtubeConnected, true);
+});
+
+function createFakeD1() {
+  const users = new Map();
+  const sessions = new Map();
+  const userFeeds = new Map();
+  return {
+    prepare(sql) {
+      return {
+        bind(...args) {
+          return {
+            async first() {
+              if (sql.includes("FROM users WHERE id = ?")) return users.get(args[0]) || null;
+              if (sql.includes("FROM users WHERE email = ?")) {
+                for (const u of users.values()) if (u.email === args[0]) return u;
+                return null;
+              }
+              if (sql.includes("FROM sessions WHERE id = ?")) return sessions.get(args[0]) || null;
+              if (sql.includes("FROM user_feeds WHERE user_id = ?")) return userFeeds.get(args[0]) || null;
+              return null;
+            },
+            async run() {
+              if (sql.includes("INSERT INTO users")) {
+                users.set(args[0], {
+                  id: args[0], email: args[1], name: args[2], picture: "",
+                  password_hash: args[3], google_sub: null, created_at: args[4],
+                });
+              } else if (sql.includes("INSERT INTO sessions")) {
+                sessions.set(args[0], { id: args[0], user_id: args[1], expires_at: args[2] });
+              } else if (sql.includes("DELETE FROM sessions WHERE id = ?")) {
+                sessions.delete(args[0]);
+              } else if (sql.includes("INSERT INTO user_feeds")) {
+                userFeeds.set(args[0], { user_id: args[0], library_json: args[1], updated_at: args[2] });
+              }
+              return { success: true };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+test("per-user changes across app state and feeds persist across logout and login in memory, file, and D1 stores", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "picker-user-state-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const stores = [
+    ["memory", createMemoryAccountStore()],
+    ["file", createFileAccountStore(path.join(directory, "accounts.json"))],
+    ["d1", createD1AccountStore(createFakeD1())],
+  ];
+  const base = "http://localhost:4173";
+
+  for (const [kind, store] of stores) {
+    const call = (route, options = {}) => handleAuthRequest(new Request(`${base}${route}`, options), { store });
+    const credentials = { email: `user-${kind}@example.com`, password: "long-enough-password" };
+    const register = await call("/api/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...credentials, name: "Persistent User" }),
+    });
+    assert.equal(register.status, 200, kind);
+    const cookie1 = register.headers.getSetCookie().find((item) => item.startsWith("picker_session="))?.split(";")[0];
+
+    const statePayload = {
+      selectedId: "vid-1",
+      videos: [{ id: "vid-1", title: "Saved Talk", url: "https://www.youtube.com/watch?v=abcdefghijk", notes: "My note" }],
+      collections: [{ id: "col-1", name: "Watch Later" }],
+      playlists: [{ id: "pl-1", name: "Favourites Mix", videoIds: ["vid-1"] }],
+      favourites: ["vid-1"],
+      youtubeFavoriteChannels: ["UCfav1"],
+      youtubeRemovedChannels: ["UCrem1"],
+      youtubeSubFilter: "favourites",
+      thumbnailStyle: "new-age",
+      merchCart: [{ id: "hoodie-black:L", productId: "hoodie-black", option: "L", qty: 2 }],
+      recentSearches: ["quantum computing", "oled monitor"],
+    };
+    const putState = await call("/api/auth/state", {
+      method: "PUT",
+      headers: { cookie: cookie1, "content-type": "application/json" },
+      body: JSON.stringify(statePayload),
+    });
+    assert.equal(putState.status, 200, kind);
+
+    const feedPayload = {
+      feeds: [{ id: "f-1", url: "https://example.com/rss.xml", title: "Example RSS", folderIds: ["fol-1"] }],
+      folders: [{ id: "fol-1", name: "Tech" }],
+      favoriteFolderIds: ["fol-1"],
+      customTopics: ["Rust", "WebGPU"],
+      read: { "item-1": "2026-11-02T10:00:00.000Z" },
+      starred: { "item-1": true },
+      archived: { "item-2": "2026-11-02T10:05:00.000Z" },
+      savedItems: [{ id: "item-1", feedId: "f-1", title: "Saved Article", link: "https://example.com/post-1" }],
+      feedSort: "active",
+      dismissedDiscoverInvite: true,
+    };
+    const putFeeds = await call("/api/feeds/library", {
+      method: "PUT",
+      headers: { cookie: cookie1, "content-type": "application/json" },
+      body: JSON.stringify(feedPayload),
+    });
+    assert.equal(putFeeds.status, 200, kind);
+
+    // Log out completely
+    const logout = await call("/api/auth/logout", { method: "POST", headers: { cookie: cookie1 } });
+    assert.equal(logout.status, 200, kind);
+
+    // Log back in on a clean session
+    const login = await call("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(credentials),
+    });
+    assert.equal(login.status, 200, kind);
+    const cookie2 = login.headers.getSetCookie().find((item) => item.startsWith("picker_session="))?.split(";")[0];
+
+    const me = await (await call("/api/auth/me", { headers: { cookie: cookie2 } })).json();
+    assert.equal(me.user.email, credentials.email, kind);
+    assert.equal(me.state.selectedId, "vid-1", kind);
+    assert.equal(me.state.videos.length, 1, kind);
+    assert.equal(me.state.videos[0].notes, "My note", kind);
+    assert.deepEqual(me.state.collections, [{ id: "col-1", name: "Watch Later" }], kind);
+    assert.deepEqual(me.state.playlists, [{ id: "pl-1", name: "Favourites Mix", videoIds: ["vid-1"] }], kind);
+    assert.deepEqual(me.state.favourites, ["vid-1"], kind);
+    assert.deepEqual(me.state.youtubeFavoriteChannels, ["UCfav1"], kind);
+    assert.deepEqual(me.state.youtubeRemovedChannels, ["UCrem1"], kind);
+    assert.equal(me.state.youtubeSubFilter, "favourites", kind);
+    assert.equal(me.state.thumbnailStyle, "new-age", kind);
+    assert.deepEqual(me.state.merchCart, [{ id: "hoodie-black:L", productId: "hoodie-black", option: "L", qty: 2 }], kind);
+    assert.deepEqual(me.state.recentSearches, ["quantum computing", "oled monitor"], kind);
+
+    const restoredFeeds = await (await call("/api/feeds/library", { headers: { cookie: cookie2 } })).json();
+    assert.equal(restoredFeeds.feeds.length, 1, kind);
+    assert.deepEqual(restoredFeeds.customTopics, ["Rust", "WebGPU"], kind);
+    assert.deepEqual(restoredFeeds.read, { "item-1": "2026-11-02T10:00:00.000Z" }, kind);
+    assert.deepEqual(restoredFeeds.starred, { "item-1": true }, kind);
+    assert.deepEqual(restoredFeeds.archived, { "item-2": "2026-11-02T10:05:00.000Z" }, kind);
+    assert.equal(restoredFeeds.savedItems.length, 1, kind);
+    assert.equal(restoredFeeds.savedItems[0].title, "Saved Article", kind);
+    assert.equal(restoredFeeds.feedSort, "active", kind);
+    assert.equal(restoredFeeds.dismissedDiscoverInvite, true, kind);
+  }
 });

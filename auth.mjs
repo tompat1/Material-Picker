@@ -338,6 +338,7 @@ export function createMemoryAccountStore() {
   const tokens = new Map();
   const feedlyTokens = new Map();
   const feedLibraries = new Map();
+  const userStates = new Map();
   return {
     async putState(id, expiresAt) {
       states.set(id, expiresAt);
@@ -452,8 +453,18 @@ export function createMemoryAccountStore() {
       return feedLibraries.get(userId) || emptyFeedLibrary();
     },
     async saveFeedLibrary(userId, library) {
-      const saved = { ...normalizeFeedLibrary(library), updatedAt: new Date().toISOString() };
+      const current = feedLibraries.get(userId) || emptyFeedLibrary();
+      const saved = { ...mergeFeedLibrary(current, library), updatedAt: new Date().toISOString() };
       feedLibraries.set(userId, saved);
+      return saved;
+    },
+    async userStateForUser(userId) {
+      return userStates.get(userId) || emptyUserState();
+    },
+    async saveUserState(userId, incoming) {
+      const current = userStates.get(userId) || emptyUserState();
+      const saved = { ...mergeUserState(current, incoming), updatedAt: new Date().toISOString() };
+      userStates.set(userId, saved);
       return saved;
     },
   };
@@ -616,30 +627,90 @@ export function createD1AccountStore(db) {
       }
     },
     async saveFeedLibrary(userId, library) {
-      const current = await this.feedLibraryForUser(userId);
-      if (!current) {
+      let raw = null;
+      try {
+        const row = await db.prepare("SELECT library_json FROM user_feeds WHERE user_id = ?").bind(userId).first();
+        raw = row?.library_json ? JSON.parse(row.library_json) : {};
+      } catch {
         const error = new Error("Feed library storage is not ready yet.");
         error.status = 503;
         throw error;
       }
-      const saved = { ...normalizeFeedLibrary(library), updatedAt: new Date().toISOString() };
+      const current = normalizeFeedLibrary(raw);
+      const saved = { ...mergeFeedLibrary(current, library), updatedAt: new Date().toISOString() };
+      const record = raw?.appState ? { ...saved, appState: raw.appState } : saved;
       await db.prepare(`INSERT INTO user_feeds (user_id, library_json, updated_at)
         VALUES (?, ?, ?)
         ON CONFLICT(user_id) DO UPDATE SET
           library_json = excluded.library_json,
           updated_at = excluded.updated_at`)
-        .bind(userId, JSON.stringify(saved), saved.updatedAt)
+        .bind(userId, JSON.stringify(record), saved.updatedAt)
         .run();
       return saved;
+    },
+    async userStateForUser(userId) {
+      try {
+        const row = await db.prepare("SELECT library_json FROM user_feeds WHERE user_id = ?").bind(userId).first();
+        if (!row?.library_json) return emptyUserState();
+        const parsed = JSON.parse(row.library_json);
+        return parsed?.appState ? normalizeUserState(parsed.appState) : emptyUserState();
+      } catch {
+        return null;
+      }
+    },
+    async saveUserState(userId, incoming) {
+      let raw = null;
+      try {
+        const row = await db.prepare("SELECT library_json FROM user_feeds WHERE user_id = ?").bind(userId).first();
+        raw = row?.library_json ? JSON.parse(row.library_json) : {};
+      } catch {
+        const error = new Error("User state storage is not ready yet.");
+        error.status = 503;
+        throw error;
+      }
+      const current = raw?.appState ? normalizeUserState(raw.appState) : emptyUserState();
+      const savedState = { ...mergeUserState(current, incoming), updatedAt: new Date().toISOString() };
+      const feedPart = normalizeFeedLibrary(raw);
+      const record = { ...feedPart, appState: savedState, updatedAt: feedPart.updatedAt || savedState.updatedAt };
+      await db.prepare(`INSERT INTO user_feeds (user_id, library_json, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          library_json = excluded.library_json,
+          updated_at = excluded.updated_at`)
+        .bind(userId, JSON.stringify(record), savedState.updatedAt)
+        .run();
+      return savedState;
     },
   };
 }
 
-function emptyFeedLibrary() {
-  return { feeds: [], folders: [], favoriteFolderIds: [], removedUrls: [], updatedAt: "" };
+export function emptyFeedLibrary() {
+  return {
+    feeds: [],
+    folders: [],
+    favoriteFolderIds: [],
+    removedUrls: [],
+    customTopics: [],
+    read: {},
+    archived: {},
+    starred: {},
+    savedItems: [],
+    feedSort: "latest",
+    dismissedDiscoverInvite: false,
+    updatedAt: "",
+  };
 }
 
-function normalizeFeedLibrary(value) {
+function normalizeFlagMap(value, limit = 2000) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const entries = Object.entries(value)
+    .filter(([key, val]) => key && Boolean(val))
+    .slice(-limit)
+    .map(([key, val]) => [String(key).slice(0, 240), val === true ? true : String(val).slice(0, 40)]);
+  return Object.fromEntries(entries);
+}
+
+export function normalizeFeedLibrary(value) {
   const feeds = Array.isArray(value?.feeds) ? value.feeds : [];
   const folders = Array.isArray(value?.folders) ? value.folders : [];
   const normalizedFolders = folders.slice(0, 80).flatMap((folder) => {
@@ -649,6 +720,34 @@ function normalizeFeedLibrary(value) {
     return [{ id, name }];
   });
   const folderIds = new Set(normalizedFolders.map((folder) => folder.id));
+  const seenTopics = new Set();
+  const customTopics = (Array.isArray(value?.customTopics) ? value.customTopics : [])
+    .map((topic) => String(topic || "").trim().replace(/\s+/g, " ").slice(0, 40))
+    .filter((topic) => {
+      const key = topic.toLowerCase();
+      if (!topic || seenTopics.has(key)) return false;
+      seenTopics.add(key);
+      return true;
+    })
+    .slice(0, 24);
+  const savedItems = (Array.isArray(value?.savedItems) ? value.savedItems : [])
+    .slice(0, 300)
+    .flatMap((item) => {
+      const id = String(item?.id || "").slice(0, 240);
+      const feedId = String(item?.feedId || "").slice(0, 80);
+      if (!id || !feedId) return [];
+      return [{
+        id,
+        feedId,
+        title: String(item.title || "").slice(0, 300),
+        link: String(item.link || "").slice(0, 500),
+        summary: String(item.summary || "").slice(0, 600),
+        author: String(item.author || "").slice(0, 120),
+        publishedAt: String(item.publishedAt || "").slice(0, 40),
+        image: String(item.image || "").slice(0, 500),
+        videoUrl: String(item.videoUrl || "").slice(0, 500),
+      }];
+    });
   return {
     feeds: feeds.slice(0, 400).flatMap((feed) => {
       const url = String(feed?.url || "").trim();
@@ -672,8 +771,116 @@ function normalizeFeedLibrary(value) {
       .map((url) => String(url || "").slice(0, 500))
       .filter((url) => /^https?:\/\//i.test(url))
       .slice(0, 400),
+    customTopics,
+    read: normalizeFlagMap(value?.read, 2000),
+    archived: normalizeFlagMap(value?.archived, 2000),
+    starred: normalizeFlagMap(value?.starred, 1000),
+    savedItems,
+    feedSort: value?.feedSort === "active" ? "active" : "latest",
+    dismissedDiscoverInvite: Boolean(value?.dismissedDiscoverInvite),
     updatedAt: String(value?.updatedAt || ""),
   };
+}
+
+export function mergeFeedLibrary(current, incoming) {
+  const base = current || emptyFeedLibrary();
+  const has = (key) => incoming && Object.prototype.hasOwnProperty.call(incoming, key);
+  return normalizeFeedLibrary({
+    feeds: has("feeds") ? incoming.feeds : base.feeds,
+    folders: has("folders") ? incoming.folders : base.folders,
+    favoriteFolderIds: has("favoriteFolderIds") ? incoming.favoriteFolderIds : base.favoriteFolderIds,
+    removedUrls: has("removedUrls") ? incoming.removedUrls : base.removedUrls,
+    customTopics: has("customTopics") ? incoming.customTopics : base.customTopics,
+    read: has("read") ? incoming.read : base.read,
+    archived: has("archived") ? incoming.archived : base.archived,
+    starred: has("starred") ? incoming.starred : base.starred,
+    savedItems: has("savedItems") ? incoming.savedItems : base.savedItems,
+    feedSort: has("feedSort") ? incoming.feedSort : base.feedSort,
+    dismissedDiscoverInvite: has("dismissedDiscoverInvite") ? incoming.dismissedDiscoverInvite : base.dismissedDiscoverInvite,
+    updatedAt: incoming?.updatedAt || base.updatedAt || "",
+  });
+}
+
+export function emptyUserState() {
+  return {
+    selectedId: null,
+    videos: [],
+    collections: [],
+    playlists: [],
+    favourites: [],
+    activity: [],
+    scrapeHistory: [],
+    feedTaste: { votes: {}, speakers: {}, sources: {}, tokens: {} },
+    thumbnailStyle: "cinematic",
+    librarySections: {},
+    youtubeFavoriteChannels: [],
+    youtubeRemovedChannels: [],
+    youtubeSubFilter: "latest",
+    merchCart: [],
+    recentSearches: [],
+    updatedAt: "",
+  };
+}
+
+export function normalizeUserState(value) {
+  const validSubFilters = new Set(["latest", "favourites", "alphabetical", "new"]);
+  const subFilter = String(value?.youtubeSubFilter || "latest");
+  const videos = (Array.isArray(value?.videos) ? value.videos : []).slice(0, 500).flatMap((v) => {
+    if (!v || typeof v !== "object") return [];
+    const id = String(v.id || "").slice(0, 120);
+    if (!id) return [];
+    const copy = { ...v, id };
+    if (typeof copy.offlineUrl === "string" && copy.offlineUrl.startsWith("blob:")) delete copy.offlineUrl;
+    return [copy];
+  });
+  return {
+    selectedId: value?.selectedId ? String(value.selectedId).slice(0, 120) : null,
+    videos,
+    collections: (Array.isArray(value?.collections) ? value.collections : []).slice(0, 100),
+    playlists: (Array.isArray(value?.playlists) ? value.playlists : []).slice(0, 100),
+    favourites: [...new Set((Array.isArray(value?.favourites) ? value.favourites : []).map((id) => String(id || "").slice(0, 120)).filter(Boolean))].slice(0, 500),
+    activity: (Array.isArray(value?.activity) ? value.activity : []).slice(0, 200),
+    scrapeHistory: (Array.isArray(value?.scrapeHistory) ? value.scrapeHistory : []).slice(0, 100),
+    feedTaste: value?.feedTaste && typeof value.feedTaste === "object"
+      ? {
+          votes: value.feedTaste.votes && typeof value.feedTaste.votes === "object" ? value.feedTaste.votes : {},
+          speakers: value.feedTaste.speakers && typeof value.feedTaste.speakers === "object" ? value.feedTaste.speakers : {},
+          sources: value.feedTaste.sources && typeof value.feedTaste.sources === "object" ? value.feedTaste.sources : {},
+          tokens: value.feedTaste.tokens && typeof value.feedTaste.tokens === "object" ? value.feedTaste.tokens : {},
+        }
+      : { votes: {}, speakers: {}, sources: {}, tokens: {} },
+    thumbnailStyle: value?.thumbnailStyle === "new-age" ? "new-age" : "cinematic",
+    librarySections: value?.librarySections && typeof value.librarySections === "object" && !Array.isArray(value.librarySections) ? value.librarySections : {},
+    youtubeFavoriteChannels: [...new Set((Array.isArray(value?.youtubeFavoriteChannels) ? value.youtubeFavoriteChannels : []).map((id) => String(id || "").slice(0, 120)).filter(Boolean))].slice(0, 500),
+    youtubeRemovedChannels: [...new Set((Array.isArray(value?.youtubeRemovedChannels) ? value.youtubeRemovedChannels : []).map((id) => String(id || "").slice(0, 120)).filter(Boolean))].slice(0, 500),
+    youtubeSubFilter: validSubFilters.has(subFilter) ? subFilter : "latest",
+    merchCart: (Array.isArray(value?.merchCart) ? value.merchCart : []).slice(0, 50),
+    recentSearches: [...new Set((Array.isArray(value?.recentSearches) ? value.recentSearches : []).map((q) => String(q || "").trim().slice(0, 120)).filter(Boolean))].slice(0, 10),
+    updatedAt: String(value?.updatedAt || ""),
+  };
+}
+
+export function mergeUserState(current, incoming) {
+  const base = current || emptyUserState();
+  const has = (key) => incoming && Object.prototype.hasOwnProperty.call(incoming, key);
+  return normalizeUserState({
+    selectedId: has("selectedId") ? incoming.selectedId : base.selectedId,
+    videos: has("videos") ? incoming.videos : base.videos,
+    collections: has("collections") ? incoming.collections : base.collections,
+    playlists: has("playlists") ? incoming.playlists : base.playlists,
+    favourites: has("favourites") ? incoming.favourites : base.favourites,
+    activity: has("activity") ? incoming.activity : base.activity,
+    scrapeHistory: has("scrapeHistory") ? incoming.scrapeHistory : base.scrapeHistory,
+    feedTaste: has("feedTaste") ? incoming.feedTaste : base.feedTaste,
+    thumbnailStyle: has("thumbnailStyle") ? incoming.thumbnailStyle : base.thumbnailStyle,
+    librarySections: has("librarySections") ? incoming.librarySections : base.librarySections,
+    youtubeFavoriteChannels: has("youtubeFavoriteChannels") ? incoming.youtubeFavoriteChannels : base.youtubeFavoriteChannels,
+    youtubeRemovedChannels: has("youtubeRemovedChannels") ? incoming.youtubeRemovedChannels : base.youtubeRemovedChannels,
+    youtubeSubFilter: has("youtubeSubFilter") ? incoming.youtubeSubFilter : base.youtubeSubFilter,
+    merchCart: has("merchCart") ? incoming.merchCart : base.merchCart,
+    recentSearches: has("recentSearches") ? incoming.recentSearches : base.recentSearches,
+    updatedAt: incoming?.updatedAt || base.updatedAt || "",
+  });
 }
 
 async function feedlyRow(db, userId) {
@@ -754,6 +961,9 @@ export async function handleAuthRequest(request, options) {
   if (url.pathname === "/api/feeds/library" && (request.method === "GET" || request.method === "PUT")) {
     return handleFeedLibrary(request, store);
   }
+  if (url.pathname === "/api/auth/state" && (request.method === "GET" || request.method === "PUT")) {
+    return handleUserState(request, store);
+  }
   if (request.method === "GET" && url.pathname === "/api/youtube/playlist") {
     try {
       return await handleYouTubePlaylist(request, url, store, options);
@@ -780,6 +990,25 @@ async function handleFeedLibrary(request, store) {
     return json(200, await store.saveFeedLibrary(user.id, body));
   } catch (error) {
     return json(error.status || 500, { error: error.message || "The feed list could not be saved." });
+  }
+}
+
+async function handleUserState(request, store) {
+  const user = await currentUser(request, store);
+  if (!user) return json(401, { error: "Sign in to sync your account state." });
+  if (typeof store.userStateForUser !== "function" || typeof store.saveUserState !== "function") {
+    return json(503, { error: "User state storage is not ready yet." });
+  }
+  if (request.method === "GET") {
+    const state = await store.userStateForUser(user.id);
+    if (!state) return json(503, { error: "User state storage is not ready yet." });
+    return json(200, state);
+  }
+  const body = await request.json().catch(() => ({}));
+  try {
+    return json(200, await store.saveUserState(user.id, body));
+  } catch (error) {
+    return json(error.status || 500, { error: error.message || "The account state could not be saved." });
   }
 }
 
@@ -810,9 +1039,18 @@ async function sessionResponse(url, store, user) {
 
 async function mePayload(request, store, options) {
   const user = await currentUser(request, store);
+  let state = null;
+  if (user && typeof store.userStateForUser === "function") {
+    try {
+      state = await store.userStateForUser(user.id);
+    } catch {
+      state = null;
+    }
+  }
   return {
     configured: Boolean(options.clientId && options.clientSecret),
     user: user ? { ...user, admin: isAdminUser(user) } : null,
+    state,
   };
 }
 

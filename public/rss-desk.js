@@ -89,7 +89,10 @@ function loadCustomTopics() {
 }
 
 function saveCustomTopics() {
-  localStorage.setItem(CUSTOM_TOPICS_KEY, JSON.stringify(customTopics));
+  try {
+    localStorage.setItem(CUSTOM_TOPICS_KEY, JSON.stringify(customTopics));
+  } catch { /* ignore */ }
+  scheduleLibraryPush();
 }
 
 function loadFeedState() {
@@ -105,6 +108,9 @@ function loadFeedState() {
       const image = cleanImageUrl(item.image);
       return image === item.image ? item : { ...item, image };
     });
+    if (saved.feedSort === "active" || saved.feedSort === "latest") {
+      feedSort = saved.feedSort;
+    }
     return {
       feeds: Array.isArray(saved.feeds) ? saved.feeds : [],
       folders,
@@ -114,14 +120,17 @@ function loadFeedState() {
       archived: saved.archived && typeof saved.archived === "object" ? saved.archived : {},
       starred: saved.starred && typeof saved.starred === "object" ? saved.starred : {},
       removedUrls: new Set(Array.isArray(saved.removedUrls) ? saved.removedUrls : []),
+      dismissedDiscoverInvite: Boolean(saved.dismissedDiscoverInvite),
     };
   } catch {
-    return { feeds: [], folders: [], favoriteFolderIds: [], items: [], read: {}, archived: {}, starred: {}, removedUrls: new Set() };
+    return { feeds: [], folders: [], favoriteFolderIds: [], items: [], read: {}, archived: {}, starred: {}, removedUrls: new Set(), dismissedDiscoverInvite: false };
   }
 }
 
 let librarySignature = "";
 let librarySyncTimer = 0;
+let libraryDirty = false;
+const feedUrlCache = new Map();
 
 function feedLibrarySignature() {
   const feeds = feedState.feeds
@@ -129,10 +138,40 @@ function feedLibrarySignature() {
     .sort();
   const folders = feedState.folders.map((folder) => `${folder.id}|${folder.name}`).sort();
   const favoriteFolderIds = [...(feedState.favoriteFolderIds || [])];
-  return JSON.stringify([feeds, folders, favoriteFolderIds]);
+  const removed = [...(feedState.removedUrls || [])].sort();
+  const readKeys = Object.keys(feedState.read || {}).filter((k) => feedState.read[k]).sort();
+  const archivedKeys = Object.keys(feedState.archived || {}).filter((k) => feedState.archived[k]).sort();
+  const starredKeys = Object.keys(feedState.starred || {}).filter((k) => feedState.starred[k]).sort();
+  return JSON.stringify([
+    feeds,
+    folders,
+    favoriteFolderIds,
+    removed,
+    customTopics,
+    readKeys,
+    archivedKeys,
+    starredKeys,
+    feedSort,
+    Boolean(feedState.dismissedDiscoverInvite),
+  ]);
 }
+librarySignature = feedLibrarySignature();
 
 function libraryPayload() {
+  const savedItems = (Array.isArray(feedState.items) ? feedState.items : [])
+    .filter((item) => item?.id && (feedState.read?.[item.id] || feedState.starred?.[item.id] || feedState.archived?.[item.id]))
+    .slice(0, 300)
+    .map((item) => ({
+      id: item.id,
+      feedId: item.feedId,
+      title: item.title || "",
+      link: item.link || "",
+      summary: item.summary || "",
+      author: item.author || "",
+      publishedAt: item.publishedAt || "",
+      image: cleanImageUrl(item.image),
+      videoUrl: item.videoUrl || "",
+    }));
   return {
     feeds: feedState.feeds.map((feed) => ({
       id: feed.id,
@@ -146,19 +185,30 @@ function libraryPayload() {
     folders: feedState.folders.map((folder) => ({ id: folder.id, name: folder.name })),
     favoriteFolderIds: [...(feedState.favoriteFolderIds || [])].slice(0, MAX_FAVORITE_FOLDERS),
     removedUrls: Array.from(feedState.removedUrls || []),
+    customTopics: [...customTopics],
+    read: { ...(feedState.read || {}) },
+    archived: { ...(feedState.archived || {}) },
+    starred: { ...(feedState.starred || {}) },
+    savedItems,
+    feedSort: feedSort === "active" ? "active" : "latest",
+    dismissedDiscoverInvite: Boolean(feedState.dismissedDiscoverInvite),
   };
 }
 
 function scheduleLibraryPush() {
   if (!pickerIsSignedIn()) return;
+  libraryDirty = true;
   window.clearTimeout(librarySyncTimer);
   librarySyncTimer = window.setTimeout(() => {
     void pushFeedLibrary();
-  }, 700);
+  }, 80);
 }
 
 async function pushFeedLibrary() {
   if (!pickerIsSignedIn()) return;
+  window.clearTimeout(librarySyncTimer);
+  librarySyncTimer = 0;
+  libraryDirty = false;
   try {
     await fetch("/api/feeds/library", {
       method: "PUT",
@@ -180,6 +230,7 @@ async function syncFeedLibrary() {
   } catch {
     return;
   }
+  const beforeSig = feedLibrarySignature();
   const remoteFeeds = Array.isArray(remote.feeds) ? remote.feeds : [];
   const remoteRemoved = new Set((Array.isArray(remote.removedUrls) ? remote.removedUrls : []).map(canonicalFeedUrl));
   const beforeRemovedCount = feedState.removedUrls.size;
@@ -194,14 +245,20 @@ async function syncFeedLibrary() {
     selectedItemId = "";
     feedPane = 0;
   }
-  const known = new Set(feedState.feeds.map((feed) => canonicalFeedUrl(feed.url)));
+  const byUrl = new Map(feedState.feeds.map((feed) => [canonicalFeedUrl(feed.url), feed]));
   const removedUrls = feedState.removedUrls || new Set();
   let added = 0;
   remoteFeeds.forEach((feed) => {
     const key = canonicalFeedUrl(feed.url);
-    if (!key || known.has(key) || removedUrls.has(key)) return;
-    known.add(key);
-    feedState.feeds.push({
+    if (!key || removedUrls.has(key)) return;
+    const existing = byUrl.get(key);
+    if (existing) {
+      if (feed.title) existing.title = feed.title;
+      if (Array.isArray(feed.folderIds)) existing.folderIds = feed.folderIds;
+      if (Array.isArray(feed.topics) && feed.topics.length) existing.topics = feed.topics;
+      return;
+    }
+    const created = {
       id: feed.id || crypto.randomUUID(),
       url: feed.url,
       title: feed.title || feedHost(feed.url) || "Untitled feed",
@@ -209,14 +266,22 @@ async function syncFeedLibrary() {
       topics: Array.isArray(feed.topics) ? feed.topics : [],
       folderIds: Array.isArray(feed.folderIds) ? feed.folderIds : [],
       addedAt: feed.addedAt || new Date().toISOString(),
-    });
+    };
+    byUrl.set(key, created);
+    feedState.feeds.push(created);
     added += 1;
   });
-  const folderIds = new Set(feedState.folders.map((folder) => folder.id));
+  const folderMap = new Map(feedState.folders.map((folder) => [folder.id, folder]));
   (Array.isArray(remote.folders) ? remote.folders : []).forEach((folder) => {
-    if (!folder?.id || !folder?.name || folderIds.has(folder.id)) return;
-    folderIds.add(folder.id);
-    feedState.folders.push({ id: folder.id, name: folder.name });
+    if (!folder?.id || !folder?.name) return;
+    const existing = folderMap.get(folder.id);
+    if (existing) {
+      existing.name = folder.name;
+      return;
+    }
+    const created = { id: folder.id, name: folder.name };
+    folderMap.set(folder.id, created);
+    feedState.folders.push(created);
   });
   let favoriteFoldersChanged = false;
   const remoteHasFavoriteFolders = Object.prototype.hasOwnProperty.call(remote, "favoriteFolderIds");
@@ -228,9 +293,53 @@ async function syncFeedLibrary() {
     favoriteFoldersChanged = JSON.stringify(nextFavoriteFolderIds) !== JSON.stringify(feedState.favoriteFolderIds || []);
     feedState.favoriteFolderIds = nextFavoriteFolderIds;
   }
+  if (Array.isArray(remote.customTopics)) {
+    const mergedTopics = [...remote.customTopics, ...customTopics];
+    const seen = new Set();
+    customTopics = mergedTopics
+      .map((topic) => String(topic || "").trim().replace(/\s+/g, " ").slice(0, 40))
+      .filter((topic) => {
+        const key = topic.toLowerCase();
+        if (!topic || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 24);
+    try {
+      localStorage.setItem(CUSTOM_TOPICS_KEY, JSON.stringify(customTopics));
+    } catch { /* ignore */ }
+  }
+  if (remote.read && typeof remote.read === "object") {
+    feedState.read = { ...(feedState.read || {}), ...remote.read };
+  }
+  if (remote.archived && typeof remote.archived === "object") {
+    feedState.archived = { ...(feedState.archived || {}), ...remote.archived };
+  }
+  if (remote.starred && typeof remote.starred === "object") {
+    feedState.starred = { ...(feedState.starred || {}), ...remote.starred };
+  }
+  if (Array.isArray(remote.savedItems) && remote.savedItems.length) {
+    const validFeedIds = new Set(feedState.feeds.map((feed) => feed.id));
+    const knownItemIds = new Set(feedState.items.map((item) => item.id));
+    remote.savedItems.forEach((item) => {
+      if (!item?.id || !validFeedIds.has(item.feedId) || knownItemIds.has(item.id)) return;
+      knownItemIds.add(item.id);
+      feedState.items.push({
+        ...item,
+        image: cleanImageUrl(item.image),
+      });
+    });
+  }
+  if (remote.feedSort === "active" || remote.feedSort === "latest") {
+    feedSort = remote.feedSort;
+  }
+  if (typeof remote.dismissedDiscoverInvite === "boolean") {
+    feedState.dismissedDiscoverInvite = remote.dismissedDiscoverInvite || Boolean(feedState.dismissedDiscoverInvite);
+  }
   const localOnly = feedState.feeds.some((feed) => !remoteFeeds.some((item) => canonicalFeedUrl(item.url) === canonicalFeedUrl(feed.url)));
   librarySignature = feedLibrarySignature();
-  if (added || removed || favoriteFoldersChanged || feedState.removedUrls.size !== beforeRemovedCount) {
+  const stateChanged = librarySignature !== beforeSig;
+  if (added || removed || favoriteFoldersChanged || stateChanged || feedState.removedUrls.size !== beforeRemovedCount) {
     saveFeedState();
     renderFeeds();
     if (added) void refreshFeeds({ force: true });
@@ -242,11 +351,52 @@ function saveFeedState() {
   const next = feedLibrarySignature();
   const changed = Boolean(librarySignature) && next !== librarySignature;
   librarySignature = next;
-  localStorage.setItem(FEEDS_KEY, JSON.stringify({
-    ...feedState,
-    removedUrls: Array.from(feedState.removedUrls || []),
-  }));
+  try {
+    localStorage.setItem(FEEDS_KEY, JSON.stringify({
+      ...feedState,
+      feedSort,
+      removedUrls: Array.from(feedState.removedUrls || []),
+    }));
+  } catch { /* ignore */ }
   if (changed) scheduleLibraryPush();
+}
+
+function resetUserFeedState() {
+  window.clearTimeout(librarySyncTimer);
+  librarySyncTimer = 0;
+  libraryDirty = false;
+  feedState = {
+    feeds: [],
+    folders: [],
+    favoriteFolderIds: [],
+    items: [],
+    read: {},
+    archived: {},
+    starred: {},
+    removedUrls: new Set(),
+    dismissedDiscoverInvite: false,
+  };
+  customTopics = [];
+  feedSort = "latest";
+  showReadPosts = false;
+  selectedSource = "all";
+  selectedItemId = "";
+  feedPane = 0;
+  librarySignature = feedLibrarySignature();
+  try {
+    localStorage.removeItem(FEEDS_KEY);
+    localStorage.removeItem(CUSTOM_TOPICS_KEY);
+  } catch { /* ignore */ }
+  renderFeeds();
+}
+
+if (typeof window !== "undefined") {
+  window.pickerFlushFeeds = async () => {
+    if (libraryDirty || librarySyncTimer) {
+      await pushFeedLibrary();
+    }
+  };
+  window.pickerResetFeeds = resetUserFeedState;
 }
 
 function escapeFeedText(value) {
@@ -272,7 +422,6 @@ function normalizeFeedInput(value) {
   return /^https?:\/\//i.test(text) ? text : `https://${text}`;
 }
 
-const feedUrlCache = new Map();
 function canonicalFeedUrl(value) {
   if (!value) return "";
   let res = feedUrlCache.get(value);
@@ -2453,6 +2602,7 @@ function bindFeedsDesk() {
     feedSort = button.dataset.feedSort === "active" ? "active" : "latest";
     selectedItemId = "";
     feedPane = 0;
+    saveFeedState();
     renderFeeds();
   });
   document.addEventListener("picker-account", () => {

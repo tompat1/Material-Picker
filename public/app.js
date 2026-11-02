@@ -465,7 +465,7 @@ function waitLabelFor(path) {
 
 function shouldTrackRequest(path) {
   if (!path.startsWith("/api/")) return false;
-  if (path === "/api/video-search" || path === "/api/chapters") return false;
+  if (path === "/api/video-search" || path === "/api/chapters" || path === "/api/auth/state") return false;
   if (path === "/api/rss/catalog" || path === "/api/offline/status" || path === "/api/stream") return false;
   if (path === "/api/media-proxy" || path === "/api/media-plan" || path === "/api/offline/files") return false;
   if (path.startsWith("/api/youtube/")) return Boolean(document.querySelector("#desk-youtube")?.checked);
@@ -1917,14 +1917,20 @@ async function submitAccountForm(path, form) {
 }
 
 async function signOutAccount() {
-  document.querySelector("#accountDialog")?.close();
+  document.querySelector("#accountDialog")?.close?.();
   document.body.classList.remove("is-more-open");
   document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
+  await flushUserState();
+  await window.pickerFlushFeeds?.();
   try {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    if (typeof fetch === "function") {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    }
   } catch {
     // Refresh the account controls anyway. A network error should not leave a dead button.
   }
+  resetLocalUserState();
+  window.pickerResetFeeds?.();
   await loadAccount();
 }
 
@@ -1941,8 +1947,10 @@ async function loadAccount() {
   document.body.dataset.pickerSignedIn = "pending";
   let data = { configured: false, user: null };
   try {
-    const response = await fetch("/api/auth/me");
-    data = await response.json();
+    if (typeof fetch === "function") {
+      const response = await fetch("/api/auth/me");
+      data = await response.json();
+    }
   } catch {
     data = { configured: false, user: null };
   }
@@ -1950,6 +1958,22 @@ async function loadAccount() {
   youtubeConnected = Boolean(data.user?.youtubeConnected);
   feedlyConnected = Boolean(data.user?.feedlyConnected);
   cmsUserAdmin = Boolean(data.user?.admin);
+  if (data.user) {
+    let remoteState = data.state && typeof data.state === "object" ? data.state : null;
+    if (!remoteState && typeof fetch === "function") {
+      try {
+        const stateRes = await fetch("/api/auth/state");
+        if (stateRes.ok) remoteState = await stateRes.json();
+      } catch {
+        remoteState = null;
+      }
+    }
+    if (hasRemoteUserState(remoteState)) {
+      applyRemoteUserState(remoteState);
+    } else if (hasRemoteUserState(buildUserStatePayload())) {
+      scheduleUserStatePush();
+    }
+  }
   syncCmsEditor();
   const youtubeNav = document.querySelector("#youtubeNav");
   if (youtubeNav) youtubeNav.hidden = !youtubeConnected;
@@ -1959,7 +1983,9 @@ async function loadAccount() {
   }
   const signedIn = Boolean(data.user);
   document.body.dataset.pickerSignedIn = signedIn ? "true" : "false";
-  document.dispatchEvent(new CustomEvent("picker-account"));
+  if (typeof CustomEvent === "function") {
+    document.dispatchEvent?.(new CustomEvent("picker-account"));
+  }
   if (google) google.hidden = signedIn || data.configured === false;
   if (session) session.hidden = !signedIn;
   if (moreSignOut) moreSignOut.hidden = !signedIn;
@@ -10413,8 +10439,193 @@ function setStatus(message, isRunning) {
   }
 }
 
+let applyingRemoteUserState = false;
+let userStateSyncTimer = 0;
+let userStateDirty = false;
+let lastPushedUserStateSig = "";
+let userStatePushQueue = Promise.resolve();
+
+function isUserSignedIn() {
+  return Boolean(pickerSignedIn || document.body?.dataset?.pickerSignedIn === "true");
+}
+
+function buildUserStatePayload() {
+  return {
+    selectedId: state?.selectedId || null,
+    videos: Array.isArray(state?.videos) ? state.videos : [],
+    collections: Array.isArray(state?.collections) ? state.collections : [],
+    playlists: Array.isArray(state?.playlists) ? state.playlists : [],
+    favourites: Array.isArray(state?.favourites) ? state.favourites : [],
+    activity: Array.isArray(state?.activity) ? state.activity : [],
+    scrapeHistory: Array.isArray(state?.scrapeHistory) ? state.scrapeHistory : [],
+    feedTaste: state?.feedTaste && typeof state.feedTaste === "object"
+      ? state.feedTaste
+      : { votes: {}, speakers: {}, sources: {}, tokens: {} },
+    thumbnailStyle: state?.thumbnailStyle === "new-age" ? "new-age" : "cinematic",
+    librarySections: state?.librarySections && typeof state.librarySections === "object" ? state.librarySections : {},
+    youtubeFavoriteChannels: Array.isArray(state?.youtubeFavoriteChannels) ? state.youtubeFavoriteChannels : [],
+    youtubeRemovedChannels: Array.isArray(state?.youtubeRemovedChannels) ? state.youtubeRemovedChannels : [],
+    youtubeSubFilter: ["latest", "favourites", "alphabetical", "new"].includes(state?.youtubeSubFilter)
+      ? state.youtubeSubFilter
+      : "latest",
+    merchCart: typeof merchCart !== "undefined" && Array.isArray(merchCart) ? merchCart : [],
+    recentSearches: typeof getRecentGlobalSearches === "function" ? getRecentGlobalSearches() : [],
+  };
+}
+
+function userStateSignature(payload = buildUserStatePayload()) {
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return "";
+  }
+}
+
+function hasRemoteUserState(remote) {
+  if (!remote || typeof remote !== "object") return false;
+  if (remote.updatedAt) return true;
+  return Boolean(
+    (Array.isArray(remote.videos) && remote.videos.length) ||
+    (Array.isArray(remote.collections) && remote.collections.length) ||
+    (Array.isArray(remote.playlists) && remote.playlists.length) ||
+    (Array.isArray(remote.favourites) && remote.favourites.length) ||
+    (Array.isArray(remote.youtubeFavoriteChannels) && remote.youtubeFavoriteChannels.length) ||
+    (Array.isArray(remote.youtubeRemovedChannels) && remote.youtubeRemovedChannels.length) ||
+    (Array.isArray(remote.merchCart) && remote.merchCart.length) ||
+    (Array.isArray(remote.recentSearches) && remote.recentSearches.length) ||
+    (remote.youtubeSubFilter && remote.youtubeSubFilter !== "latest") ||
+    (remote.thumbnailStyle && remote.thumbnailStyle !== "cinematic")
+  );
+}
+
+function scheduleUserStatePush() {
+  if (applyingRemoteUserState || !isUserSignedIn() || typeof fetch !== "function") return;
+  const sig = userStateSignature();
+  if (sig && sig === lastPushedUserStateSig && !userStateDirty) return;
+  userStateDirty = true;
+  clearTimeout(userStateSyncTimer);
+  userStateSyncTimer = setTimeout(() => {
+    void pushUserState();
+  }, 40);
+}
+
+function pushUserState() {
+  clearTimeout(userStateSyncTimer);
+  userStateSyncTimer = 0;
+  if (!isUserSignedIn() || typeof fetch !== "function") {
+    userStateDirty = false;
+    return Promise.resolve();
+  }
+  const payload = buildUserStatePayload();
+  const sig = userStateSignature(payload);
+  userStateDirty = false;
+  lastPushedUserStateSig = sig;
+  const task = userStatePushQueue.then(async () => {
+    try {
+      await fetch("/api/auth/state", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Keep local state if offline.
+    }
+  });
+  userStatePushQueue = task.then(() => {}, () => {});
+  return task;
+}
+
+async function flushUserState() {
+  if (userStateDirty || userStateSyncTimer) {
+    await pushUserState();
+  }
+}
+
+function applyRemoteUserState(remote) {
+  if (!remote || typeof remote !== "object") return;
+  applyingRemoteUserState = true;
+  try {
+    state = {
+      ...state,
+      selectedId: typeof remote.selectedId === "string" && remote.selectedId ? remote.selectedId : null,
+      videos: Array.isArray(remote.videos) ? remote.videos : [],
+      collections: Array.isArray(remote.collections) ? remote.collections : [],
+      playlists: Array.isArray(remote.playlists) ? remote.playlists : [],
+      favourites: Array.isArray(remote.favourites) ? remote.favourites : [],
+      activity: Array.isArray(remote.activity) ? remote.activity : [],
+      scrapeHistory: Array.isArray(remote.scrapeHistory) ? remote.scrapeHistory : [],
+      feedTaste: remote.feedTaste && typeof remote.feedTaste === "object"
+        ? remote.feedTaste
+        : { votes: {}, speakers: {}, sources: {}, tokens: {} },
+      thumbnailStyle: remote.thumbnailStyle === "new-age" ? "new-age" : "cinematic",
+      librarySections: remote.librarySections && typeof remote.librarySections === "object"
+        ? remote.librarySections
+        : {},
+      youtubeFavoriteChannels: Array.isArray(remote.youtubeFavoriteChannels) ? remote.youtubeFavoriteChannels : [],
+      youtubeRemovedChannels: Array.isArray(remote.youtubeRemovedChannels) ? remote.youtubeRemovedChannels : [],
+      youtubeSubFilter: ["latest", "favourites", "alphabetical", "new"].includes(remote.youtubeSubFilter)
+        ? remote.youtubeSubFilter
+        : "latest",
+    };
+    core.saveState(localStorage, STORAGE_KEY, state);
+    if (typeof merchCart !== "undefined") {
+      merchCart = Array.isArray(remote.merchCart)
+        ? remote.merchCart.filter((line) => line && line.id && line.qty > 0)
+        : [];
+      localStorage.setItem(MERCH_STORAGE_KEY, JSON.stringify(merchCart));
+    }
+    const searches = Array.isArray(remote.recentSearches)
+      ? remote.recentSearches.map((s) => String(s || "").trim()).filter(Boolean).slice(0, 10)
+      : [];
+    if (searches.length) {
+      localStorage.setItem(GLOBAL_RECENT_SEARCHES_KEY, JSON.stringify(searches));
+    } else if (typeof localStorage.removeItem === "function") {
+      localStorage.removeItem(GLOBAL_RECENT_SEARCHES_KEY);
+    } else {
+      localStorage.setItem(GLOBAL_RECENT_SEARCHES_KEY, "[]");
+    }
+    lastPushedUserStateSig = userStateSignature();
+    userStateDirty = false;
+  } finally {
+    applyingRemoteUserState = false;
+  }
+  try { render(); } catch { /* partial DOM in unit test harness */ }
+  if (typeof renderYouTubeChannels === "function") renderYouTubeChannels();
+  if (typeof paintYouTubeGrid === "function") paintYouTubeGrid();
+}
+
+function resetLocalUserState() {
+  clearTimeout(userStateSyncTimer);
+  userStateSyncTimer = 0;
+  userStateDirty = false;
+  lastPushedUserStateSig = "";
+  pickerSignedIn = false;
+  applyingRemoteUserState = true;
+  try {
+    if (typeof localStorage.removeItem === "function") {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(MERCH_STORAGE_KEY);
+      localStorage.removeItem(GLOBAL_RECENT_SEARCHES_KEY);
+    } else {
+      localStorage.setItem(STORAGE_KEY, "");
+      localStorage.setItem(MERCH_STORAGE_KEY, "[]");
+      localStorage.setItem(GLOBAL_RECENT_SEARCHES_KEY, "[]");
+    }
+    state = core.loadState(localStorage, STORAGE_KEY);
+    if (typeof merchCart !== "undefined") merchCart = [];
+    selectedVideoIds.clear();
+  } finally {
+    applyingRemoteUserState = false;
+  }
+  try { render(); } catch { /* partial DOM in unit test harness */ }
+  if (typeof renderYouTubeChannels === "function") renderYouTubeChannels();
+  if (typeof paintYouTubeGrid === "function") paintYouTubeGrid();
+  if (typeof renderGlobalSearchBody === "function") renderGlobalSearchBody();
+}
+
 function saveState() {
   core.saveState(localStorage, STORAGE_KEY, state);
+  scheduleUserStatePush();
 }
 
 function loadState() {
@@ -10808,6 +11019,7 @@ function loadMerchCart() {
 
 function saveMerchCart() {
   localStorage.setItem(MERCH_STORAGE_KEY, JSON.stringify(merchCart));
+  scheduleUserStatePush();
 }
 
 function merchColorwayForTheme() {
@@ -11171,16 +11383,23 @@ function saveRecentGlobalSearch(query) {
   const current = getRecentGlobalSearches().filter((q) => q.toLowerCase() !== trimmed.toLowerCase());
   current.unshift(trimmed);
   localStorage.setItem(GLOBAL_RECENT_SEARCHES_KEY, JSON.stringify(current.slice(0, 10)));
+  scheduleUserStatePush();
 }
 
 function removeRecentGlobalSearch(query) {
   const current = getRecentGlobalSearches().filter((q) => q.toLowerCase() !== query.toLowerCase());
   localStorage.setItem(GLOBAL_RECENT_SEARCHES_KEY, JSON.stringify(current));
+  scheduleUserStatePush();
   renderGlobalSearchBody();
 }
 
 function clearRecentGlobalSearches() {
-  localStorage.removeItem(GLOBAL_RECENT_SEARCHES_KEY);
+  if (typeof localStorage.removeItem === "function") {
+    localStorage.removeItem(GLOBAL_RECENT_SEARCHES_KEY);
+  } else {
+    localStorage.setItem(GLOBAL_RECENT_SEARCHES_KEY, "[]");
+  }
+  scheduleUserStatePush();
   renderGlobalSearchBody();
 }
 

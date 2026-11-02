@@ -1,5 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  emptyFeedLibrary,
+  emptyUserState,
+  mergeFeedLibrary,
+  mergeUserState,
+  normalizeFeedLibrary,
+  normalizeUserState,
+} from "./auth.mjs";
 
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -184,49 +192,38 @@ export function createFileAccountStore(filePath) {
     async feedLibraryForUser(userId) {
       return update((data) => {
         const row = (data.feedLibraries || []).find((item) => item.userId === userId);
-        if (!row?.library) return { feeds: [], folders: [], favoriteFolderIds: [], removedUrls: [], updatedAt: "" };
-        return row.library;
+        if (!row?.library) return emptyFeedLibrary();
+        return normalizeFeedLibrary(row.library);
       });
     },
     async saveFeedLibrary(userId, library) {
       return update((data) => {
         data.feedLibraries ||= [];
-        const saved = normalizeLibrary(library);
+        const existing = data.feedLibraries.find((item) => item.userId === userId)?.library || emptyFeedLibrary();
+        const saved = { ...mergeFeedLibrary(existing, library), updatedAt: new Date().toISOString() };
         data.feedLibraries = data.feedLibraries.filter((item) => item.userId !== userId);
         data.feedLibraries.push({ userId, library: saved });
         return saved;
       });
     },
+    async userStateForUser(userId) {
+      return update((data) => {
+        const row = (data.userStates || []).find((item) => item.userId === userId);
+        if (!row?.state) return emptyUserState();
+        return normalizeUserState(row.state);
+      });
+    },
+    async saveUserState(userId, incoming) {
+      return update((data) => {
+        data.userStates ||= [];
+        const existing = data.userStates.find((item) => item.userId === userId)?.state || emptyUserState();
+        const saved = { ...mergeUserState(existing, incoming), updatedAt: new Date().toISOString() };
+        data.userStates = data.userStates.filter((item) => item.userId !== userId);
+        data.userStates.push({ userId, state: saved });
+        return saved;
+      });
+    },
   };
-}
-
-function normalizeLibrary(incoming) {
-  const feeds = (Array.isArray(incoming?.feeds) ? incoming.feeds : []).flatMap((feed) => {
-    const url = String(feed?.url || "");
-    if (!/^https?:\/\//i.test(url)) return [];
-    return [{
-      id: String(feed.id || ""),
-      url,
-      title: String(feed.title || ""),
-      siteUrl: String(feed.siteUrl || ""),
-      topics: Array.isArray(feed.topics) ? feed.topics : [],
-      folderIds: Array.isArray(feed.folderIds) ? feed.folderIds : [],
-      addedAt: String(feed.addedAt || ""),
-    }];
-  });
-  const folders = (Array.isArray(incoming?.folders) ? incoming.folders : []).flatMap((folder) => {
-    if (!folder?.id || !folder?.name) return [];
-    return [{ id: String(folder.id), name: String(folder.name) }];
-  });
-  const removedUrls = (Array.isArray(incoming?.removedUrls) ? incoming.removedUrls : [])
-    .map((url) => String(url || ""))
-    .filter((url) => /^https?:\/\//i.test(url));
-  const folderIds = new Set(folders.map((folder) => folder.id));
-  const favoriteFolderIds = [...new Set(Array.isArray(incoming?.favoriteFolderIds) ? incoming.favoriteFolderIds : [])]
-    .map((id) => String(id || ""))
-    .filter((id) => folderIds.has(id))
-    .slice(0, 5);
-  return { feeds: feeds.slice(0, 400), folders: folders.slice(0, 80), favoriteFolderIds, removedUrls: removedUrls.slice(0, 400), updatedAt: new Date().toISOString() };
 }
 
 async function readStore(filePath) {

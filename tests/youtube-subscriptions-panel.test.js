@@ -53,6 +53,7 @@ function createTestHarness(initialState = {}) {
 
   const nodes = new Map();
   const document = {
+    documentElement: { dataset: {} },
     body: {
       dataset: { pickerSignedIn: "true" },
       classList: element().classList,
@@ -88,6 +89,7 @@ function createTestHarness(initialState = {}) {
     innerHeight: 800,
     setTimeout,
     clearTimeout,
+    ...(typeof initialState.fetch === "function" ? { fetch: initialState.fetch } : {}),
   });
 
   const appSource = fs.readFileSync(require.resolve("../public/app.js"), "utf8").replace("\ninit();", "");
@@ -109,6 +111,10 @@ function createTestHarness(initialState = {}) {
       returnFromPlayBubble,
       exitPlayBubbleFullscreen,
       setLivePlayback: (val) => { livePlayback = val; },
+      loadAccount,
+      signOutAccount,
+      saveRecentGlobalSearch,
+      getRecentGlobalSearches,
     };
   `, context);
 
@@ -269,4 +275,71 @@ test("mini preview opens in fullscreen without navigating to the video post page
   assert.equal(document.body.classList.contains("is-player-fullscreen"), false, "Should exit fullscreen state");
   assert.equal(document.body.classList.contains("is-player-floating"), true, "Should restore floating mini preview");
   assert.equal(bubble.hidden, false, "Mini preview should be visible again");
+});
+
+test("user changes are saved to the server on logout and restored on login without depending on localStorage", async () => {
+  let serverUserState = null;
+  let signedIn = true;
+
+  const { harness, saved } = createTestHarness({
+    fetch: async (url, init = {}) => {
+      const path = String(url);
+      if (path === "/api/auth/state" && init.method === "PUT") {
+        serverUserState = {
+          ...JSON.parse(init.body),
+          updatedAt: "2026-11-02T20:00:00.000Z",
+        };
+        return { ok: true, json: async () => serverUserState };
+      }
+      if (path === "/api/auth/state") {
+        return { ok: true, json: async () => serverUserState || {} };
+      }
+      if (path === "/api/auth/logout") {
+        signedIn = false;
+        return { ok: true, json: async () => ({ ok: true }) };
+      }
+      if (path === "/api/auth/me") {
+        return {
+          ok: true,
+          json: async () => ({
+            configured: true,
+            user: signedIn ? { id: "u1", email: "user@example.com", name: "User", youtubeConnected: true } : null,
+            state: signedIn ? serverUserState : null,
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    },
+  });
+
+  await harness.loadAccount();
+  harness.getYoutubeShelf().channels = [
+    { id: "UC_FAV", title: "Fav Channel" },
+    { id: "UC_REM", title: "Removed Channel" },
+  ];
+
+  // Make user changes across the app
+  harness.toggleYouTubeFavoriteChannel("UC_FAV");
+  harness.removeYouTubeChannel("UC_REM");
+  harness.setYouTubeSubFilter("favourites");
+  harness.saveRecentGlobalSearch("oled review");
+
+  // Log out: flushes to server and clears local state & localStorage
+  await harness.signOutAccount();
+  assert.equal(signedIn, false);
+  assert.ok(serverUserState, "User state should be pushed to server before logout completes");
+  assert.deepEqual(Array.from(harness.getYouTubeFavoriteChannels()), [], "In-memory favourites cleared on logout");
+  assert.deepEqual(Array.from(harness.getYouTubeRemovedChannels()), [], "In-memory removed channels cleared on logout");
+  assert.equal(saved.get("material-picker:v1"), undefined, "localStorage cleared on logout");
+
+  // Clear localStorage completely and log back in
+  saved.clear();
+  signedIn = true;
+  await harness.loadAccount();
+
+  // Verify all user changes are restored from server without relying on localStorage
+  assert.deepEqual(Array.from(harness.getYouTubeFavoriteChannels()), ["UC_FAV"]);
+  assert.deepEqual(Array.from(harness.getYouTubeRemovedChannels()), ["UC_REM"]);
+  assert.equal(harness.getYouTubeSubFilter(), "favourites");
+  assert.deepEqual(Array.from(harness.getRecentGlobalSearches()), ["oled review"]);
 });
