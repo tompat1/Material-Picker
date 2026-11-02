@@ -94,25 +94,35 @@ test("mobile topic pills expand to additional catalog topics and scroll", async 
   const topics = page.locator("#feedTopics");
   const toggle = page.locator("#feedTopicsToggle");
   await expect(toggle).toBeVisible();
-  await expect(toggle).toHaveText("+");
+  await expect(toggle).toHaveAttribute("data-direction", "down");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Add custom topic" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Design", exact: true })).toBeHidden();
   const compactSize = await topics.evaluate((element) => ({
     clientHeight: element.clientHeight,
-    scrollHeight: element.scrollHeight,
     overflowY: getComputedStyle(element).overflowY,
   }));
   expect(compactSize.overflowY).toBe("auto");
-  expect(compactSize.scrollHeight).toBeGreaterThan(compactSize.clientHeight);
+  const [topicsBox, addBox] = await Promise.all([
+    topics.boundingBox(),
+    page.getByRole("button", { name: "Add custom topic" }).boundingBox(),
+  ]);
+  expect(addBox.y + addBox.height).toBeLessThanOrEqual(topicsBox.y + topicsBox.height);
 
   await toggle.click();
-  await expect(toggle).toHaveText("−");
+  await expect(toggle).toHaveAttribute("data-direction", "up");
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("button", { name: "Design", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "EVs & Auto", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Music", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Design", exact: true }).click();
   await expect(page.getByRole("button", { name: "Design", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByRole("button", { name: "Add custom topic" }).click();
+  await page.locator("#feedTopicCustomInput").fill("Climate");
+  await page.locator("#feedTopicCustomForm").getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Climate", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => page.evaluate(() => localStorage.getItem("material-picker:custom-feed-topics"))).toContain("Climate");
 });
 
 test("mobile feed tools use a right-edge tab rail and slide panel", async ({ page }) => {

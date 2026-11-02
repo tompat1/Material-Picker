@@ -467,9 +467,16 @@
                   <button type="button" data-feed-topic="business">Business</button>
                   <button type="button" data-feed-topic="sports">Sports</button>
                   <button type="button" data-feed-topic="photography">Photography</button>
+                  <button class="feeds-topic-add" id="feedTopicAdd" type="button" aria-label="Add custom topic" title="Add custom topic"><span aria-hidden="true">+</span></button>
+                  <form class="feeds-topic-custom-form" id="feedTopicCustomForm" hidden>
+                    <label class="sr-only" for="feedTopicCustomInput">New topic</label>
+                    <input id="feedTopicCustomInput" type="text" maxlength="40" autocomplete="off" placeholder="New topic" />
+                    <button type="submit">Add</button>
+                    <button type="button" data-cancel-custom-topic aria-label="Cancel adding topic">×</button>
+                  </form>
                 </div>
                 <button class="feeds-topics-toggle" id="feedTopicsToggle" type="button" aria-controls="feedTopics" aria-expanded="false" aria-label="Show more topics" title="Show more topics" hidden>
-                  <span aria-hidden="true">+</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
               </div>
               <div class="feeds-directory-tools" id="feedsDirectoryTools" hidden>

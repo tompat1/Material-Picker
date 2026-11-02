@@ -1,4 +1,5 @@
 const FEEDS_KEY = "material-picker:feeds";
+const CUSTOM_TOPICS_KEY = "material-picker:custom-feed-topics";
 const FEED_ITEM_CAP = 40;
 const FEED_REFRESH_MS = 15 * 60 * 1000;
 const MAX_FAVORITE_FOLDERS = 5;
@@ -45,6 +46,8 @@ let selectedTopic = "popular";
 let catalogQuery = "";
 let catalogTopics = [];
 let topicsExpanded = false;
+let customTopics = loadCustomTopics();
+let customTopicFormOpen = false;
 let directoryFeeds = [];
 let directoryRequest = 0;
 let catalogPicks = new Map();
@@ -64,6 +67,28 @@ function cleanImageUrl(value) {
   } catch {
     return "";
   }
+}
+
+function loadCustomTopics() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CUSTOM_TOPICS_KEY) || "[]");
+    if (!Array.isArray(saved)) return [];
+    const seen = new Set();
+    return saved.map((topic) => String(topic || "").trim().replace(/\s+/g, " ").slice(0, 40))
+      .filter((topic) => {
+        const key = topic.toLowerCase();
+        if (!topic || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 24);
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomTopics() {
+  localStorage.setItem(CUSTOM_TOPICS_KEY, JSON.stringify(customTopics));
 }
 
 function loadFeedState() {
@@ -1742,13 +1767,19 @@ function renderTopicChoices() {
   const root = document.querySelector("#feedTopics");
   const shell = document.querySelector("#feedTopicsShell");
   const toggle = document.querySelector("#feedTopicsToggle");
-  if (!root || !shell || !toggle) return;
+  const addButton = document.querySelector("#feedTopicAdd");
+  const customForm = document.querySelector("#feedTopicCustomForm");
+  if (!root || !shell || !toggle || !addButton || !customForm) return;
 
   const builtInIds = new Set(
     [...root.querySelectorAll("[data-feed-topic]:not([data-extra-topic])")]
       .map((button) => button.dataset.feedTopic)
   );
-  root.querySelectorAll("[data-extra-topic]").forEach((button) => button.remove());
+  const compactTopicLimit = isPhoneFeeds() ? 7 : 8;
+  [...root.querySelectorAll("[data-feed-topic]:not([data-extra-topic])")].forEach((button, index) => {
+    button.hidden = !topicsExpanded && index >= compactTopicLimit && button.dataset.feedTopic !== selectedTopic;
+  });
+  root.querySelectorAll("[data-extra-topic], [data-custom-topic]").forEach((button) => button.remove());
   const extraTopics = catalogTopics.filter((topic) => topic?.id && !builtInIds.has(topic.id));
   extraTopics.forEach((topic) => {
     const button = document.createElement("button");
@@ -1757,15 +1788,45 @@ function renderTopicChoices() {
     button.dataset.extraTopic = "";
     button.textContent = topic.label || TOPIC_LABELS[topic.id] || topic.id;
     button.hidden = !topicsExpanded && topic.id !== selectedTopic;
-    root.append(button);
+    root.insertBefore(button, addButton);
+  });
+  customTopics.forEach((topic) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.customTopic = topic;
+    button.textContent = topic;
+    button.setAttribute("aria-pressed", String(!selectedTopic && catalogQuery.trim().toLowerCase() === topic.toLowerCase()));
+    root.insertBefore(button, addButton);
   });
 
   toggle.hidden = extraTopics.length === 0;
   toggle.setAttribute("aria-expanded", String(topicsExpanded));
   toggle.setAttribute("aria-label", topicsExpanded ? "Show fewer topics" : "Show more topics");
   toggle.title = topicsExpanded ? "Show fewer topics" : "Show more topics";
-  toggle.querySelector("span").textContent = topicsExpanded ? "−" : "+";
+  toggle.dataset.direction = topicsExpanded ? "up" : "down";
   shell.classList.toggle("is-expanded", topicsExpanded);
+  addButton.hidden = customTopicFormOpen;
+  customForm.hidden = !customTopicFormOpen;
+}
+
+function addCustomTopic(value) {
+  const topic = String(value || "").trim().replace(/\s+/g, " ").slice(0, 40);
+  if (!topic) return false;
+  const existing = customTopics.find((item) => item.toLowerCase() === topic.toLowerCase());
+  if (!existing) {
+    customTopics.push(topic);
+    customTopics = customTopics.slice(-24);
+    saveCustomTopics();
+  }
+  const selected = existing || topic;
+  selectedTopic = "";
+  catalogQuery = selected;
+  const query = document.querySelector("#feedTopicQuery");
+  if (query) query.value = selected;
+  customTopicFormOpen = false;
+  renderTopicChoices();
+  void loadDirectory();
+  return true;
 }
 
 function renderDirectory() {
@@ -2432,6 +2493,11 @@ function bindFeedsDesk() {
     void followUrl(document.querySelector("#followFeedInput")?.value);
   });
   document.querySelector("#feedTopicSearch")?.addEventListener("submit", (event) => event.preventDefault());
+  document.querySelector("#feedTopicCustomForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const input = document.querySelector("#feedTopicCustomInput");
+    if (addCustomTopic(input?.value) && input) input.value = "";
+  });
   document.querySelector("#feedTopicQuery")?.addEventListener("input", (event) => {
     catalogQuery = event.target.value || "";
     if (catalogQuery.trim() && selectedTopic === "popular") {
@@ -2712,6 +2778,31 @@ function bindFeedsDesk() {
       const targetTopic = topicButton.dataset.feedTopic;
       selectedTopic = selectedTopic === targetTopic ? "popular" : targetTopic;
       void loadDirectory();
+      return;
+    }
+    const customTopic = event.target.closest("[data-custom-topic]");
+    if (customTopic) {
+      selectedTopic = "";
+      catalogQuery = customTopic.dataset.customTopic || "";
+      const query = document.querySelector("#feedTopicQuery");
+      if (query) query.value = catalogQuery;
+      void loadDirectory();
+      return;
+    }
+    const addTopic = event.target.closest("#feedTopicAdd");
+    if (addTopic) {
+      customTopicFormOpen = true;
+      renderTopicChoices();
+      requestAnimationFrame(() => document.querySelector("#feedTopicCustomInput")?.focus());
+      return;
+    }
+    const cancelCustomTopic = event.target.closest("[data-cancel-custom-topic]");
+    if (cancelCustomTopic) {
+      customTopicFormOpen = false;
+      const input = document.querySelector("#feedTopicCustomInput");
+      if (input) input.value = "";
+      renderTopicChoices();
+      document.querySelector("#feedTopicAdd")?.focus();
       return;
     }
     const topicToggle = event.target.closest("#feedTopicsToggle");

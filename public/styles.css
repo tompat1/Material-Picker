@@ -7620,6 +7620,47 @@ label.cms-image-choose {
   color: var(--accent-ink);
 }
 
+.feeds-topics .feeds-topic-add {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
+  color: var(--accent);
+  font-size: 1.15rem;
+}
+
+.feeds-topic-custom-form {
+  display: flex;
+  flex: 1 0 100%;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.feeds-topic-custom-form[hidden] {
+  display: none;
+}
+
+.feeds-topic-custom-form input {
+  min-width: 0;
+  height: 2.25rem;
+  flex: 1;
+  padding: 0 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font: 500 0.82rem/1 var(--sans);
+}
+
+.feeds-topic-custom-form button {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding-inline: 0.65rem;
+}
+
 .feeds-topics button[hidden],
 .feeds-topics-toggle[hidden] {
   display: none;
@@ -7628,24 +7669,38 @@ label.cms-image-choose {
 .feeds-topics-toggle {
   display: inline-grid;
   place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  min-width: 2.25rem;
-  min-height: 2.25rem;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
-  color: var(--ink);
-  font: 500 1.45rem/1 var(--sans);
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
+}
+
+.feeds-topics-toggle svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 180ms ease;
+}
+
+.feeds-topics-toggle[data-direction="up"] svg {
+  transform: rotate(180deg);
 }
 
 .feeds-topics-toggle:hover,
 .feeds-topics-toggle:focus-visible,
 .feeds-topics-shell.is-expanded .feeds-topics-toggle {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, var(--bg));
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink);
 }
 
 .feeds-topics-shell.is-expanded .feeds-topics {
@@ -10363,10 +10418,14 @@ button[value="close"]:active {
   }
 
   .feeds-topics-toggle {
-    width: 2.5rem;
-    height: 2.5rem;
-    min-width: 2.5rem;
-    min-height: 2.5rem;
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+  }
+
+  .feeds-topic-custom-form input {
+    font-size: 16px;
   }
 }
 
