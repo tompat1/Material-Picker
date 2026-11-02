@@ -710,10 +710,12 @@ function bindEvents() {
     syncPlayBubble();
   });
   document.querySelector("#mobileBack")?.addEventListener("click", () => {
-    if (playerOriginDesk && playerOriginDesk !== "library") returnFromPlayer();
+    if (playbackIsRunning()) minimizeMobilePlayer();
+    else if (playerOriginDesk && playerOriginDesk !== "library") returnFromPlayer();
     else closeMobilePlayer();
   });
   document.querySelector("#playerBack")?.addEventListener("click", returnFromPlayer);
+  document.querySelector("#playerSizeToggle")?.addEventListener("click", minimizeMobilePlayer);
   document.querySelector("#navMore")?.addEventListener("click", () => {
     const open = document.body.classList.toggle("is-more-open");
     document.querySelector("#navMore")?.setAttribute("aria-expanded", open ? "true" : "false");
@@ -2396,6 +2398,7 @@ function paintYouTubeGrid(message = "") {
   if (youtubeShelf.view !== "channel") {
     grid.className = youtubeShelf.view === "shorts" ? "yt-grid is-shorts" : "yt-grid";
     grid.innerHTML = videos.map(card).join("");
+    syncPlayingCards();
     checkYouTubeSwipeHint();
     return;
   }
@@ -2420,6 +2423,7 @@ function paintYouTubeGrid(message = "") {
     ${carousel}
   `;
   syncYouTubeCarousel(grid);
+  syncPlayingCards();
   checkYouTubeSwipeHint();
 }
 
@@ -3989,6 +3993,10 @@ function syncPlayerBack() {
 
 function returnFromPlayer() {
   const desk = playerOriginDesk;
+  if (window.matchMedia("(max-width: 760px)").matches && playbackIsRunning()) {
+    minimizeMobilePlayer();
+    return;
+  }
   if (!desk || desk === "library") {
     closeMobilePlayer();
     return;
@@ -4032,11 +4040,24 @@ function selectVideo(id, options = {}) {
 
 function closeMobilePlayer() {
   document.body.classList.remove("is-mobile-player");
+  syncPlayBubble();
+  syncPlayerBack();
+}
+
+function minimizeMobilePlayer() {
+  if (!window.matchMedia("(max-width: 760px)").matches) return;
+  if (playbackIsRunning()) livePlayback = true;
+  const desk = playerOriginDesk && playerOriginDesk !== "library" ? playerOriginDesk : "library";
+  document.body.classList.remove("is-mobile-player", "is-more-open");
+  document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
+  showDesk(desk);
+  syncPlayBubble();
 }
 
 function closeMobileMenus() {
   document.body.classList.remove("is-more-open", "is-mobile-player");
   document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
+  window.requestAnimationFrame(syncPlayBubble);
 }
 
 function showDesk(name) {
@@ -5725,7 +5746,9 @@ function syncPlayerFeedVotes() {
 }
 
 function syncPlayingCards() {
-  const playingId = playbackIsRunning() ? state.selectedId : "";
+  const isPlaying = playbackIsRunning();
+  const playingId = isPlaying ? state.selectedId : "";
+  const playingUrl = isPlaying ? String(selectedVideo()?.url || "").trim() : "";
   document.querySelectorAll(".video-card").forEach((card) => {
     const playing = Boolean(playingId && card.dataset.videoId === playingId);
     card.classList.toggle("is-playing", playing);
@@ -5752,12 +5775,38 @@ function syncPlayingCards() {
       button.append(note);
     }
   });
+  document.querySelectorAll(".yt-card[data-youtube-url]").forEach((card) => {
+    const playing = Boolean(playingUrl && String(card.dataset.youtubeUrl || "").trim() === playingUrl);
+    card.classList.toggle("is-playing", playing);
+    const thumb = card.querySelector(".yt-thumb");
+    let mark = thumb?.querySelector(".playing-mark");
+    let note = thumb?.querySelector(".playing-note");
+    if (!playing) {
+      mark?.remove();
+      note?.remove();
+      return;
+    }
+    if (thumb && !mark) {
+      mark = document.createElement("span");
+      mark.className = "playing-mark playing-mark--compact";
+      mark.setAttribute("aria-hidden", "true");
+      mark.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 5.2v13.6L19 12z"/></svg>`;
+      thumb.append(mark);
+    }
+    if (thumb && !note) {
+      note = document.createElement("span");
+      note.className = "sr-only playing-note";
+      note.textContent = "Now playing";
+      thumb.append(note);
+    }
+  });
   syncTopicPlayingMarks();
 }
 
 function syncPlayButton() {
   const button = document.querySelector("#playVideoButton");
   const playing = playbackIsRunning();
+  document.body.classList.toggle("is-playback-running", playing);
   if (button) {
     const label = button.querySelector(".play-label");
     if (label) label.textContent = playing ? "Pause" : "Play";
@@ -5877,7 +5926,9 @@ function syncEmbedPlaybackState(event) {
 }
 
 function playerShouldFloat() {
-  if (!window.matchMedia("(min-width: 761px)").matches) return false;
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    return !document.body.classList.contains("is-mobile-player");
+  }
   const desk = document.querySelector('input[name="desk"]:checked')?.id || "desk-library";
   if (desk === "desk-library") return false;
   if (desk === "desk-transcripts" && !document.body.classList.contains("is-nav-searching")) return false;
@@ -5935,7 +5986,6 @@ function floatPlayBubble() {
   const bubble = document.querySelector("#playBubble");
   const node = playingMediaNode();
   if (!bubble || !node) return false;
-  if (!window.matchMedia("(min-width: 761px)").matches) return false;
   if (playbackIsRunning()) livePlayback = true;
   if (!livePlayback) return false;
   document.body.classList.add("is-player-floating");
@@ -5967,6 +6017,16 @@ function closePlayBubble() {
 }
 
 function returnFromPlayBubble() {
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    document.body.classList.add("is-mobile-player");
+    showDesk("library");
+    dockPlayBubble();
+    syncPlayerBack();
+    window.requestAnimationFrame(() => {
+      document.querySelector(".watch-column")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    return;
+  }
   showDesk("library");
   dockPlayBubble();
 }
