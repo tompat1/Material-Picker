@@ -170,59 +170,65 @@ export function chaptersFromVtt(vtt) {
 }
 
 async function fetchYoutubeChapters(target, fetchImpl) {
-  const response = await fetchImpl(`https://www.youtube.com/watch?v=${target.id}`, {
-    headers: { "user-agent": USER_AGENT, accept: "text/html" },
-    signal: AbortSignal.timeout(20000),
-  });
+  let response;
+  try {
+    response = await fetchImpl(`https://www.youtube.com/watch?v=${target.id}`, {
+      headers: {
+        "user-agent": USER_AGENT,
+        accept: "text/html",
+        cookie: "CONSENT=YES+cb",
+      },
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    return { chapters: [], source: "youtube", url: target.canonicalUrl, unavailable: true };
+  }
   if (!response.ok) {
-    const error = new Error("YouTube did not return chapter information.");
-    error.status = 502;
-    throw error;
+    return { chapters: [], source: "youtube", url: target.canonicalUrl, unavailable: true };
   }
   const chapters = youtubeChaptersFromWatchHtml(await response.text());
-  if (!chapters.length) {
-    const error = new Error("This video does not list chapters on YouTube.");
-    error.status = 404;
-    throw error;
-  }
   return { chapters, source: "youtube", url: target.canonicalUrl };
 }
 
 async function fetchVimeoChapters(target, fetchImpl) {
-  const response = await fetchImpl(`https://player.vimeo.com/video/${target.id}`, {
-    headers: { "user-agent": USER_AGENT, accept: "text/html" },
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!response.ok) {
-    const error = new Error(`Vimeo returned ${response.status}.`);
-    error.status = 502;
-    throw error;
+  let response;
+  try {
+    response = await fetchImpl(`https://player.vimeo.com/video/${target.id}`, {
+      headers: { "user-agent": USER_AGENT, accept: "text/html" },
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    return { chapters: [], source: "vimeo", url: target.canonicalUrl, unavailable: true };
   }
-  const config = extractPlayerConfig(await response.text());
+  if (!response.ok) {
+    return { chapters: [], source: "vimeo", url: target.canonicalUrl, unavailable: true };
+  }
+  let config;
+  try {
+    config = extractPlayerConfig(await response.text());
+  } catch {
+    return { chapters: [], source: "vimeo", url: target.canonicalUrl, unavailable: true };
+  }
   const tracks = config.request?.text_tracks || [];
   const chapterTrack =
     tracks.find((item) => String(item.kind || "").toLowerCase() === "chapters") ||
     tracks.find((item) => /chapter/i.test(String(item.label || "")));
   if (!chapterTrack?.url) {
-    const error = new Error("This Vimeo video does not provide a public chapter track.");
-    error.status = 404;
-    throw error;
+    return { chapters: [], source: "vimeo", url: target.canonicalUrl };
   }
-  const caption = await fetchImpl(chapterTrack.url, {
-    headers: { "user-agent": USER_AGENT, accept: "text/vtt,text/plain,*/*" },
-    signal: AbortSignal.timeout(20000),
-  });
+  let caption;
+  try {
+    caption = await fetchImpl(chapterTrack.url, {
+      headers: { "user-agent": USER_AGENT, accept: "text/vtt,text/plain,*/*" },
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch {
+    return { chapters: [], source: "vimeo", url: target.canonicalUrl, unavailable: true };
+  }
   if (!caption.ok) {
-    const error = new Error(`Vimeo chapters returned ${caption.status}.`);
-    error.status = 502;
-    throw error;
+    return { chapters: [], source: "vimeo", url: target.canonicalUrl, unavailable: true };
   }
   const chapters = chaptersFromVtt(await caption.text());
-  if (!chapters.length) {
-    const error = new Error("The chapter track was empty.");
-    error.status = 404;
-    throw error;
-  }
   return { chapters, source: "vimeo", url: target.canonicalUrl, label: chapterTrack.label || "Chapters" };
 }
 

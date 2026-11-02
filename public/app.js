@@ -465,7 +465,7 @@ function waitLabelFor(path) {
 
 function shouldTrackRequest(path) {
   if (!path.startsWith("/api/")) return false;
-  if (path === "/api/video-search") return false;
+  if (path === "/api/video-search" || path === "/api/chapters") return false;
   if (path === "/api/rss/catalog" || path === "/api/offline/status" || path === "/api/stream") return false;
   if (path === "/api/media-proxy" || path === "/api/media-plan" || path === "/api/offline/files") return false;
   if (path.startsWith("/api/youtube/")) return Boolean(document.querySelector("#desk-youtube")?.checked);
@@ -1294,12 +1294,12 @@ async function importFromDirectoryHandle(dirHandle, options = {}) {
   if (els.folderPath) els.folderPath.value = rootFolderName;
   state.lastImportFolderName = rootFolderName;
   importedFolderNames.add(rootFolderName);
-  void rememberImportFolder(dirHandle);
   setStatus(options.quiet ? `Opening “${rootFolderName}”...` : `Scanning “${rootFolderName}” and all subfolders for videos...`, true);
   if (els.browseFolderButton) els.browseFolderButton.disabled = true;
 
   try {
     const entries = [];
+    let rootMissing = false;
 
     const walk = async (handle, pathParts = []) => {
       const children = [];
@@ -1308,7 +1308,12 @@ async function importFromDirectoryHandle(dirHandle, options = {}) {
           if (!entry.name.startsWith(".") && entry.name !== "node_modules") children.push(entry);
         }
       } catch (dirErr) {
-        console.warn("Skipping directory:", pathParts.join("/"), dirErr);
+        if (!pathParts.length && dirErr?.name === "NotFoundError") {
+          rootMissing = true;
+          await forgetImportFolder(handle).catch(() => {});
+          return;
+        }
+        if (!options.quiet) console.warn("Skipping directory:", pathParts.join("/"), dirErr);
         return;
       }
 
@@ -1360,6 +1365,11 @@ async function importFromDirectoryHandle(dirHandle, options = {}) {
     };
 
     await walk(dirHandle, []);
+    if (rootMissing) {
+      if (!options.quiet) setStatus(`Folder “${rootFolderName}” could not be found on disk.`, false);
+      return;
+    }
+    void rememberImportFolder(dirHandle);
     await processImportedFolderEntries(entries, rootFolderName, "", options);
     await persistStoredThumbnails([dirHandle]).catch(() => {});
   } catch (error) {
@@ -7263,6 +7273,15 @@ async function rememberImportFolder(handle) {
   state.lastImportFolderName = handle.name || state.lastImportFolderName || "";
   saveState();
   await rememberFolderHandle("imports", next.slice(0, 8));
+}
+
+async function forgetImportFolder(handle) {
+  if (!handle?.name) return;
+  const stored = await storedFolderHandle("imports").catch(() => []);
+  const handles = Array.isArray(stored) ? stored : [];
+  const next = handles.filter((item) => item && item !== handle && item.name !== handle.name);
+  if (next.length === handles.length) return;
+  await rememberFolderHandle("imports", next);
 }
 
 async function restorePersistedFolders() {

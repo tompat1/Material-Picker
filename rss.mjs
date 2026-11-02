@@ -182,7 +182,8 @@ function openGraphImage(html, base) {
     const rawUrl = attrValue(tag[1], "content");
     if (!rawUrl || rawUrl === "undefined" || rawUrl === "null") continue;
     const url = absoluteHttp(rawUrl, base);
-    if (url) return url;
+    if (!url || /:\/\/opengraph\.githubassets\.com\//i.test(url)) continue;
+    return url;
   }
   return "";
 }

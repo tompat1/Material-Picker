@@ -82,3 +82,16 @@ Chapter one
   assert.equal(result.chapters[0].title, "Chapter one");
   assert.equal(result.chapters[0].startSeconds, 30);
 });
+
+test("chapters API gracefully returns empty chapters when upstream blocks or has no chapters", async () => {
+  const blocked = await fetchVideoChapters("https://www.youtube.com/watch?v=2nAen_d6l8A", async () => {
+    return new Response("blocked", { status: 429 });
+  });
+  assert.deepEqual(blocked.chapters, []);
+  assert.equal(blocked.unavailable, true);
+
+  const empty = await fetchVideoChapters("https://www.youtube.com/watch?v=2nAen_d6l8A", async () => {
+    return new Response("<html>No chapters here</html>", { status: 200 });
+  });
+  assert.deepEqual(empty.chapters, []);
+});
