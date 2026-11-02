@@ -453,19 +453,24 @@
                 <label for="feedTopicQuery">Search by subject or name</label>
                 <input id="feedTopicQuery" type="search" placeholder="Search by topic or feed name (e.g. movies, AI, gaming…)" />
               </form>
-              <div class="feeds-topics" id="feedTopics" role="group" aria-label="Feed topics">
-                <button type="button" data-feed-topic="popular">Popular</button>
-                <button type="button" data-feed-topic="news">News</button>
-                <button type="button" data-feed-topic="tech">Tech</button>
-                <button type="button" data-feed-topic="apple">Apple</button>
-                <button type="button" data-feed-topic="ai">AI</button>
-                <button type="button" data-feed-topic="politics">Politics</button>
-                <button type="button" data-feed-topic="movies">Movies</button>
-                <button type="button" data-feed-topic="gaming">Gaming</button>
-                <button type="button" data-feed-topic="science">Science</button>
-                <button type="button" data-feed-topic="business">Business</button>
-                <button type="button" data-feed-topic="sports">Sports</button>
-                <button type="button" data-feed-topic="photography">Photography</button>
+              <div class="feeds-topics-shell" id="feedTopicsShell">
+                <div class="feeds-topics" id="feedTopics" role="group" aria-label="Feed topics">
+                  <button type="button" data-feed-topic="popular">Popular</button>
+                  <button type="button" data-feed-topic="news">News</button>
+                  <button type="button" data-feed-topic="tech">Tech</button>
+                  <button type="button" data-feed-topic="apple">Apple</button>
+                  <button type="button" data-feed-topic="ai">AI</button>
+                  <button type="button" data-feed-topic="politics">Politics</button>
+                  <button type="button" data-feed-topic="movies">Movies</button>
+                  <button type="button" data-feed-topic="gaming">Gaming</button>
+                  <button type="button" data-feed-topic="science">Science</button>
+                  <button type="button" data-feed-topic="business">Business</button>
+                  <button type="button" data-feed-topic="sports">Sports</button>
+                  <button type="button" data-feed-topic="photography">Photography</button>
+                </div>
+                <button class="feeds-topics-toggle" id="feedTopicsToggle" type="button" aria-controls="feedTopics" aria-expanded="false" aria-label="Show more topics" title="Show more topics" hidden>
+                  <span aria-hidden="true">+</span>
+                </button>
               </div>
               <div class="feeds-directory-tools" id="feedsDirectoryTools" hidden>
                 <button class="ghost-button" type="button" id="discoverTopicPack">Add this topic to a folder</button>

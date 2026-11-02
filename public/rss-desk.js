@@ -14,6 +14,9 @@ const TOPIC_LABELS = {
   business: "Business",
   sports: "Sports",
   photography: "Photography",
+  design: "Design",
+  evs: "EVs & Auto",
+  music: "Music",
 };
 
 const feedState = loadFeedState();
@@ -41,6 +44,7 @@ let sourcesManageTab = "folders";
 let selectedTopic = "popular";
 let catalogQuery = "";
 let catalogTopics = [];
+let topicsExpanded = false;
 let directoryFeeds = [];
 let directoryRequest = 0;
 let catalogPicks = new Map();
@@ -1734,9 +1738,40 @@ function selectTopicPack() {
   document.querySelector("#feedsDiscoverBar")?.scrollIntoView({ block: "nearest" });
 }
 
+function renderTopicChoices() {
+  const root = document.querySelector("#feedTopics");
+  const shell = document.querySelector("#feedTopicsShell");
+  const toggle = document.querySelector("#feedTopicsToggle");
+  if (!root || !shell || !toggle) return;
+
+  const builtInIds = new Set(
+    [...root.querySelectorAll("[data-feed-topic]:not([data-extra-topic])")]
+      .map((button) => button.dataset.feedTopic)
+  );
+  root.querySelectorAll("[data-extra-topic]").forEach((button) => button.remove());
+  const extraTopics = catalogTopics.filter((topic) => topic?.id && !builtInIds.has(topic.id));
+  extraTopics.forEach((topic) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.feedTopic = topic.id;
+    button.dataset.extraTopic = "";
+    button.textContent = topic.label || TOPIC_LABELS[topic.id] || topic.id;
+    button.hidden = !topicsExpanded && topic.id !== selectedTopic;
+    root.append(button);
+  });
+
+  toggle.hidden = extraTopics.length === 0;
+  toggle.setAttribute("aria-expanded", String(topicsExpanded));
+  toggle.setAttribute("aria-label", topicsExpanded ? "Show fewer topics" : "Show more topics");
+  toggle.title = topicsExpanded ? "Show fewer topics" : "Show more topics";
+  toggle.querySelector("span").textContent = topicsExpanded ? "−" : "+";
+  shell.classList.toggle("is-expanded", topicsExpanded);
+}
+
 function renderDirectory() {
   const box = document.querySelector("#feedDirectory");
   const topics = document.querySelector("#feedTopics");
+  renderTopicChoices();
   if (topics) {
     topics.querySelectorAll("[data-feed-topic]").forEach((button) => {
       button.setAttribute("aria-pressed", button.dataset.feedTopic === selectedTopic ? "true" : "false");
@@ -2677,6 +2712,12 @@ function bindFeedsDesk() {
       const targetTopic = topicButton.dataset.feedTopic;
       selectedTopic = selectedTopic === targetTopic ? "popular" : targetTopic;
       void loadDirectory();
+      return;
+    }
+    const topicToggle = event.target.closest("#feedTopicsToggle");
+    if (topicToggle) {
+      topicsExpanded = !topicsExpanded;
+      renderTopicChoices();
       return;
     }
     const catalogButton = event.target.closest("[data-catalog-url]");

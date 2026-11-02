@@ -62,6 +62,10 @@ for (const width of [320, 390]) {
 test("feed discovery presents its three steps as plain text", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   await page.locator("#feedsAddDialog").evaluate((dialog) => dialog.showModal());
 
   const steps = page.locator("#feedsDiscoverSteps > li");
@@ -75,6 +79,40 @@ test("feed discovery presents its three steps as plain text", async ({ page }) =
   expect(presentation.every(({ border }) => border === "0px")).toBe(true);
   expect(presentation.every(({ background }) => background === "rgba(0, 0, 0, 0)")).toBe(true);
   expect(presentation.slice(1).every(({ arrow }) => arrow.includes("→"))).toBe(true);
+});
+
+test("mobile topic pills expand to additional catalog topics and scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.locator("#feedsAddDialog").evaluate((dialog) => dialog.showModal());
+  await page.evaluate(() => loadDirectory());
+
+  const topics = page.locator("#feedTopics");
+  const toggle = page.locator("#feedTopicsToggle");
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveText("+");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("button", { name: "Design", exact: true })).toBeHidden();
+  const compactSize = await topics.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+  }));
+  expect(compactSize.overflowY).toBe("auto");
+  expect(compactSize.scrollHeight).toBeGreaterThan(compactSize.clientHeight);
+
+  await toggle.click();
+  await expect(toggle).toHaveText("−");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: "Design", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "EVs & Auto", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Music", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Design", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Design", exact: true })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("mobile feed tools use a right-edge tab rail and slide panel", async ({ page }) => {
