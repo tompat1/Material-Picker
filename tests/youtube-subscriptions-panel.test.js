@@ -55,6 +55,7 @@ function createTestHarness(initialState = {}) {
   const document = {
     body: {
       dataset: { pickerSignedIn: "true" },
+      classList: element().classList,
       append() {},
     },
     querySelector(selector) {
@@ -67,7 +68,12 @@ function createTestHarness(initialState = {}) {
   };
 
   const context = vm.createContext({
-    window: { MaterialPickerCore: core, clearTimeout },
+    window: {
+      MaterialPickerCore: core,
+      clearTimeout,
+      matchMedia: () => ({ matches: true }),
+      requestAnimationFrame: (cb) => cb(),
+    },
     document,
     localStorage: {
       getItem: (key) => saved.get(key) || null,
@@ -99,6 +105,10 @@ function createTestHarness(initialState = {}) {
       removeYouTubeChannel,
       restoreRemovedYouTubeChannels,
       getChannelLatestTime,
+      floatPlayBubble,
+      returnFromPlayBubble,
+      exitPlayBubbleFullscreen,
+      setLivePlayback: (val) => { livePlayback = val; },
     };
   `, context);
 
@@ -212,4 +222,51 @@ test("youtube subscriptions panel filters by latest, favourites, alphabetical, a
   assert.ok(rendered.includes("Beta Channel"));
   assert.ok(rendered.includes("Alpha Channel"));
   assert.ok(!rendered.includes("Gamma Channel"), "Gamma has no new uploads, so excluded from new content filter");
+});
+
+test("mini preview opens in fullscreen without navigating to the video post page and upper fullscreen icon is removed", () => {
+  const html = fs.readFileSync(require.resolve("../public/index.html"), "utf8");
+  assert.ok(!html.includes("id=\"playerSizeToggle\""), "Upper fullscreen/minimize icon (#playerSizeToggle) should be removed");
+
+  const { harness, document } = createTestHarness();
+  const shell = document.querySelector(".player-shell");
+  const embed = document.querySelector("#embedPlayer");
+  const deskFeeds = document.querySelector("#desk-feeds");
+  const deskLibrary = document.querySelector("#desk-library");
+  const bubble = document.querySelector("#playBubble");
+
+  deskFeeds.checked = true;
+  deskFeeds.id = "desk-feeds";
+  deskLibrary.checked = false;
+  deskLibrary.id = "desk-library";
+  const origQuerySelector = document.querySelector.bind(document);
+  document.querySelector = (sel) => {
+    if (sel === 'input[name="desk"]:checked') return deskFeeds;
+    return origQuerySelector(sel);
+  };
+
+  shell.dataset.mode = "embed";
+  let fullscreenRequested = 0;
+  shell.requestFullscreen = () => {
+    fullscreenRequested += 1;
+    return Promise.resolve();
+  };
+  embed.getAttribute = (attr) => (attr === "src" ? "https://www.youtube-nocookie.com/embed/abc123" : null);
+
+  harness.setLivePlayback(true);
+  assert.equal(harness.floatPlayBubble(), true);
+  assert.equal(document.body.classList.contains("is-player-floating"), true);
+  assert.equal(bubble.hidden, false);
+
+  harness.returnFromPlayBubble();
+  assert.equal(fullscreenRequested, 1, "Should request fullscreen on player");
+  assert.equal(document.body.classList.contains("is-player-fullscreen"), true, "Should enter fullscreen state");
+  assert.equal(document.body.classList.contains("is-mobile-player"), false, "Should not open mobile video post page");
+  assert.equal(deskLibrary.checked, false, "Should not switch desk to library/post page");
+  assert.equal(deskFeeds.checked, true, "Should remain on feeds desk");
+
+  harness.exitPlayBubbleFullscreen();
+  assert.equal(document.body.classList.contains("is-player-fullscreen"), false, "Should exit fullscreen state");
+  assert.equal(document.body.classList.contains("is-player-floating"), true, "Should restore floating mini preview");
+  assert.equal(bubble.hidden, false, "Mini preview should be visible again");
 });

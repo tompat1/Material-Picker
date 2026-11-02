@@ -710,12 +710,12 @@ function bindEvents() {
     syncPlayBubble();
   });
   document.querySelector("#mobileBack")?.addEventListener("click", () => {
-    if (playbackIsRunning()) minimizeMobilePlayer();
+    if (document.body.classList.contains("is-player-fullscreen")) exitPlayBubbleFullscreen();
+    else if (playbackIsRunning()) minimizeMobilePlayer();
     else if (playerOriginDesk && playerOriginDesk !== "library") returnFromPlayer();
     else closeMobilePlayer();
   });
   document.querySelector("#playerBack")?.addEventListener("click", returnFromPlayer);
-  document.querySelector("#playerSizeToggle")?.addEventListener("click", minimizeMobilePlayer);
   document.querySelector("#navMore")?.addEventListener("click", () => {
     const open = document.body.classList.toggle("is-more-open");
     document.querySelector("#navMore")?.setAttribute("aria-expanded", open ? "true" : "false");
@@ -4416,7 +4416,7 @@ function minimizeMobilePlayer() {
 }
 
 function closeMobileMenus() {
-  document.body.classList.remove("is-more-open", "is-mobile-player");
+  document.body.classList.remove("is-more-open", "is-mobile-player", "is-player-fullscreen");
   document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
   window.requestAnimationFrame(syncPlayBubble);
 }
@@ -6272,12 +6272,12 @@ function syncEmbedPlaybackState(event) {
   else if (update.state === 0) {
     livePlayback = false;
     dockPlayBubble();
-  } else if (update.state === 2 && document.body.classList.contains("is-player-floating")) {
+  } else if (update.state === 2 && document.body.classList.contains("is-player-floating") && !document.body.classList.contains("is-player-fullscreen")) {
     if (livePlayback && !floatResumeSent) {
       floatResumeSent = true;
       postEmbedCommand("playVideo");
     }
-  } else if (update.state === 2) {
+  } else if (update.state === 2 && !document.body.classList.contains("is-player-fullscreen")) {
     livePlayback = false;
   }
   if (update.state === 0 || update.state === 1 || update.state === 2 || update.state === 5) {
@@ -6319,7 +6319,7 @@ function syncFloatingBox() {
 function dockPlayBubble() {
   const bubble = document.querySelector("#playBubble");
   restoreFloatedMedia();
-  document.body.classList.remove("is-player-floating");
+  document.body.classList.remove("is-player-floating", "is-player-fullscreen");
   const column = document.querySelector(".watch-column");
   if (column) {
     column.style.left = "";
@@ -6365,6 +6365,7 @@ function syncPlayBubble() {
     dockPlayBubble();
     return;
   }
+  if (document.body.classList.contains("is-player-fullscreen")) return;
   if (!floatPlayBubble()) dockPlayBubble();
 }
 
@@ -6377,19 +6378,65 @@ function closePlayBubble() {
   syncPlayButton();
 }
 
-function returnFromPlayBubble() {
-  if (window.matchMedia("(max-width: 760px)").matches) {
-    document.body.classList.add("is-mobile-player");
-    showDesk("library");
-    dockPlayBubble();
-    syncPlayerBack();
-    window.requestAnimationFrame(() => {
-      document.querySelector(".watch-column")?.scrollIntoView({ block: "start", behavior: "smooth" });
-    });
-    return;
+function requestPlayerFullscreen() {
+  const { mode } = els.playerShell?.dataset || {};
+  const video = mode === "video" ? els.videoPlayer : null;
+  if (video) {
+    if (typeof video.requestFullscreen === "function") {
+      video.requestFullscreen()?.catch?.(() => {});
+      return true;
+    }
+    if (typeof video.webkitRequestFullscreen === "function") {
+      try { video.webkitRequestFullscreen(); return true; } catch { /* ignore */ }
+    }
+    if (typeof video.webkitEnterFullscreen === "function") {
+      try { video.webkitEnterFullscreen(); return true; } catch { /* ignore */ }
+    }
   }
-  showDesk("library");
-  dockPlayBubble();
+  const target = els.playerShell || (mode === "embed" ? els.embedPlayer : null);
+  if (target) {
+    if (typeof target.requestFullscreen === "function") {
+      target.requestFullscreen()?.catch?.(() => {});
+      return true;
+    }
+    if (typeof target.webkitRequestFullscreen === "function") {
+      try { target.webkitRequestFullscreen(); return true; } catch { /* ignore */ }
+    }
+  }
+  const embed = mode === "embed" ? els.embedPlayer : null;
+  if (embed) {
+    if (typeof embed.requestFullscreen === "function") {
+      embed.requestFullscreen()?.catch?.(() => {});
+      return true;
+    }
+    if (typeof embed.webkitRequestFullscreen === "function") {
+      try { embed.webkitRequestFullscreen(); return true; } catch { /* ignore */ }
+    }
+  }
+  return false;
+}
+
+function exitPlayBubbleFullscreen() {
+  const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+  if (fsEl) {
+    if (typeof document.exitFullscreen === "function") {
+      document.exitFullscreen()?.catch?.(() => {});
+    } else if (typeof document.webkitExitFullscreen === "function") {
+      try { document.webkitExitFullscreen(); } catch { /* ignore */ }
+    }
+  }
+  document.body.classList.remove("is-player-fullscreen");
+  syncPlayBubble();
+}
+
+function returnFromPlayBubble() {
+  if (!playingMediaNode()) return;
+  if (playbackIsRunning()) livePlayback = true;
+  document.body.classList.add("is-player-floating", "is-player-fullscreen");
+  const bubble = document.querySelector("#playBubble");
+  bubble?.classList.remove("is-open", "is-dragging");
+  if (bubble) bubble.hidden = true;
+  requestPlayerFullscreen();
 }
 
 function bindPlayBubble() {
@@ -6399,18 +6446,22 @@ function bindPlayBubble() {
   if (!bubble || !scrim || !returnButton) return;
   let drag = null;
   let dragged = false;
+  let justDragged = false;
   scrim.addEventListener("pointerdown", (event) => {
     if (event.target.closest(".play-bubble-close")) return;
     const rect = bubble.getBoundingClientRect();
     drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
     dragged = false;
-    try { scrim.setPointerCapture(event.pointerId); } catch { /* pointer already released */ }
+    justDragged = false;
   });
   scrim.addEventListener("pointermove", (event) => {
     if (!drag || event.pointerId !== drag.id) return;
     const dx = event.clientX - drag.x;
     const dy = event.clientY - drag.y;
     if (Math.hypot(dx, dy) < 5) return;
+    if (!dragged) {
+      try { scrim.setPointerCapture(event.pointerId); } catch { /* pointer already released */ }
+    }
     dragged = true;
     bubble.classList.add("is-dragging");
     const maxLeft = window.innerWidth - bubble.offsetWidth - 8;
@@ -6426,16 +6477,50 @@ function bindPlayBubble() {
     const wasDrag = dragged;
     drag = null;
     dragged = false;
+    justDragged = wasDrag;
     bubble.classList.remove("is-dragging");
     if (!wasDrag && !event.target.closest(".play-bubble-close")) returnFromPlayBubble();
   });
   scrim.addEventListener("pointercancel", () => {
     drag = null;
+    dragged = false;
     bubble.classList.remove("is-dragging");
   });
-  returnButton.addEventListener("click", (event) => {
-    if (event.detail !== 0) return;
+  scrim.addEventListener("click", (event) => {
+    if (justDragged) {
+      justDragged = false;
+      return;
+    }
+    if (event.target.closest(".play-bubble-close")) return;
     returnFromPlayBubble();
+  });
+  returnButton.addEventListener("click", (event) => {
+    if (justDragged) return;
+    event.stopPropagation();
+    returnFromPlayBubble();
+  });
+  const onFullscreenChange = () => {
+    const active = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    if (!active && document.body.classList.contains("is-player-fullscreen")) {
+      exitPlayBubbleFullscreen();
+    }
+  };
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+  els.videoPlayer?.addEventListener("webkitendfullscreen", () => {
+    if (document.body.classList.contains("is-player-fullscreen")) {
+      exitPlayBubbleFullscreen();
+    }
+  });
+  document.querySelector(".watch-column")?.addEventListener("click", (event) => {
+    if (!document.body.classList.contains("is-player-fullscreen")) return;
+    if (event.target.closest(".player-shell")) return;
+    exitPlayBubbleFullscreen();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.body.classList.contains("is-player-fullscreen")) {
+      exitPlayBubbleFullscreen();
+    }
   });
   document.addEventListener("click", (event) => {
     const label = event.target.closest("label[for]");
@@ -6454,6 +6539,7 @@ function bindPlayBubble() {
     livePlayback = true;
   });
   els.videoPlayer?.addEventListener("pause", () => {
+    if (document.body.classList.contains("is-player-fullscreen")) return;
     if (document.body.classList.contains("is-player-floating") && livePlayback) {
       els.videoPlayer.play()?.catch(() => {});
       return;

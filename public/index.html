@@ -18,7 +18,7 @@
     <meta property="og:image" content="https://picker.rynell.org/brand/social/picker-open-graph.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <link rel="stylesheet" href="./styles.css?v=picker-nav-138" />
+    <link rel="stylesheet" href="./styles.css?v=picker-nav-139" />
     <script>
       try {
         const saved = JSON.parse(localStorage.getItem("material-picker:v1") || "{}");
@@ -618,12 +618,6 @@
                 </div>
                 <p class="player-loading-text" id="playerLoadingText">Connecting to stream...</p>
               </div>
-              <button class="player-size-toggle" id="playerSizeToggle" type="button" aria-label="Minimize video" data-tooltip="Minimize video">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9 5H5v4M15 19h4v-4"/>
-                  <path d="m5 5 5 5M19 19l-5-5"/>
-                </svg>
-              </button>
             </div>
 
             <div class="now-playing">
@@ -1023,7 +1017,7 @@
       <div class="play-bubble-stage" id="playBubbleStage"></div>
       <div class="play-bubble-scrim" id="playBubbleScrim">
         <p class="play-bubble-title" id="playBubbleTitle"></p>
-        <button class="play-bubble-return" id="playBubbleReturn" type="button" aria-label="Expand video">
+        <button class="play-bubble-return" id="playBubbleReturn" type="button" aria-label="Open video in fullscreen">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4"/></svg>
         </button>
         <button class="play-bubble-close" id="playBubbleClose" type="button" aria-label="Close and pause">
@@ -1034,7 +1028,7 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-136" defer></script>
+    <script src="./app.js?v=picker-nav-137" defer></script>
     <script src="./rss-desk.js?v=picker-nav-38" defer></script>
   </body>
 </html>
