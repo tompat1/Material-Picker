@@ -103,6 +103,7 @@ function createTestHarness(initialState = {}) {
       getYouTubeRemovedChannels,
       getYouTubeSubFilter,
       setYouTubeSubFilter,
+      setYouTubeSubscriptionManageMode,
       toggleYouTubeFavoriteChannel,
       removeYouTubeChannel,
       restoreRemovedYouTubeChannels,
@@ -142,6 +143,29 @@ test("youtube subscriptions panel supports toggling favorites with persistent st
   assert.deepEqual(harness.getYouTubeFavoriteChannels(), []);
   const storedAfterRemove = JSON.parse(saved.get("material-picker:v1"));
   assert.deepEqual(storedAfterRemove.youtubeFavoriteChannels, []);
+});
+
+test("youtube subscriptions manage mode exposes controls, guidance, and a done state", () => {
+  const { harness, document } = createTestHarness();
+  harness.getYoutubeShelf().channels = [
+    { id: "UC111", title: "Alpha Studio", thumbnail: "https://thumb/1" },
+  ];
+
+  harness.setYouTubeSubscriptionManageMode(true);
+  let rendered = document.querySelector("#youtubeSubsPanel").innerHTML;
+  assert.equal(harness.getYoutubeShelf().isManagingSubs, true);
+  assert.match(rendered, /yt-subs-section is-managing/);
+  assert.match(rendered, /aria-pressed="true"/);
+  assert.match(rendered, />\s*Done\s*</);
+  assert.match(rendered, /Choose <strong>★<\/strong> to favourite/);
+
+  harness.setYouTubeSubscriptionManageMode(false);
+  rendered = document.querySelector("#youtubeSubsPanel").innerHTML;
+  assert.equal(harness.getYoutubeShelf().isManagingSubs, false);
+  assert.doesNotMatch(rendered, /yt-subs-section is-managing/);
+  assert.match(rendered, /aria-pressed="false"/);
+  assert.match(rendered, />\s*Manage\s*</);
+  assert.doesNotMatch(rendered, /yt-subs-manage-hint/);
 });
 
 test("youtube subscriptions panel supports removing subscriptions and restoring them", () => {

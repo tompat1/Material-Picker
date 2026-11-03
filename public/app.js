@@ -2528,6 +2528,15 @@ function setYouTubeSubFilter(filter) {
   renderYouTubeChannels();
 }
 
+function setYouTubeSubscriptionManageMode(enabled, { restoreFocus = false } = {}) {
+  const nextValue = Boolean(enabled);
+  youtubeShelf.isManagingSubs = nextValue;
+  renderYouTubeChannels();
+
+  const manageButton = document.querySelector("[data-youtube-manage-subs]");
+  if (restoreFocus) manageButton?.focus?.();
+}
+
 function toggleYouTubeFavoriteChannel(channelId, buttonEl) {
   if (!channelId) return;
   const favs = getYouTubeFavoriteChannels();
@@ -2674,8 +2683,7 @@ function bindYouTubeChannelTouch(root) {
     clearTimeout(ytChannelPressTimer);
     ytChannelPressTimer = setTimeout(() => {
       if (!ytTouchMoved && ytChannelPressTarget === item) {
-        youtubeShelf.isManagingSubs = true;
-        renderYouTubeChannels();
+        setYouTubeSubscriptionManageMode(true);
         if (navigator.vibrate) navigator.vibrate(40);
         showActionNotice(item.getBoundingClientRect(), "Manage mode active. Tap ✕ to remove or ★ to favourite.");
       }
@@ -2807,6 +2815,7 @@ function renderYouTubeChannels() {
           </button>
         </div>
       </div>
+      ${isManaging ? `<p class="yt-subs-manage-hint" role="status">Choose <strong>★</strong> to favourite or <strong>×</strong> to hide a channel.</p>` : ""}
       <div class="yt-subs-filter-bar" role="group" aria-label="Filter subscriptions">
         <button type="button" class="yt-sub-filter-chip${subFilter === "latest" ? " is-active" : ""}" data-youtube-sub-filter="latest" aria-pressed="${subFilter === "latest" ? "true" : "false"}">Latest</button>
         <button type="button" class="yt-sub-filter-chip${subFilter === "favourites" ? " is-active" : ""}" data-youtube-sub-filter="favourites" aria-pressed="${subFilter === "favourites" ? "true" : "false"}">★ Favourites${favCount ? ` (${favCount})` : ""}</button>
@@ -2898,8 +2907,7 @@ function onYouTubeHomeClick(event) {
   const manageBtn = event.target.closest("[data-youtube-manage-subs]");
   if (manageBtn) {
     event.stopPropagation();
-    youtubeShelf.isManagingSubs = !youtubeShelf.isManagingSubs;
-    renderYouTubeChannels();
+    setYouTubeSubscriptionManageMode(!youtubeShelf.isManagingSubs, { restoreFocus: true });
     return;
   }
   const restoreBtn = event.target.closest("[data-youtube-restore-subs]");

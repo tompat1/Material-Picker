@@ -1052,6 +1052,7 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 }
 
 .yt-subs-action-pill {
+  min-height: 1.75rem;
   font: 600 0.75rem/1.2 var(--sans);
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
@@ -1080,6 +1081,17 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 
 .yt-subs-restore-btn:hover {
   background: color-mix(in srgb, #FF7A3D 24%, transparent);
+}
+
+.yt-subs-manage-hint {
+  margin: 0.1rem 0.55rem 0.35rem;
+  color: var(--muted);
+  font: 500 0.75rem/1.35 var(--sans);
+}
+
+.yt-subs-manage-hint strong {
+  color: var(--ink);
+  font-weight: 700;
 }
 
 .yt-subs-filter-bar {
@@ -1190,6 +1202,10 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 }
 
 .yt-channel-item:hover .yt-channel-name {
+  padding-right: 3.8rem;
+}
+
+.yt-subs-section.is-managing .yt-channel-name {
   padding-right: 3.8rem;
 }
 
@@ -1702,6 +1718,19 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   grid-column: 1 / -1;
 }
 
+@media (min-width: 901px) {
+  .yt-subs-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+    gap: 0.45rem;
+  }
+
+  .yt-subs-header-actions {
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 900px) {
   .yt-home {
     grid-template-columns: 1fr;
@@ -1760,6 +1789,10 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   }
 
   .yt-channel-item:hover .yt-channel-name {
+    padding-right: 0;
+  }
+
+  .yt-subs-section.is-managing .yt-channel-name {
     padding-right: 0;
   }
 

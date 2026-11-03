@@ -193,3 +193,57 @@ test("feed filter descriptions follow the selected subject", async ({ page }) =>
   await page.getByRole("button", { name: "Read" }).click();
   await expect(hint).toHaveText("Tech posts you’ve read, newest first.");
 });
+
+test("desktop YouTube subscription actions do not collide and Manage exposes channel controls", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("material-picker:v1", JSON.stringify({
+      videos: [],
+      collections: [],
+      youtubeFavoriteChannels: ["UC111"],
+      youtubeRemovedChannels: ["UC333"],
+      youtubeSubFilter: "latest",
+    }));
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await page.locator("#desk-youtube").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.evaluate(() => {
+    renderYouTubeHome({
+      channels: [
+        { id: "UC111", title: "Fstoppers", thumbnail: "" },
+        { id: "UC222", title: "DomTheBomb", thumbnail: "" },
+        { id: "UC333", title: "Hidden Channel", thumbnail: "" },
+      ],
+      subscriptions: [
+        { channelId: "UC111", speaker: "Fstoppers", publishedAt: "2026-11-03T10:00:00Z", url: "https://example.test/1" },
+        { channelId: "UC222", speaker: "DomTheBomb", publishedAt: "2026-11-02T10:00:00Z", url: "https://example.test/2" },
+      ],
+      playlists: [],
+      liked: [],
+      activity: [],
+    });
+  });
+
+  const titleRow = page.locator(".yt-subs-header-left");
+  const actionRow = page.locator(".yt-subs-header-actions");
+  const [titleBox, actionBox] = await Promise.all([titleRow.boundingBox(), actionRow.boundingBox()]);
+  expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(actionBox.y);
+
+  const manage = page.locator("[data-youtube-manage-subs]");
+  await expect(page.locator("[data-youtube-restore-subs]")).toHaveText("Restore (1)");
+  await manage.click();
+  await expect(page.locator("[data-youtube-manage-subs]")).toHaveText("Done");
+  await expect(page.locator("[data-youtube-manage-subs]")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("[data-youtube-manage-subs]")).toBeFocused();
+  await expect(page.locator(".yt-subs-manage-hint")).toBeVisible();
+  await expect(page.locator(".yt-channel-actions").first()).toHaveCSS("opacity", "1");
+  await expect(page.locator(".yt-channel-name").first()).toHaveCSS("padding-right", "60.8px");
+
+  await page.locator("[data-youtube-manage-subs]").click();
+  await expect(page.locator("[data-youtube-manage-subs]")).toHaveText("Manage");
+  await expect(page.locator("[data-youtube-manage-subs]")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".yt-subs-manage-hint")).toHaveCount(0);
+});
