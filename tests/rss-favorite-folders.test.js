@@ -5,7 +5,7 @@ const test = require("node:test");
 
 function favoriteFolderApp() {
   const folders = ["Apple", "Music", "Film & TV", "Tech", "Gaming", "Science"]
-    .map((name, index) => ({ id: `folder-${index + 1}`, name }));
+    .map((name, index) => ({ id: `folder-${index + 1}`, name, collapsed: index >= 3 }));
   const saved = new Map([["material-picker:feeds", JSON.stringify({
     feeds: [{ id: "apple-in-tech", folderIds: ["folder-4"], topics: ["apple"] }],
     folders,
@@ -43,6 +43,7 @@ function favoriteFolderApp() {
     globalThis.favoriteFolderTest = {
       state: feedState,
       toggle: toggleFavoriteFolder,
+      toggleAll: toggleAllFolders,
       iconKind: folderIconKind,
       renderTabs: renderFavoriteFolderTabs,
       status: () => lastStatus,
@@ -79,4 +80,14 @@ test("favorite tabs use recognizable folder icons and desktop labels", () => {
   assert.match(favoriteTabs.innerHTML, /feeds-favorite-tab-label">Apple</);
   assert.match(favoriteTabs.innerHTML, /data-folder-icon="music"/);
   assert.match(favoriteTabs.innerHTML, /aria-label="Show Film &amp; TV feeds"/);
+});
+
+test("folder chevron collapses every open folder and then opens them all", () => {
+  const { api } = favoriteFolderApp();
+
+  assert.equal(api.toggleAll(), false);
+  assert.ok(api.state.folders.every((folder) => folder.collapsed));
+
+  assert.equal(api.toggleAll(), true);
+  assert.ok(api.state.folders.every((folder) => !folder.collapsed));
 });

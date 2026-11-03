@@ -488,6 +488,12 @@ function normalizeFolderCollapse() {
   });
 }
 
+function toggleAllFolders() {
+  const open = !feedState.folders.some(folderIsOpen);
+  feedState.folders.forEach((folder) => setFolderOpen(folder, open));
+  return open;
+}
+
 function normalizeFavoriteFolders() {
   const folderIds = new Set(feedState.folders.map((folder) => folder.id));
   feedState.favoriteFolderIds = [...new Set(feedState.favoriteFolderIds || [])]
@@ -1474,6 +1480,8 @@ function renderSources() {
       </div>`
     : "";
   const foldersTab = sourcesManageTab === "folders";
+  const anyFolderOpen = feedState.folders.some(folderIsOpen);
+  const toggleAllLabel = anyFolderOpen ? "Collapse all folders" : "Open all folders";
   root.innerHTML = `<div class="feeds-sources-heading"><span>Feeds</span></div>
   <ul class="feeds-source-list feeds-source-list--all">
     <li><button type="button" data-source="all" aria-pressed="${selectedSource === "all" ? "true" : "false"}"><span class="feeds-all-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg><span>All items</span></span><em>${countLabel(allCount)}</em></button></li>
@@ -1484,11 +1492,14 @@ function renderSources() {
   </div>
   ${foldersTab ? `
     <div class="feeds-folder-heading feeds-folder-heading--tab">
+      <button class="feeds-folders-toggle-all" type="button" data-toggle-all-folders aria-controls="feedsFolderList" aria-expanded="${anyFolderOpen ? "true" : "false"}" aria-label="${toggleAllLabel}" title="${toggleAllLabel}" ${feedState.folders.length ? "" : "disabled"}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <button type="button" data-start-folder>New folder</button>
     </div>
     ${folderDraft && !folderDraftMoves ? newFolderForm() : ""}
     ${folderViewTools || selectionTools ? `<div class="feeds-sticky-tools">${folderViewTools}${selectionTools}</div>` : ""}
-    <ul class="feeds-source-list">${folders || `<li class="feeds-feed-empty">No folders yet.</li>`}</ul>
+    <ul class="feeds-source-list" id="feedsFolderList">${folders || `<li class="feeds-feed-empty">No folders yet.</li>`}</ul>
   ` : `
     ${selectionTools ? `<div class="feeds-sticky-tools">${selectionTools}</div>` : ""}
     <ul class="feeds-source-list">${allFeeds.map((feed) => feedSourceRow(feed, { showDelete: true, showFolder: true, unreadCount: unreadCounts.get(feed.id) || 0 })).join("") || `<li class="feeds-feed-empty">Feeds you follow show up here.</li>`}</ul>
@@ -2722,7 +2733,7 @@ function bindFeedsDesk() {
   });
   panel.addEventListener("pointerdown", (event) => {
     folderActionPointerDown = Boolean(event.target.closest(
-      "[data-folder-toggle], [data-select-folder], [data-rename-folder], [data-favorite-folder], [data-show-folder], [data-remove-folder]"
+      "[data-toggle-all-folders], [data-folder-toggle], [data-select-folder], [data-rename-folder], [data-favorite-folder], [data-show-folder], [data-remove-folder]"
     ));
     window.setTimeout(() => {
       folderActionPointerDown = false;
@@ -2988,6 +2999,13 @@ function bindFeedsDesk() {
     if (sourcesTab) {
       sourcesManageTab = sourcesTab.dataset.sourcesTab === "feeds" ? "feeds" : "folders";
       renderSources();
+      return;
+    }
+    const toggleAllFolderButton = event.target.closest("[data-toggle-all-folders]");
+    if (toggleAllFolderButton) {
+      toggleAllFolders();
+      saveFeedState();
+      renderFeeds();
       return;
     }
     const folderToggle = event.target.closest("[data-folder-toggle]");

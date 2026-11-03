@@ -9134,9 +9134,38 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 }
 
 .feeds-folder-heading--tab {
-  justify-content: flex-end;
+  justify-content: space-between;
   margin-top: 0.15rem;
   margin-bottom: 0.15rem;
+}
+
+.feeds-folder-heading--tab .feeds-folders-toggle-all {
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--accent);
+}
+
+.feeds-folders-toggle-all svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  transition: transform 160ms var(--ease);
+}
+
+.feeds-folders-toggle-all[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.feeds-folder-heading--tab .feeds-folders-toggle-all:hover,
+.feeds-folder-heading--tab .feeds-folders-toggle-all:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.feeds-folder-heading--tab .feeds-folders-toggle-all:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .feeds-folder-heading button {
