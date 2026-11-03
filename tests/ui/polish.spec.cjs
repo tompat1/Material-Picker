@@ -37,6 +37,25 @@ test("empty library action opens the import flow on a phone", async ({ page }) =
   await expect(page.locator("#addVideoDialog")).toBeVisible();
 });
 
+test("tablet library search stays compact and opens suggestions below the field", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.goto("/");
+
+  const search = page.locator(".workspace-nav .nav-search");
+  const searchBox = await search.boundingBox();
+  expect(searchBox.width).toBeLessThanOrEqual(672);
+  expect(searchBox.height).toBeLessThanOrEqual(48);
+  expect(searchBox.y + searchBox.height).toBeLessThan(150);
+
+  await page.locator("#searchFeedSuggest").evaluate((list) => {
+    list.innerHTML = '<li role="option"><button type="button">Example feed</button></li>';
+    list.hidden = false;
+  });
+  const suggestionBox = await page.locator("#searchFeedSuggest").boundingBox();
+  expect(suggestionBox.y).toBeGreaterThanOrEqual(searchBox.y + searchBox.height);
+  expect(suggestionBox.height).toBeLessThan(100);
+});
+
 for (const width of [320, 390]) {
   test(`feed filter pills stay on one row at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
