@@ -233,12 +233,12 @@ test("desktop YouTube subscription actions do not collide and Manage exposes cha
     renderYouTubeHome({
       channels: [
         { id: "UC111", title: "Fstoppers", thumbnail: "" },
-        { id: "UC222", title: "DomTheBomb", thumbnail: "" },
+        { id: "UC222", title: "Duncan Rogoff | Learn Claude Code With A Very Long Channel Name", thumbnail: "" },
         { id: "UC333", title: "Hidden Channel", thumbnail: "" },
       ],
       subscriptions: [
         { channelId: "UC111", speaker: "Fstoppers", publishedAt: "2026-11-03T10:00:00Z", url: "https://example.test/1" },
-        { channelId: "UC222", speaker: "DomTheBomb", publishedAt: "2026-11-02T10:00:00Z", url: "https://example.test/2" },
+        { channelId: "UC222", speaker: "Duncan Rogoff", publishedAt: "2026-11-02T10:00:00Z", url: "https://example.test/2" },
       ],
       playlists: [],
       liked: [],
@@ -260,6 +260,22 @@ test("desktop YouTube subscription actions do not collide and Manage exposes cha
   await expect(page.locator(".yt-subs-manage-hint")).toBeVisible();
   await expect(page.locator(".yt-channel-actions").first()).toHaveCSS("opacity", "1");
   await expect(page.locator(".yt-channel-name").first()).toHaveCSS("padding-right", "60.8px");
+
+  const railBox = await page.locator(".yt-rail").boundingBox();
+  const longChannelActions = page.locator('[data-channel-item-id="UC222"] .yt-channel-actions');
+  const actionsBox = await longChannelActions.boundingBox();
+  expect(actionsBox.x).toBeGreaterThanOrEqual(railBox.x);
+  expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(railBox.x + railBox.width);
+
+  const favouriteLongChannel = page.locator('[data-youtube-toggle-fav="UC222"]');
+  const removeLongChannel = page.locator('[data-youtube-remove-channel="UC222"]');
+  await expect(favouriteLongChannel).toBeVisible();
+  await expect(removeLongChannel).toBeVisible();
+  await favouriteLongChannel.click();
+  await expect(page.locator('[data-youtube-toggle-fav="UC222"]')).toHaveAttribute("aria-pressed", "true");
+  await page.locator('[data-youtube-remove-channel="UC222"]').click();
+  await expect(page.locator('[data-channel-item-id="UC222"]')).toHaveCount(0);
+  await expect(page.locator("[data-youtube-restore-subs]")).toHaveText("Restore (2)");
 
   await page.locator("[data-youtube-manage-subs]").click();
   await expect(page.locator("[data-youtube-manage-subs]")).toHaveText("Manage");

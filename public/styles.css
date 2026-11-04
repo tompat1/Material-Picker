@@ -1139,7 +1139,9 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 
 .yt-channels {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.1rem;
+  width: 100%;
   min-width: 0;
 }
 
