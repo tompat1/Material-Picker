@@ -1721,6 +1721,19 @@ body:has(#desk-favourites:checked) #favouritesPanel {
 }
 
 @media (min-width: 901px) {
+  .yt-chips {
+    isolation: isolate;
+  }
+
+  .yt-chips::before {
+    content: "";
+    position: absolute;
+    inset: -0.85rem 0 -1rem;
+    z-index: -1;
+    background: var(--library);
+    border-bottom: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  }
+
   .yt-subs-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
