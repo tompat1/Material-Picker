@@ -1,5 +1,7 @@
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36";
 const RESULT_LIMIT = 12;
+const YOUTUBE_SEARCH_RESULT_LIMIT = 36;
+const YOUTUBE_SEARCH_PAGE_LIMIT = 4;
 
 export async function searchVideos(query, source, fetchImpl = fetch) {
   const topic = String(query || "").replace(/\s+/g, " ").trim().slice(0, 120);
@@ -9,7 +11,9 @@ export async function searchVideos(query, source, fetchImpl = fetch) {
     throw error;
   }
   const kind = source === "vimeo" || source === "web" ? source : "youtube";
-  if (kind === "youtube") return youtubeSearch(topic, fetchImpl);
+  if (kind === "youtube") {
+    return youtubeSearch(topic, fetchImpl, null, YOUTUBE_SEARCH_RESULT_LIMIT, YOUTUBE_SEARCH_PAGE_LIMIT);
+  }
   if (kind === "vimeo") return videosFromDuckDuckGo(await duckDuckGo(`site:vimeo.com ${topic}`, fetchImpl), "vimeo");
   const pages = await Promise.all([
     duckDuckGo(`${topic} site:youtube.com/watch`, fetchImpl).catch(() => ""),
@@ -40,7 +44,7 @@ export async function searchVideos(query, source, fetchImpl = fetch) {
   return merged;
 }
 
-export function youtubeFromPayload(payload) {
+export function youtubeFromPayload(payload, limit = RESULT_LIMIT) {
   const found = [];
   const seen = new Set();
   walk(payload, (video) => {
@@ -58,7 +62,7 @@ export function youtubeFromPayload(payload) {
       source: "youtube",
     });
   });
-  return found.slice(0, RESULT_LIMIT);
+  return found.slice(0, limit);
 }
 
 export function videosFromDuckDuckGo(html, source) {
@@ -88,29 +92,67 @@ export function videosFromDuckDuckGo(html, source) {
   return found;
 }
 
-async function youtubeSearch(topic, fetchImpl, params) {
-  const body = {
-    context: { client: { clientName: "WEB", clientVersion: "2.20250925.01.00", hl: "en" } },
-    query: topic,
-  };
-  if (params) body.params = params;
-  const response = await fetchImpl("https://www.youtube.com/youtubei/v1/search?prettyPrint=false", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      origin: "https://www.youtube.com",
-      "user-agent": USER_AGENT,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!response.ok) {
-    const error = new Error("YouTube search is unavailable right now.");
-    error.status = 502;
-    throw error;
+async function youtubeSearch(topic, fetchImpl, params, resultLimit = RESULT_LIMIT, pageLimit = 1) {
+  const context = { client: { clientName: "WEB", clientVersion: "2.20250925.01.00", hl: "en" } };
+  const found = [];
+  const seen = new Set();
+  let continuation = "";
+
+  for (let page = 0; page < pageLimit && found.length < resultLimit; page++) {
+    const body = continuation ? { context, continuation } : { context, query: topic };
+    if (!continuation && params) body.params = params;
+
+    let response;
+    try {
+      response = await fetchImpl("https://www.youtube.com/youtubei/v1/search?prettyPrint=false", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://www.youtube.com",
+          "user-agent": USER_AGENT,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000),
+      });
+    } catch (error) {
+      if (found.length) break;
+      throw error;
+    }
+
+    if (!response.ok) {
+      if (found.length) break;
+      const error = new Error("YouTube search is unavailable right now.");
+      error.status = 502;
+      throw error;
+    }
+
+    const payload = await response.json();
+    for (const video of youtubeFromPayload(payload, resultLimit)) {
+      if (seen.has(video.url)) continue;
+      seen.add(video.url);
+      found.push(video);
+      if (found.length >= resultLimit) break;
+    }
+
+    continuation = youtubeContinuationFromPayload(payload);
+    if (!continuation) break;
   }
-  const payload = await response.json();
-  return youtubeFromPayload(payload);
+
+  return found;
+}
+
+function youtubeContinuationFromPayload(payload) {
+  let fallback = "";
+  let continuation = "";
+  walkNodes(payload, (node) => {
+    if (continuation || !node?.continuationItemRenderer) return;
+    const item = node.continuationItemRenderer;
+    const token = String(item.continuationEndpoint?.continuationCommand?.token || "");
+    if (!token) return;
+    if (item.trigger === "CONTINUATION_TRIGGER_ON_ITEM_SHOWN") continuation = token;
+    else if (!fallback) fallback = token;
+  });
+  return continuation || fallback;
 }
 
 async function duckDuckGo(query, fetchImpl) {
@@ -194,6 +236,14 @@ function walk(node, visit) {
   if (node.videoRenderer) visit(node.videoRenderer);
   for (const value of Object.values(node)) {
     if (value && typeof value === "object") walk(value, visit);
+  }
+}
+
+function walkNodes(node, visit) {
+  if (!node || typeof node !== "object") return;
+  visit(node);
+  for (const value of Object.values(node)) {
+    if (value && typeof value === "object") walkNodes(value, visit);
   }
 }
 

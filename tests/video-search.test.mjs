@@ -18,6 +18,51 @@ test("youtube search keeps playable videos and skips duplicates", () => {
   assert.equal(results[0].source, "youtube");
 });
 
+test("youtube topic search follows continuations and returns more than twelve unique videos", async () => {
+  const video = (index) => ({
+    videoRenderer: {
+      videoId: `v${String(index).padStart(10, "0")}`,
+      title: { simpleText: `AI video ${index}` },
+      ownerText: { simpleText: "AI Channel" },
+    },
+  });
+  let requests = 0;
+
+  const results = await searchVideos("AI", "youtube", async (_url, options) => {
+    requests++;
+    const body = JSON.parse(options.body);
+    if (requests === 1) {
+      assert.equal(body.query, "AI");
+      assert.equal(body.continuation, undefined);
+      return new Response(JSON.stringify({
+        contents: [
+          ...Array.from({ length: 20 }, (_, index) => video(index)),
+          {
+            continuationItemRenderer: {
+              trigger: "CONTINUATION_TRIGGER_ON_ITEM_SHOWN",
+              continuationEndpoint: { continuationCommand: { token: "next-page" } },
+            },
+          },
+        ],
+      }));
+    }
+
+    assert.equal(body.query, undefined);
+    assert.equal(body.continuation, "next-page");
+    return new Response(JSON.stringify({
+      onResponseReceivedCommands: [{
+        appendContinuationItemsAction: {
+          continuationItems: [video(0), ...Array.from({ length: 20 }, (_, index) => video(index + 20))],
+        },
+      }],
+    }));
+  });
+
+  assert.equal(requests, 2);
+  assert.equal(results.length, 36);
+  assert.equal(new Set(results.map((item) => item.url)).size, 36);
+});
+
 test("web and vimeo results keep direct video pages", () => {
   const html = `
     <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fvimeo.com%2F173544356&amp;rut=abc">Jade Ceramics from Ada Clay on Vimeo</a>
@@ -60,6 +105,32 @@ test("popular feed asks YouTube for this week's most watched videos", async () =
   });
   assert.equal(results[0].title, "A popular film");
   assert.equal(results[0].source, "youtube");
+});
+
+test("compact YouTube feeds remain capped at twelve videos", async () => {
+  let requests = 0;
+  const results = await videoFeed("youtube-latest", async () => {
+    requests++;
+    return new Response(JSON.stringify({
+      contents: [
+        ...Array.from({ length: 20 }, (_, index) => ({
+          videoRenderer: {
+            videoId: `f${String(index).padStart(10, "0")}`,
+            title: { simpleText: `Latest video ${index}` },
+          },
+        })),
+        {
+          continuationItemRenderer: {
+            trigger: "CONTINUATION_TRIGGER_ON_ITEM_SHOWN",
+            continuationEndpoint: { continuationCommand: { token: "unused-feed-page" } },
+          },
+        },
+      ],
+    }));
+  });
+
+  assert.equal(requests, 1);
+  assert.equal(results.length, 12);
 });
 
 test("unknown feeds are rejected before the network", async () => {
