@@ -282,3 +282,71 @@ test("desktop YouTube subscription actions do not collide and Manage exposes cha
   await expect(page.locator("[data-youtube-manage-subs]")).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".yt-subs-manage-hint")).toHaveCount(0);
 });
+
+test("mobile YouTube channel carousel responds to a native horizontal swipe", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  const videos = Array.from({ length: 7 }, (_, index) => ({
+    channelId: "UC_TOUCH",
+    speaker: "Touch channel",
+    title: `Carousel video ${index + 1}`,
+    publishedAt: `2026-11-0${Math.min(index + 1, 9)}T10:00:00Z`,
+    url: `https://example.test/touch-${index + 1}`,
+  }));
+
+  await page.route("**/api/youtube/channel?*", (route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ results: videos }),
+  }));
+  await page.goto("/");
+  await page.locator("#desk-youtube").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.evaluate((channelVideos) => {
+    renderYouTubeHome({
+      channels: [{ id: "UC_TOUCH", title: "Touch channel", thumbnail: "" }],
+      subscriptions: channelVideos,
+      playlists: [],
+      liked: [],
+      activity: [],
+    });
+  }, videos);
+  await page.locator('[data-youtube-channel="UC_TOUCH"]').first().evaluate((button) => button.click());
+
+  const track = page.locator(".yt-carousel-track");
+  await expect(track).toBeVisible();
+  await track.scrollIntoViewIfNeeded();
+  await expect(track.locator(".yt-card-content").first()).toHaveCSS("touch-action", "auto");
+
+  const next = page.locator(".yt-carousel-next");
+  const nextBox = await next.boundingBox();
+  expect(nextBox.width).toBeGreaterThanOrEqual(44);
+  expect(nextBox.height).toBeGreaterThanOrEqual(44);
+  expect(await next.evaluate((button) => getComputedStyle(button, "::after").display)).toBe("none");
+
+  const box = await track.boundingBox();
+  const startX = box.x + Math.min(box.width - 30, 250);
+  const endX = box.x + 35;
+  const y = box.y + Math.min(90, box.height / 3);
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: startX, y }],
+  });
+  for (let step = 1; step <= 5; step++) {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: startX + ((endX - startX) * step) / 5, y }],
+    });
+  }
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+  await expect.poll(() => track.evaluate((element) => element.scrollLeft)).toBeGreaterThan(40);
+  await context.close();
+});
