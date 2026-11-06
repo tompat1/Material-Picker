@@ -6445,6 +6445,7 @@ function bindPlayBubble() {
   const bubble = document.querySelector("#playBubble");
   const scrim = document.querySelector("#playBubbleScrim");
   const returnButton = document.querySelector("#playBubbleReturn");
+  const fullscreenExitButton = document.querySelector("#playerFullscreenExit");
   if (!bubble || !scrim || !returnButton) return;
   let drag = null;
   let dragged = false;
@@ -6500,6 +6501,10 @@ function bindPlayBubble() {
     if (justDragged) return;
     event.stopPropagation();
     returnFromPlayBubble();
+  });
+  fullscreenExitButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    exitPlayBubbleFullscreen();
   });
   const onFullscreenChange = () => {
     const active = Boolean(document.fullscreenElement || document.webkitFullscreenElement);

@@ -287,6 +287,31 @@ test("desktop YouTube subscription actions do not collide and Manage exposes cha
   await expect(page.locator(".yt-channel-actions")).toHaveCount(0);
 });
 
+test("desktop fullscreen player keeps a clear minimize control visible", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  await page.evaluate(() => {
+    const shell = document.querySelector(".player-shell");
+    const embed = document.querySelector("#embedPlayer");
+    shell.dataset.mode = "embed";
+    embed.setAttribute("src", "about:blank");
+    livePlayback = true;
+    returnFromPlayBubble();
+  });
+
+  const minimize = page.locator("#playerFullscreenExit");
+  await expect(minimize).toBeVisible();
+  await expect(minimize).toContainText("Minimize");
+  await expect(minimize).toContainText("Esc");
+  const box = await minimize.boundingBox();
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(Math.abs((box.x + box.width / 2) - 720)).toBeLessThanOrEqual(2);
+
+  await minimize.click();
+  await expect(page.locator("body")).not.toHaveClass(/is-player-fullscreen/);
+  await expect(minimize).toBeHidden();
+});
+
 test("mobile YouTube channel carousel responds to a native horizontal swipe", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },

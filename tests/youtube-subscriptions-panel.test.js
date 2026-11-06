@@ -260,9 +260,11 @@ test("youtube subscriptions panel defaults to latest and offers favourites, alph
   assert.ok(!rendered.includes("Gamma Channel"), "Gamma has no new uploads, so excluded from new content filter");
 });
 
-test("mini preview opens in fullscreen without navigating to the video post page and upper fullscreen icon is removed", () => {
+test("mini preview opens in fullscreen with a persistent minimize control", () => {
   const html = fs.readFileSync(require.resolve("../public/index.html"), "utf8");
   assert.ok(!html.includes("id=\"playerSizeToggle\""), "Upper fullscreen/minimize icon (#playerSizeToggle) should be removed");
+  assert.ok(html.includes("id=\"playerFullscreenExit\""), "Fullscreen player should include a persistent minimize control");
+  assert.match(html, /<span>Minimize<\/span>\s*<kbd>Esc<\/kbd>/);
 
   const { harness, document } = createTestHarness();
   const shell = document.querySelector(".player-shell");
