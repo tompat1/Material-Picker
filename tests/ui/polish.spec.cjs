@@ -253,6 +253,9 @@ test("desktop YouTube subscription actions do not collide and Manage exposes cha
 
   const manage = page.locator("[data-youtube-manage-subs]");
   await expect(page.locator("[data-youtube-restore-subs]")).toHaveText("Restore (1)");
+  await expect(page.locator('[data-youtube-sub-filter="latest"]')).toHaveCount(0);
+  await expect(page.locator('[data-youtube-sub-filter="new"]')).toBeVisible();
+  await expect(page.locator(".yt-channel-actions")).toHaveCount(0);
   await manage.click();
   await expect(page.locator("[data-youtube-manage-subs]")).toHaveText("Done");
   await expect(page.locator("[data-youtube-manage-subs]")).toHaveAttribute("aria-pressed", "true");
@@ -281,6 +284,7 @@ test("desktop YouTube subscription actions do not collide and Manage exposes cha
   await expect(page.locator("[data-youtube-manage-subs]")).toHaveText("Manage");
   await expect(page.locator("[data-youtube-manage-subs]")).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".yt-subs-manage-hint")).toHaveCount(0);
+  await expect(page.locator(".yt-channel-actions")).toHaveCount(0);
 });
 
 test("mobile YouTube channel carousel responds to a native horizontal swipe", async ({ browser }) => {
@@ -317,7 +321,12 @@ test("mobile YouTube channel carousel responds to a native horizontal swipe", as
       activity: [],
     });
   }, videos);
+  await expect(page.locator('[data-youtube-sub-filter="latest"]')).toHaveCount(0);
+  await expect(page.locator('[data-youtube-sub-filter="new"]')).toBeVisible();
+  await expect(page.locator(".yt-channel-actions")).toHaveCount(0);
   await page.locator('[data-youtube-channel="UC_TOUCH"]').first().evaluate((button) => button.click());
+  await expect(page.locator("[data-youtube-manage-subs]")).toHaveText("Manage");
+  await expect(page.locator(".yt-channel-actions")).toHaveCount(0);
 
   const track = page.locator(".yt-carousel-track");
   await expect(track).toBeVisible();

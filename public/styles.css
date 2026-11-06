@@ -1197,14 +1197,9 @@ body:has(#desk-favourites:checked) #favouritesPanel {
   z-index: 3;
 }
 
-.yt-channel-item:hover .yt-channel-actions,
 .yt-subs-section.is-managing .yt-channel-actions {
   opacity: 1;
   pointer-events: auto;
-}
-
-.yt-channel-item:hover .yt-channel-name {
-  padding-right: 3.8rem;
 }
 
 .yt-subs-section.is-managing .yt-channel-name {
@@ -1816,10 +1811,6 @@ body:has(#desk-favourites:checked) #favouritesPanel {
     flex-direction: column;
     align-items: center;
     text-align: center;
-  }
-
-  .yt-channel-item:hover .yt-channel-name {
-    padding-right: 0;
   }
 
   .yt-subs-section.is-managing .yt-channel-name {

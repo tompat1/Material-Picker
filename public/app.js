@@ -2667,46 +2667,6 @@ function getChannelLatestTime(channelId, channelTitle) {
   return latest;
 }
 
-let ytChannelPressTimer = null;
-let ytChannelPressTarget = null;
-let ytTouchMoved = false;
-
-function bindYouTubeChannelTouch(root) {
-  if (!root || root.dataset.subTouchBound === "true") return;
-  root.dataset.subTouchBound = "true";
-
-  root.addEventListener("touchstart", (e) => {
-    const item = e.target.closest(".yt-channel-item");
-    if (!item || e.target.closest(".yt-channel-actions")) return;
-    ytTouchMoved = false;
-    ytChannelPressTarget = item;
-    clearTimeout(ytChannelPressTimer);
-    ytChannelPressTimer = setTimeout(() => {
-      if (!ytTouchMoved && ytChannelPressTarget === item) {
-        setYouTubeSubscriptionManageMode(true);
-        if (navigator.vibrate) navigator.vibrate(40);
-        showActionNotice(item.getBoundingClientRect(), "Manage mode active. Tap ✕ to remove or ★ to favourite.");
-      }
-    }, 550);
-  }, { passive: true });
-
-  root.addEventListener("touchmove", () => {
-    ytTouchMoved = true;
-    clearTimeout(ytChannelPressTimer);
-    ytChannelPressTarget = null;
-  }, { passive: true });
-
-  root.addEventListener("touchend", () => {
-    clearTimeout(ytChannelPressTimer);
-    ytChannelPressTarget = null;
-  }, { passive: true });
-
-  root.addEventListener("touchcancel", () => {
-    clearTimeout(ytChannelPressTimer);
-    ytChannelPressTarget = null;
-  }, { passive: true });
-}
-
 function renderYouTubeChannels() {
   const panel = document.querySelector("#youtubeSubsPanel");
   if (!panel) return;
@@ -2788,14 +2748,14 @@ function renderYouTubeChannels() {
             </div>
             <span class="yt-channel-name">${escapeHtml(channel.title)}</span>
           </button>
-          <div class="yt-channel-actions">
+          ${isManaging ? `<div class="yt-channel-actions">
             <button class="yt-channel-action-btn yt-channel-fav-btn${isFav ? " is-active" : ""}" type="button" data-youtube-toggle-fav="${escapeHtml(channel.id)}" title="${escapeHtml(favLabel)}" aria-label="${escapeHtml(favLabel)}" aria-pressed="${isFav ? "true" : "false"}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             </button>
             <button class="yt-channel-action-btn yt-channel-remove-btn" type="button" data-youtube-remove-channel="${escapeHtml(channel.id)}" title="Remove ${escapeHtml(channel.title)}" aria-label="Remove ${escapeHtml(channel.title)}">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
-          </div>
+          </div>` : ""}
         </div>
       `;
     }).join("");
@@ -2817,7 +2777,6 @@ function renderYouTubeChannels() {
       </div>
       ${isManaging ? `<p class="yt-subs-manage-hint" role="status">Choose <strong>★</strong> to favourite or <strong>×</strong> to hide a channel.</p>` : ""}
       <div class="yt-subs-filter-bar" role="group" aria-label="Filter subscriptions">
-        <button type="button" class="yt-sub-filter-chip${subFilter === "latest" ? " is-active" : ""}" data-youtube-sub-filter="latest" aria-pressed="${subFilter === "latest" ? "true" : "false"}">Latest</button>
         <button type="button" class="yt-sub-filter-chip${subFilter === "favourites" ? " is-active" : ""}" data-youtube-sub-filter="favourites" aria-pressed="${subFilter === "favourites" ? "true" : "false"}">★ Favourites${favCount ? ` (${favCount})` : ""}</button>
         <button type="button" class="yt-sub-filter-chip${subFilter === "alphabetical" ? " is-active" : ""}" data-youtube-sub-filter="alphabetical" aria-pressed="${subFilter === "alphabetical" ? "true" : "false"}">A–Z</button>
         <button type="button" class="yt-sub-filter-chip${subFilter === "new" ? " is-active" : ""}" data-youtube-sub-filter="new" aria-pressed="${subFilter === "new" ? "true" : "false"}">New content${newCount ? ` (${newCount})` : ""}</button>
@@ -2878,7 +2837,6 @@ function renderYouTubeHome(data) {
     </div>
   `;
   renderYouTubeChannels();
-  bindYouTubeChannelTouch(document.querySelector("#youtubeSubsPanel"));
   paintYouTubeGrid();
 }
 

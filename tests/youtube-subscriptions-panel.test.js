@@ -158,6 +158,8 @@ test("youtube subscriptions manage mode exposes controls, guidance, and a done s
   assert.match(rendered, /aria-pressed="true"/);
   assert.match(rendered, />\s*Done\s*</);
   assert.match(rendered, /Choose <strong>★<\/strong> to favourite/);
+  assert.match(rendered, /data-youtube-toggle-fav="UC111"/);
+  assert.match(rendered, /data-youtube-remove-channel="UC111"/);
 
   harness.setYouTubeSubscriptionManageMode(false);
   rendered = document.querySelector("#youtubeSubsPanel").innerHTML;
@@ -166,6 +168,8 @@ test("youtube subscriptions manage mode exposes controls, guidance, and a done s
   assert.match(rendered, /aria-pressed="false"/);
   assert.match(rendered, />\s*Manage\s*</);
   assert.doesNotMatch(rendered, /yt-subs-manage-hint/);
+  assert.doesNotMatch(rendered, /data-youtube-toggle-fav/);
+  assert.doesNotMatch(rendered, /data-youtube-remove-channel/);
 });
 
 test("youtube subscriptions panel supports removing subscriptions and restoring them", () => {
@@ -196,7 +200,7 @@ test("youtube subscriptions panel supports removing subscriptions and restoring 
   assert.deepEqual([...harness.getYouTubeRemovedChannels()], []);
 });
 
-test("youtube subscriptions panel filters by latest, favourites, alphabetical, and current new content", () => {
+test("youtube subscriptions panel defaults to latest and offers favourites, alphabetical, and new content filters", () => {
   const { harness, document } = createTestHarness();
 
   const channels = [
@@ -219,6 +223,8 @@ test("youtube subscriptions panel filters by latest, favourites, alphabetical, a
   harness.setYouTubeSubFilter("latest");
   assert.equal(harness.getYouTubeSubFilter(), "latest");
   let rendered = panel.innerHTML;
+  assert.doesNotMatch(rendered, /data-youtube-sub-filter="latest"/);
+  assert.match(rendered, /data-youtube-sub-filter="new"/);
   const posDelta = rendered.indexOf("Delta Channel");
   const posBeta = rendered.indexOf("Beta Channel");
   const posAlpha = rendered.indexOf("Alpha Channel");
