@@ -188,6 +188,46 @@ test("mobile feeds use a compact two-row header and slide panel", async ({ page 
   await expect(drawer).not.toBeVisible();
 });
 
+test("mobile feeds retain the horizontal shortcut rail", async ({ page }) => {
+  await page.addInitScript(() => {
+    const folders = ["AI", "Apple", "Film", "Music", "Gaming"].map((name, index) => ({
+      id: `folder-${index + 1}`,
+      name,
+    }));
+    localStorage.setItem("material-picker:feeds", JSON.stringify({
+      feeds: folders.map((folder) => ({
+        id: `feed-${folder.id}`,
+        title: `${folder.name} feed`,
+        url: `https://${folder.id}.example/feed`,
+        folderIds: [folder.id],
+      })),
+      folders,
+      favoriteFolderIds: folders.map((folder) => folder.id),
+      items: [],
+      read: {},
+      archived: {},
+    }));
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  const rail = page.locator("#feedsFavoriteTabs");
+  await expect(rail).toBeVisible();
+  await expect(rail.getByRole("button")).toHaveCount(6);
+  const geometry = await rail.evaluate((element) => ({
+    height: Math.round(element.getBoundingClientRect().height),
+    scrollable: element.scrollWidth >= element.clientWidth,
+    direction: getComputedStyle(element).flexDirection,
+  }));
+  expect(geometry.height).toBeLessThanOrEqual(54);
+  expect(geometry.scrollable).toBe(true);
+  expect(geometry.direction).toBe("row");
+});
+
 test("feed filter descriptions follow the selected subject", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("material-picker:feeds", JSON.stringify({
