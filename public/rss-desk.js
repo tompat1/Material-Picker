@@ -859,11 +859,7 @@ function renderFavoriteFolderTabs() {
   const favoriteFolders = feedState.favoriteFolderIds
     .map((id) => feedState.folders.find((folder) => folder.id === id))
     .filter(Boolean);
-  root.hidden = !favoriteFolders.length;
-  if (!favoriteFolders.length) {
-    root.innerHTML = "";
-    return;
-  }
+  root.hidden = false;
   const allActive = selectedSource === "all";
   const allIcon = `<svg class="feeds-favorite-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg>`;
   const allTab = `<button type="button" data-favorite-source="all" aria-pressed="${allActive ? "true" : "false"}" aria-label="Show all feeds" title="All feeds">${allIcon}<span class="feeds-favorite-tab-label">All</span></button>`;
@@ -1267,7 +1263,7 @@ function applyPane() {
   const onArticle = isPhoneFeeds() && feedPane === 1;
 
   if (favoriteTabs) {
-    favoriteTabs.hidden = onArticle || !(feedState.favoriteFolderIds || []).length;
+    favoriteTabs.hidden = onArticle;
   }
 
   if (kicker) {

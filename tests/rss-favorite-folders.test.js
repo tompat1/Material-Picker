@@ -82,6 +82,19 @@ test("favorite tabs use recognizable folder icons and desktop labels", () => {
   assert.match(favoriteTabs.innerHTML, /aria-label="Show Film &amp; TV feeds"/);
 });
 
+test("the feed shortcut rail keeps an All control without favorite folders", () => {
+  const { api, favoriteTabs } = favoriteFolderApp();
+  api.state.favoriteFolderIds = [];
+
+  api.renderTabs();
+
+  assert.equal(favoriteTabs.hidden, false);
+  assert.match(
+    favoriteTabs.innerHTML,
+    /<button\b[^>]*data-favorite-source="all"[^>]*aria-label="Show all feeds"[^>]*>/,
+  );
+});
+
 test("folder chevron collapses every open folder and then opens them all", () => {
   const { api } = favoriteFolderApp();
 

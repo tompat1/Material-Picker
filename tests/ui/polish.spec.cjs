@@ -144,7 +144,7 @@ test("mobile topic pills expand to additional catalog topics and scroll", async 
   await expect.poll(async () => page.evaluate(() => localStorage.getItem("material-picker:custom-feed-topics"))).toContain("Climate");
 });
 
-test("mobile feed tools use a right-edge tab rail and slide panel", async ({ page }) => {
+test("mobile feeds use a compact two-row header and slide panel", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.locator("#desk-feeds").evaluate((input) => {
@@ -159,12 +159,14 @@ test("mobile feed tools use a right-edge tab rail and slide panel", async ({ pag
     discover.boundingBox(),
     settings.boundingBox(),
   ]);
-  expect(Math.round(discoverBox.x + discoverBox.width)).toBe(390);
-  expect(Math.round(settingsBox.x + settingsBox.width)).toBe(390);
-  expect(settingsBox.y).toBeGreaterThanOrEqual(discoverBox.y + discoverBox.height);
-  expect(discoverBox.y).toBeGreaterThanOrEqual(headerBox.y);
-  expect(settingsBox.y + settingsBox.height).toBeLessThanOrEqual(headerBox.y + headerBox.height);
-  await expect(page.locator(".feeds-reeder-actions")).toHaveCSS("position", "absolute");
+  expect(headerBox.height).toBeLessThanOrEqual(108);
+  expect(Math.abs(discoverBox.y - settingsBox.y)).toBeLessThanOrEqual(1);
+  expect(discoverBox.height).toBeGreaterThanOrEqual(44);
+  expect(settingsBox.width).toBeGreaterThanOrEqual(44);
+  expect(settingsBox.height).toBeGreaterThanOrEqual(44);
+  expect(settingsBox.x + settingsBox.width).toBeLessThanOrEqual(headerBox.x + headerBox.width + 1);
+  await expect(page.locator(".feeds-reeder-actions")).toHaveCSS("position", "static");
+  await expect(page.locator("#feedsSortHint")).toHaveCSS("position", "absolute");
   await expect(discover).toHaveAttribute("aria-controls", "feedsAddDialog");
   await expect(settings).toHaveAttribute("aria-controls", "feedsAddDialog");
 
@@ -184,6 +186,87 @@ test("mobile feed tools use a right-edge tab rail and slide panel", async ({ pag
   }).toEqual({ right: 390, top: 0, height: 844 });
   await drawer.getByRole("button", { name: "Close" }).click();
   await expect(drawer).not.toBeVisible();
+});
+
+test("mobile feeds retain the horizontal shortcut rail", async ({ page }) => {
+  await page.addInitScript(() => {
+    const folders = ["AI", "Apple", "Film", "Music", "Gaming"].map((name, index) => ({
+      id: `folder-${index + 1}`,
+      name,
+    }));
+    localStorage.setItem("material-picker:feeds", JSON.stringify({
+      feeds: folders.map((folder) => ({
+        id: `feed-${folder.id}`,
+        title: `${folder.name} feed`,
+        url: `https://${folder.id}.example/feed`,
+        folderIds: [folder.id],
+      })),
+      folders,
+      favoriteFolderIds: folders.map((folder) => folder.id),
+      items: [],
+      read: {},
+      archived: {},
+    }));
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  const rail = page.locator("#feedsFavoriteTabs");
+  await expect(rail).toBeVisible();
+  await expect(rail.getByRole("button")).toHaveCount(6);
+  const geometry = await rail.evaluate((element) => ({
+    height: Math.round(element.getBoundingClientRect().height),
+    scrollable: element.scrollWidth >= element.clientWidth,
+    direction: getComputedStyle(element).flexDirection,
+  }));
+  expect(geometry.height).toBeLessThanOrEqual(54);
+  expect(geometry.scrollable).toBe(true);
+  expect(geometry.direction).toBe("row");
+});
+
+test("mobile article headers bound long author names", async ({ page }) => {
+  const author = "A very long editorial collective name that must not cover the header controls";
+  await page.addInitScript((savedAuthor) => {
+    localStorage.setItem("material-picker:feeds", JSON.stringify({
+      feeds: [{ id: "feed-1", title: "A feed title that remains visible", url: "https://feed.example/rss", folderIds: [] }],
+      folders: [],
+      favoriteFolderIds: [],
+      items: [{
+        id: "story-1",
+        feedId: "feed-1",
+        title: "A story",
+        author: savedAuthor,
+        url: "https://feed.example/story",
+        publishedAt: "2026-11-06T10:00:00Z",
+      }],
+      read: {},
+      archived: {},
+    }));
+  }, author);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.locator('[data-open-story="story-1"]').click();
+
+  const title = page.locator("#feedsTitle");
+  const subtitle = page.locator("#feedsSubtitle");
+  const actions = page.locator(".feeds-reeder-actions");
+  await expect(subtitle).toHaveText(author);
+  await expect(subtitle).toHaveCSS("text-overflow", "ellipsis");
+  const [titleBox, subtitleBox, actionsBox] = await Promise.all([
+    title.boundingBox(),
+    subtitle.boundingBox(),
+    actions.boundingBox(),
+  ]);
+  expect(titleBox.width).toBeGreaterThanOrEqual(48);
+  expect(subtitleBox.x + subtitleBox.width).toBeLessThanOrEqual(actionsBox.x - 7);
 });
 
 test("feed filter descriptions follow the selected subject", async ({ page }) => {
