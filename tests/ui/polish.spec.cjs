@@ -144,7 +144,7 @@ test("mobile topic pills expand to additional catalog topics and scroll", async 
   await expect.poll(async () => page.evaluate(() => localStorage.getItem("material-picker:custom-feed-topics"))).toContain("Climate");
 });
 
-test("mobile feed tools use a right-edge tab rail and slide panel", async ({ page }) => {
+test("mobile feeds use a compact two-row header and slide panel", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.locator("#desk-feeds").evaluate((input) => {
@@ -159,12 +159,14 @@ test("mobile feed tools use a right-edge tab rail and slide panel", async ({ pag
     discover.boundingBox(),
     settings.boundingBox(),
   ]);
-  expect(Math.round(discoverBox.x + discoverBox.width)).toBe(390);
-  expect(Math.round(settingsBox.x + settingsBox.width)).toBe(390);
-  expect(settingsBox.y).toBeGreaterThanOrEqual(discoverBox.y + discoverBox.height);
-  expect(discoverBox.y).toBeGreaterThanOrEqual(headerBox.y);
-  expect(settingsBox.y + settingsBox.height).toBeLessThanOrEqual(headerBox.y + headerBox.height);
-  await expect(page.locator(".feeds-reeder-actions")).toHaveCSS("position", "absolute");
+  expect(headerBox.height).toBeLessThanOrEqual(108);
+  expect(Math.abs(discoverBox.y - settingsBox.y)).toBeLessThanOrEqual(1);
+  expect(discoverBox.height).toBeGreaterThanOrEqual(44);
+  expect(settingsBox.width).toBeGreaterThanOrEqual(44);
+  expect(settingsBox.height).toBeGreaterThanOrEqual(44);
+  expect(settingsBox.x + settingsBox.width).toBeLessThanOrEqual(headerBox.x + headerBox.width + 1);
+  await expect(page.locator(".feeds-reeder-actions")).toHaveCSS("position", "static");
+  await expect(page.locator("#feedsSortHint")).toHaveCSS("position", "absolute");
   await expect(discover).toHaveAttribute("aria-controls", "feedsAddDialog");
   await expect(settings).toHaveAttribute("aria-controls", "feedsAddDialog");
 
