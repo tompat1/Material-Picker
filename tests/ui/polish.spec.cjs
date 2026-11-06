@@ -228,6 +228,47 @@ test("mobile feeds retain the horizontal shortcut rail", async ({ page }) => {
   expect(geometry.direction).toBe("row");
 });
 
+test("mobile article headers bound long author names", async ({ page }) => {
+  const author = "A very long editorial collective name that must not cover the header controls";
+  await page.addInitScript((savedAuthor) => {
+    localStorage.setItem("material-picker:feeds", JSON.stringify({
+      feeds: [{ id: "feed-1", title: "A feed title that remains visible", url: "https://feed.example/rss", folderIds: [] }],
+      folders: [],
+      favoriteFolderIds: [],
+      items: [{
+        id: "story-1",
+        feedId: "feed-1",
+        title: "A story",
+        author: savedAuthor,
+        url: "https://feed.example/story",
+        publishedAt: "2026-11-06T10:00:00Z",
+      }],
+      read: {},
+      archived: {},
+    }));
+  }, author);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.locator('[data-open-story="story-1"]').click();
+
+  const title = page.locator("#feedsTitle");
+  const subtitle = page.locator("#feedsSubtitle");
+  const actions = page.locator(".feeds-reeder-actions");
+  await expect(subtitle).toHaveText(author);
+  await expect(subtitle).toHaveCSS("text-overflow", "ellipsis");
+  const [titleBox, subtitleBox, actionsBox] = await Promise.all([
+    title.boundingBox(),
+    subtitle.boundingBox(),
+    actions.boundingBox(),
+  ]);
+  expect(titleBox.width).toBeGreaterThanOrEqual(48);
+  expect(subtitleBox.x + subtitleBox.width).toBeLessThanOrEqual(actionsBox.x - 7);
+});
+
 test("feed filter descriptions follow the selected subject", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("material-picker:feeds", JSON.stringify({

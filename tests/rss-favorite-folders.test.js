@@ -89,7 +89,10 @@ test("the feed shortcut rail keeps an All control without favorite folders", () 
   api.renderTabs();
 
   assert.equal(favoriteTabs.hidden, false);
-  assert.match(favoriteTabs.innerHTML, /aria-label="Show all feeds"/);
+  assert.match(
+    favoriteTabs.innerHTML,
+    /<button\b[^>]*data-favorite-source="all"[^>]*aria-label="Show all feeds"[^>]*>/,
+  );
 });
 
 test("folder chevron collapses every open folder and then opens them all", () => {

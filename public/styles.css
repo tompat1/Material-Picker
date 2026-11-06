@@ -3171,7 +3171,8 @@ textarea {
 
 input::placeholder,
 textarea::placeholder {
-  color: #aa9d8e;
+  color: var(--muted);
+  opacity: 1;
 }
 
 select {
@@ -11105,14 +11106,27 @@ button[value="close"]:active {
   }
 
   body:has(#desk-feeds:checked) .feeds-heading-row h2 {
-    flex: 0 1 auto;
+    flex: 1 1 auto;
+    min-width: 3rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   body:has(#desk-feeds:checked) .feeds-count {
-    flex: none;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: min(40%, 10rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body:has(#desk-feeds:checked) .feeds-title-link {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
