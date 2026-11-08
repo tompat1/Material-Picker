@@ -2680,6 +2680,7 @@ async function createWidget() {
   const items = await loadItems();
   const widget = new ListWidget();
   widget.backgroundColor = COLORS.bg;
+  widget.setPadding(14, 16, 14, 16);
   const family = getWidgetFamily();
 
   // Header
@@ -2688,13 +2689,13 @@ async function createWidget() {
   hdr.centerAlignContent();
   const brand = hdr.addText("PICKER");
   brand.textColor = COLORS.accent;
-  brand.font = Font.blackSystemFont(11);
+  brand.font = Font.blackSystemFont(12);
   hdr.addSpacer();
   const tag = hdr.addText(items.length ? (family === "large" ? "5 POSTS" : "LATEST") : "SYNC");
   tag.textColor = COLORS.muted;
-  tag.font = Font.semiboldSystemFont(9);
+  tag.font = Font.semiboldSystemFont(9.5);
 
-  widget.addSpacer(family === "small" ? 8 : 10);
+  widget.addSpacer();
 
   if (!items.length) {
     const emptyRow = widget.addStack();
@@ -2707,6 +2708,7 @@ async function createWidget() {
     emptySub.textColor = COLORS.muted;
     emptySub.font = Font.systemFont(family === "small" ? 9 : 11);
     emptySub.lineLimit = 2;
+    widget.addSpacer();
     widget.url = ENDPOINT_URL.split("/api/widget/latest")[0] || ENDPOINT_URL;
     widget.refreshAfterDate = new Date(Date.now() + 1000 * 60 * 15);
     return widget;
@@ -2729,7 +2731,7 @@ async function createWidget() {
       metaCol.layoutVertically();
       const src = metaCol.addText((p.source || "Picker").toUpperCase());
       src.textColor = COLORS.accent;
-      src.font = Font.boldSystemFont(9);
+      src.font = Font.boldSystemFont(9.5);
       metaCol.addSpacer(2);
       const tm = metaCol.addText(timeAgo(p.publishedAt));
       tm.textColor = COLORS.muted;
@@ -2737,13 +2739,13 @@ async function createWidget() {
 
       topRow.addSpacer();
       const imgWidget = topRow.addImage(img);
-      imgWidget.imageSize = new Size(38, 38);
-      imgWidget.cornerRadius = 8;
+      imgWidget.imageSize = new Size(40, 40);
+      imgWidget.cornerRadius = 9;
       imgWidget.applyFillingContentMode();
     } else {
       const src = widget.addText((p.source || "Picker").toUpperCase());
       src.textColor = COLORS.accent;
-      src.font = Font.boldSystemFont(9);
+      src.font = Font.boldSystemFont(9.5);
       widget.addSpacer(2);
       const tm = widget.addText(timeAgo(p.publishedAt));
       tm.textColor = COLORS.muted;
@@ -2753,9 +2755,10 @@ async function createWidget() {
     widget.addSpacer(6);
     const title = widget.addText(p.title || "No posts yet");
     title.textColor = COLORS.ink;
-    title.font = Font.boldSystemFont(12);
+    title.font = Font.boldSystemFont(12.5);
     title.lineLimit = 3;
     if (p.url) widget.url = p.url;
+    widget.addSpacer();
   } else if (family === "medium") {
     const limit = displayItems.length;
     for (let i = 0; i < limit; i++) {
@@ -2773,31 +2776,32 @@ async function createWidget() {
       meta.centerAlignContent();
       const s = meta.addText((p.source || "Feed").toUpperCase());
       s.textColor = COLORS.accent;
-      s.font = Font.boldSystemFont(9);
+      s.font = Font.boldSystemFont(9.5);
       meta.addSpacer();
       const tm = meta.addText(timeAgo(p.publishedAt));
       tm.textColor = COLORS.muted;
-      tm.font = Font.systemFont(9);
+      tm.font = Font.systemFont(9.5);
 
-      copyCol.addSpacer(2);
+      copyCol.addSpacer(3);
       const title = copyCol.addText(p.title || "");
       title.textColor = COLORS.ink;
-      title.font = Font.semiboldSystemFont(12);
+      title.font = Font.semiboldSystemFont(12.5);
       title.lineLimit = 2;
 
       const img = images[i];
       if (img) {
         row.addSpacer(10);
         const imgWidget = row.addImage(img);
-        imgWidget.imageSize = new Size(44, 44);
-        imgWidget.cornerRadius = 8;
+        imgWidget.imageSize = new Size(48, 48);
+        imgWidget.cornerRadius = 10;
         imgWidget.applyFillingContentMode();
       }
 
-      if (i < limit - 1) widget.addSpacer(8);
+      if (i < limit - 1) widget.addSpacer();
     }
+    if (limit < 2) widget.addSpacer();
   } else {
-    // Large / Maxi: exactly 5 posts with thumbnails
+    // Large / Maxi: exactly 5 posts with large thumbnails and balanced edge-to-edge distribution
     const limit = displayItems.length;
     for (let i = 0; i < limit; i++) {
       const p = displayItems[i];
@@ -2814,29 +2818,32 @@ async function createWidget() {
       meta.centerAlignContent();
       const s = meta.addText((p.source || "Feed").toUpperCase());
       s.textColor = COLORS.accent;
-      s.font = Font.boldSystemFont(9);
+      s.font = Font.boldSystemFont(9.5);
       meta.addSpacer();
       const tm = meta.addText(timeAgo(p.publishedAt));
       tm.textColor = COLORS.muted;
-      tm.font = Font.systemFont(9);
+      tm.font = Font.systemFont(9.5);
 
-      copyCol.addSpacer(1);
+      copyCol.addSpacer(2);
       const title = copyCol.addText(p.title || "");
       title.textColor = COLORS.ink;
-      title.font = Font.semiboldSystemFont(11);
+      title.font = Font.semiboldSystemFont(12.5);
       title.lineLimit = 2;
 
       const img = images[i];
       if (img) {
-        row.addSpacer(8);
+        row.addSpacer(10);
         const imgWidget = row.addImage(img);
-        imgWidget.imageSize = new Size(40, 40);
-        imgWidget.cornerRadius = 8;
+        imgWidget.imageSize = new Size(50, 50);
+        imgWidget.cornerRadius = 10;
         imgWidget.applyFillingContentMode();
       }
 
-      if (i < limit - 1) widget.addSpacer(5);
+      if (i < limit - 1) {
+        widget.addSpacer();
+      }
     }
+    if (limit < 5) widget.addSpacer();
   }
 
   widget.refreshAfterDate = new Date(Date.now() + 1000 * 60 * 20);
