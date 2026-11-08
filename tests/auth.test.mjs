@@ -605,3 +605,26 @@ test("widget latest endpoint authenticates with widget token, loads configured f
   const nonnumericData = await nonnumericLimitRes.json();
   assert.ok(nonnumericData.items.length > 0, "Invalid limit should fallback to default rather than returning empty array");
 });
+
+test("Scriptable widget code generation produces valid, error-free JavaScript", async () => {
+  const fs = await import("fs");
+  const appJs = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  const start = appJs.indexOf("function generateScriptableCode(");
+  assert.ok(start !== -1, "generateScriptableCode exists in public/app.js");
+  const end = appJs.indexOf("let activeWidgetSize =", start);
+  assert.ok(end !== -1, "generateScriptableCode ending located");
+  const fnCode = "(" + appJs.slice(start, end).trim() + ")";
+  const generateScriptableCode = eval(fnCode);
+
+  const testEndpoint = "https://picker.rynell.org/api/widget/latest?token=test-widget-token-123";
+  const script = generateScriptableCode(testEndpoint, "test-widget-token-123");
+
+  assert.ok(script.includes(testEndpoint));
+  assert.ok(script.includes("test-widget-token-123"));
+  assert.ok(!script.includes("replace(//"), "Must not contain broken unescaped regex literal in template string");
+
+  // Validate JavaScript syntax parses cleanly (including async/await)
+  assert.doesNotThrow(() => {
+    new Function("async () => {\n" + script + "\n}");
+  }, "Generated Scriptable code must be 100% syntactically valid JavaScript");
+});

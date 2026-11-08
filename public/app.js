@@ -2693,7 +2693,7 @@ async function createWidget() {
     emptySub.textColor = COLORS.muted;
     emptySub.font = Font.systemFont(family === "small" ? 9 : 11);
     emptySub.lineLimit = 2;
-    widget.url = ENDPOINT_URL.replace(/\/api\/widget\/latest.*/, "");
+    widget.url = ENDPOINT_URL.split("/api/widget/latest")[0] || ENDPOINT_URL;
     widget.refreshAfterDate = new Date(Date.now() + 1000 * 60 * 15);
     return widget;
   }
@@ -3051,8 +3051,8 @@ async function openWidgetsModal() {
   ctaH3.textContent = "Connect to Scriptable (iPhone & Mac)";
   const ctaP = document.createElement("p");
   ctaP.textContent = widgetToken
-    ? "Authenticated with your Picker account. 1-tap install on iPhone, or copy the widget script. Works seamlessly on both iOS and macOS Desktop."
-    : "1-tap install on iPhone, or copy the widget script. Works on iOS Home Screen and macOS Desktop.";
+    ? "Authenticated with your Picker account. Tap install to copy and launch Scriptable, or copy / download the script. Works seamlessly on both iOS and macOS Desktop."
+    : "Tap install to copy and launch Scriptable, or copy / download the script. Works on iOS Home Screen and macOS Desktop.";
   ctaInfo.append(ctaH3, ctaP);
 
   const ctaButtons = document.createElement("div");
@@ -3061,7 +3061,7 @@ async function openWidgetsModal() {
   const launchBtn = document.createElement("a");
   launchBtn.className = "primary-button";
   launchBtn.id = "widgetsScriptableLaunchBtn";
-  launchBtn.href = scriptableUrl;
+  launchBtn.href = "scriptable:///add";
   launchBtn.textContent = "Install in Scriptable";
 
   const copyBtn = document.createElement("button");
@@ -3070,7 +3070,13 @@ async function openWidgetsModal() {
   copyBtn.id = "widgetsCopyScriptBtn";
   copyBtn.textContent = "Copy script";
 
-  ctaButtons.append(launchBtn, copyBtn);
+  const downloadBtn = document.createElement("button");
+  downloadBtn.type = "button";
+  downloadBtn.className = "secondary-button";
+  downloadBtn.id = "widgetsDownloadScriptBtn";
+  downloadBtn.textContent = "Download .js";
+
+  ctaButtons.append(launchBtn, copyBtn, downloadBtn);
   ctaBox.append(ctaInfo, ctaButtons);
   mount.appendChild(ctaBox);
 
@@ -3158,9 +3164,9 @@ async function openWidgetsModal() {
     if (platform === "mac") {
       h4.textContent = "How to add to your Mac Desktop:";
       const macSteps = [
-        "First complete the iPhone setup using the iPhone tab above (or install free Scriptable from the Mac App Store).",
+        "First complete the iPhone setup using the iPhone tab above (or install free Scriptable from the Mac App Store, paste the script, and tap Done).",
         "On your Mac, right-click any empty desktop space and select Edit Widgets…",
-        "In the widget gallery sidebar, select Scriptable (from iPhone).",
+        "In the widget gallery sidebar, select Scriptable (or Scriptable from iPhone).",
         "Choose Small, Medium, or Large (Maxi) and drag it straight onto your Mac desktop or Notification Center.",
       ];
       macSteps.forEach((text) => {
@@ -3171,10 +3177,11 @@ async function openWidgetsModal() {
     } else {
       h4.textContent = "How to add to your iPhone Home Screen:";
       const iphoneSteps = [
-        "Tap Install in Scriptable above (or install free from the App Store if you haven't yet).",
-        "On your iPhone Home Screen, long-press any empty area until icons wiggle, then tap the + button in the top corner.",
-        "Search for Scriptable, choose Small, Medium, or Large, and tap Add Widget.",
-        "Tap the widget on your home screen, set Script to Picker, and set When Interacting to Open URL.",
+        "Tap Install in Scriptable above (the widget script is automatically copied to your clipboard and Scriptable opens a new script).",
+        "In Scriptable, tap the blank editor area, select Paste, and tap Done in the top corner.",
+        "On your iPhone Home Screen, long-press any empty area until icons jiggle, then tap the + button in the top corner.",
+        "Search for Scriptable, choose Small (Mini), Medium (Midi), or Large (Maxi), and tap Add Widget.",
+        "Tap the widget on your home screen, set Script to Picker (or Untitled Script), and set When Interacting to Open URL.",
       ];
       iphoneSteps.forEach((text) => {
         const li = document.createElement("li");
@@ -3227,6 +3234,20 @@ async function openWidgetsModal() {
     });
   });
 
+  launchBtn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    try {
+      await navigator.clipboard.writeText(scriptCode);
+      launchBtn.textContent = "Copied! Opening…";
+    } catch {
+      // Fallback
+    }
+    setTimeout(() => {
+      launchBtn.textContent = "Install in Scriptable";
+    }, 3000);
+    window.location.href = "scriptable:///add";
+  });
+
   copyBtn.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(scriptCode);
@@ -3234,6 +3255,24 @@ async function openWidgetsModal() {
       setTimeout(() => { copyBtn.textContent = "Copy script"; }, 2000);
     } catch {
       showActionNotice(copyBtn.getBoundingClientRect(), "Failed to copy script");
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    try {
+      const blob = new Blob([scriptCode], { type: "application/javascript" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Picker.js";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadBtn.textContent = "Downloaded!";
+      setTimeout(() => { downloadBtn.textContent = "Download .js"; }, 2000);
+    } catch {
+      showActionNotice(downloadBtn.getBoundingClientRect(), "Download failed");
     }
   });
 
