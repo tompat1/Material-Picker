@@ -93,11 +93,14 @@ const CONTENT_TYPES = {
   ".ogv": "video/ogg",
   ".svg": "image/svg+xml",
   ".ts": "video/mp2t",
+  ".ttf": "font/ttf",
   ".webm": "video/webm",
   ".wmv": "video/x-ms-wmv",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
 };
 
-const SUPPORTED_VIDEO_EXTENSIONS = new Set(Object.keys(CONTENT_TYPES).filter((ext) => ext !== ".css" && ext !== ".html" && ext !== ".js" && ext !== ".json" && ext !== ".map" && ext !== ".svg"));
+const SUPPORTED_VIDEO_EXTENSIONS = new Set(Object.keys(CONTENT_TYPES).filter((ext) => !ext.startsWith(".wo") && ext !== ".ttf" && ext !== ".css" && ext !== ".html" && ext !== ".js" && ext !== ".json" && ext !== ".map" && ext !== ".svg"));
 const STANDALONE_VIDEO_EXTENSIONS = new Set(Array.from(SUPPORTED_VIDEO_EXTENSIONS).filter((ext) => ext !== ".m4s" && ext !== ".m3u8"));
 
 function isPublicIp(address) {

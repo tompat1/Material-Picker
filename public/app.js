@@ -3230,15 +3230,23 @@ async function openWidgetsModal() {
   sourceBar.setAttribute("aria-label", "Widget source selection");
 
   const sourceDefs = [
-    { source: "feeds", label: "📰 Feeds" },
-    { source: "youtube", label: "📺 My YouTube" },
+    { source: "feeds", icon: "ph-newspaper", label: "Feeds" },
+    { source: "youtube", icon: "ph-youtube-logo", label: "My YouTube" },
   ];
-  sourceDefs.forEach(({ source, label }) => {
+  sourceDefs.forEach(({ source, icon, label }) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `widgets-tab-btn${activeWidgetSource === source ? " is-active" : ""}`;
     btn.dataset.wsource = source;
-    btn.textContent = label;
+
+    const iconEl = document.createElement("i");
+    iconEl.className = `ph ${icon} widgets-tab-icon`;
+    iconEl.setAttribute("aria-hidden", "true");
+
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = label;
+
+    btn.append(iconEl, labelSpan);
     sourceBar.appendChild(btn);
   });
 
@@ -3267,15 +3275,23 @@ async function openWidgetsModal() {
   themeBar.setAttribute("aria-label", "Widget theme preview");
 
   const themeDefs = [
-    { theme: "dark", label: "Dark" },
-    { theme: "light", label: "Light" },
+    { theme: "dark", icon: "ph-moon", label: "Dark" },
+    { theme: "light", icon: "ph-sun", label: "Light" },
   ];
-  themeDefs.forEach(({ theme, label }) => {
+  themeDefs.forEach(({ theme, icon, label }) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `widgets-tab-btn${activeWidgetTheme === theme ? " is-active" : ""}`;
     btn.dataset.wtheme = theme;
-    btn.textContent = label;
+
+    const iconEl = document.createElement("i");
+    iconEl.className = `ph ${icon} widgets-tab-icon`;
+    iconEl.setAttribute("aria-hidden", "true");
+
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = label;
+
+    btn.append(iconEl, labelSpan);
     themeBar.appendChild(btn);
   });
 
