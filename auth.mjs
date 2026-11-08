@@ -1,4 +1,5 @@
 import { isAdminUser } from "./cms.mjs";
+import { parseFeed } from "./rss.mjs";
 
 const SESSION_COOKIE = "picker_session";
 const STATE_COOKIE = "picker_oauth_state";
@@ -971,6 +972,14 @@ export async function handleAuthRequest(request, options) {
   if (url.pathname === "/api/auth/state" && (request.method === "GET" || request.method === "PUT")) {
     return handleUserState(request, store);
   }
+  if (request.method === "GET" && url.pathname === "/api/widget/token") {
+    const user = await currentUser(request, store);
+    if (!user) {
+      return json(401, { error: "Sign in to generate a widget token." });
+    }
+    const token = await store.createSession(user.id);
+    return json(200, { token });
+  }
   if (request.method === "GET" && url.pathname === "/api/widget/latest") {
     try {
       return await handleWidgetLatest(request, url, store, options);
@@ -1115,9 +1124,30 @@ async function cachedYouTubeHome(userId, store, options, fetchImpl) {
   return cached;
 }
 
+async function fetchRecentFeedItems(feedUrl, fetchImpl) {
+  try {
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 3500) : null;
+    const res = await fetchImpl(feedUrl, {
+      headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8" },
+      signal: controller?.signal,
+    });
+    if (timer) clearTimeout(timer);
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const parsed = parseFeed(xml, feedUrl);
+    return Array.isArray(parsed?.items) ? parsed.items.slice(0, 10) : [];
+  } catch {
+    return [];
+  }
+}
+
 async function handleWidgetLatest(request, url, store, options) {
   let user = null;
-  const token = url.searchParams.get("token") || url.searchParams.get("key");
+  const authHeader = request.headers.get("authorization") || "";
+  const bearerMatch = authHeader.match(/^Bearer\s+([A-Za-z0-9._~+/-]+=*)/i);
+  const bearerToken = bearerMatch ? bearerMatch[1] : null;
+  const token = url.searchParams.get("token") || url.searchParams.get("key") || request.headers.get("x-widget-token") || bearerToken;
   if (token && typeof store.userForSession === "function") {
     user = await store.userForSession(token);
   }
@@ -1153,18 +1183,66 @@ async function handleWidgetLatest(request, url, store, options) {
     }
   }
 
-  // 2. Collect RSS saved/recent items
+  // 2. Collect RSS feeds and saved items
   if (typeof store.feedLibraryForUser === "function") {
     try {
       const library = await store.feedLibraryForUser(user.id);
+      const feeds = Array.isArray(library?.feeds) ? library.feeds : [];
+      const feedMap = new Map(feeds.map((f) => [f.id, f]));
+      const archived = library?.archived || {};
+      const seenUrls = new Set(items.map((i) => i.url).filter(Boolean));
+      const seenIds = new Set(items.map((i) => i.id).filter(Boolean));
+
+      // 2a. Load recent entries from user's configured feeds
+      const configuredFeeds = feeds.slice(0, 8);
+      if (configuredFeeds.length > 0) {
+        await Promise.allSettled(configuredFeeds.map(async (feed) => {
+          if (!feed?.url) return;
+          try {
+            const feedItems = await fetchRecentFeedItems(feed.url, fetchImpl);
+            for (const item of feedItems) {
+              if (!item || !item.title) continue;
+              const id = String(item.id || item.link || "");
+              const itemUrl = String(item.link || item.videoUrl || "");
+              if (archived[id]) continue;
+              if (itemUrl && seenUrls.has(itemUrl)) continue;
+              if (id && seenIds.has(id)) continue;
+              if (itemUrl) seenUrls.add(itemUrl);
+              if (id) seenIds.add(id);
+              items.push({
+                id,
+                title: String(item.title || ""),
+                source: String(item.author || feed.title || "Feed"),
+                url: itemUrl,
+                thumbnail: String(item.image || ""),
+                publishedAt: String(item.publishedAt || ""),
+                type: "rss",
+              });
+            }
+          } catch {
+            // Non-fatal
+          }
+        }));
+      }
+
+      // 2b. Add saved items (ignoring archived ones, resolving feed title fallback)
       const savedItems = Array.isArray(library?.savedItems) ? library.savedItems : [];
       savedItems.forEach((item) => {
         if (!item || !item.title) return;
+        const id = String(item.id || "");
+        if (archived[id]) return;
+        const itemUrl = String(item.link || item.videoUrl || "");
+        if (itemUrl && seenUrls.has(itemUrl)) return;
+        if (id && seenIds.has(id)) return;
+        if (itemUrl) seenUrls.add(itemUrl);
+        if (id) seenIds.add(id);
+
+        const feed = feedMap.get(item.feedId);
         items.push({
-          id: String(item.id || ""),
+          id,
           title: String(item.title || ""),
-          source: String(item.author || item.feedTitle || "Feed"),
-          url: String(item.link || item.videoUrl || ""),
+          source: String(item.author || feed?.title || item.feedTitle || "Feed"),
+          url: itemUrl,
           thumbnail: String(item.image || ""),
           publishedAt: String(item.publishedAt || ""),
           type: "rss",
@@ -1182,7 +1260,9 @@ async function handleWidgetLatest(request, url, store, options) {
     return timeB - timeA;
   });
 
-  const limit = Math.max(1, Math.min(parseInt(url.searchParams.get("limit") || "10", 10), 30));
+  const parsedLimit = parseInt(url.searchParams.get("limit") || "10", 10);
+  const safeLimit = Number.isFinite(parsedLimit) ? parsedLimit : 10;
+  const limit = Math.max(1, Math.min(safeLimit, 30));
   const results = items.slice(0, limit);
 
   const headers = new Headers({

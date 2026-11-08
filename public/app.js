@@ -2607,11 +2607,12 @@ function restoreRemovedYouTubeChannels(targetId) {
   }
 }
 
-function generateScriptableCode(endpointUrl) {
+function generateScriptableCode(endpointUrl, widgetToken = "") {
   return `// Scriptable Widget for Picker
 // Supports Small (Mini), Medium (Midi), and Large (Maxi) sizes
 
 const ENDPOINT_URL = "${endpointUrl}";
+const WIDGET_TOKEN = "${widgetToken}";
 
 const COLORS = {
   bg: new Color("#1c1511"),
@@ -2623,16 +2624,19 @@ const COLORS = {
 
 async function loadItems() {
   try {
-    const req = new Request(ENDPOINT_URL);
+    let url = ENDPOINT_URL;
+    if (WIDGET_TOKEN && !url.includes("token=")) {
+      url += (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(WIDGET_TOKEN);
+    }
+    const req = new Request(url);
     req.timeoutInterval = 10;
+    if (WIDGET_TOKEN) {
+      req.headers = { Authorization: "Bearer " + WIDGET_TOKEN };
+    }
     const res = await req.loadJSON();
-    if (Array.isArray(res.items) && res.items.length) return res.items;
+    if (Array.isArray(res && res.items)) return res.items;
   } catch (e) {}
-  return [
-    { title: "Dell Alienware QD-OLED Review", source: "Alex Gear & Tech", publishedAt: new Date(Date.now() - 3600000).toISOString(), url: "https://picker.rynell.org" },
-    { title: "BYD sold more EVs than US total", source: "Electrek", publishedAt: new Date(Date.now() - 7200000).toISOString(), url: "https://picker.rynell.org" },
-    { title: "Disney+ Percy Jackson Season 3 Trailer", source: "Collider", publishedAt: new Date(Date.now() - 14400000).toISOString(), url: "https://picker.rynell.org" }
-  ];
+  return [];
 }
 
 function timeAgo(dateStr) {
@@ -2661,11 +2665,27 @@ async function createWidget() {
   brand.textColor = COLORS.accent;
   brand.font = Font.blackSystemFont(11);
   hdr.addSpacer();
-  const tag = hdr.addText("LATEST");
+  const tag = hdr.addText(items.length ? "LATEST" : "SYNC");
   tag.textColor = COLORS.muted;
   tag.font = Font.semiboldSystemFont(9);
 
   widget.addSpacer(family === "small" ? 8 : 10);
+
+  if (!items.length) {
+    const emptyRow = widget.addStack();
+    emptyRow.layoutVertically();
+    const emptyTitle = emptyRow.addText("No new updates");
+    emptyTitle.textColor = COLORS.ink;
+    emptyTitle.font = Font.boldSystemFont(family === "small" ? 11 : 13);
+    emptyRow.addSpacer(3);
+    const emptySub = emptyRow.addText("Open Picker in Safari to refresh your feed.");
+    emptySub.textColor = COLORS.muted;
+    emptySub.font = Font.systemFont(family === "small" ? 9 : 11);
+    emptySub.lineLimit = 2;
+    widget.url = ENDPOINT_URL.replace(/\/api\/widget\/latest.*/, "");
+    widget.refreshAfterDate = new Date(Date.now() + 1000 * 60 * 15);
+    return widget;
+  }
 
   if (family === "small") {
     const p = items[0] || {};
@@ -2746,137 +2766,243 @@ Script.complete();
 
 let activeWidgetSize = "medium";
 
-function renderWidgetPreviewCard(size) {
-  if (size === "small") {
-    return `
-      <div class="widget-card-shell widget-size-small">
-        <div class="w-hdr">
-          <span class="w-hdr-logo">PICKER</span>
-          <span class="w-hdr-badge">LATEST</span>
-        </div>
-        <div class="w-sm-body">
-          <span class="w-sm-source">Alex Gear & Tech</span>
-          <p class="w-sm-title">Dell Alienware AW3426DW QD-OLED Review: 4 Years In The Making</p>
-        </div>
-        <span class="w-sm-foot">34m ago</span>
-      </div>
-    `;
-  }
-  if (size === "large") {
-    return `
-      <div class="widget-card-shell widget-size-large">
-        <div class="w-hdr">
-          <span class="w-hdr-logo">PICKER</span>
-          <span class="w-hdr-badge">LATEST POSTS</span>
-        </div>
-        <div class="w-lg-list">
-          <div class="w-lg-row">
-            <div class="w-md-meta"><span class="w-md-source">Alex Gear & Tech</span><span class="w-md-time">34m ago</span></div>
-            <p class="w-lg-title">Dell Alienware AW3426DW QD-OLED Review. You Waited FOUR Years!</p>
-          </div>
-          <div class="w-separator"></div>
-          <div class="w-lg-row">
-            <div class="w-md-meta"><span class="w-md-source">Electrek</span><span class="w-md-time">1h ago</span></div>
-            <p class="w-lg-title">BYD sold more EVs last month than the US did all year, topping 300,000</p>
-          </div>
-          <div class="w-separator"></div>
-          <div class="w-lg-row">
-            <div class="w-md-meta"><span class="w-md-source">Collider</span><span class="w-md-time">2h ago</span></div>
-            <p class="w-lg-title">Disney+'s 'Percy Jackson' Season 3 Trailer Officially Revealed</p>
-          </div>
-          <div class="w-separator"></div>
-          <div class="w-lg-row">
-            <div class="w-md-meta"><span class="w-md-source">Duncan Rogoff</span><span class="w-md-time">4h ago</span></div>
-            <p class="w-lg-title">Auto-dispatching work without human intervention</p>
-          </div>
-          <div class="w-separator"></div>
-          <div class="w-lg-row">
-            <div class="w-md-meta"><span class="w-md-source">MacRumors</span><span class="w-md-time">5h ago</span></div>
-            <p class="w-lg-title">Apple M4 Mac Mini tear-down reveals modular SSD storage upgradeability</p>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  // medium (default)
-  return `
-    <div class="widget-card-shell widget-size-medium">
-      <div class="w-hdr">
-        <span class="w-hdr-logo">PICKER</span>
-        <span class="w-hdr-badge">2 NEW POSTS</span>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <div class="w-md-row">
-          <div class="w-md-meta"><span class="w-md-source">Alex Gear & Tech</span><span class="w-md-time">34m ago</span></div>
-          <p class="w-md-title">Dell Alienware AW3426DW QD-OLED Review. You Waited FOUR Years!</p>
-        </div>
-        <div class="w-separator"></div>
-        <div class="w-md-row">
-          <div class="w-md-meta"><span class="w-md-source">Electrek</span><span class="w-md-time">1h ago</span></div>
-          <p class="w-md-title">BYD sold more EVs last month than the US did all year, topping 300,000</p>
-        </div>
-      </div>
-    </div>
-  `;
+function createPreviewHeader(badgeText) {
+  const hdr = document.createElement("div");
+  hdr.className = "w-hdr";
+  const logo = document.createElement("span");
+  logo.className = "w-hdr-logo";
+  logo.textContent = "PICKER";
+  const badge = document.createElement("span");
+  badge.className = "w-hdr-badge";
+  badge.textContent = badgeText;
+  hdr.append(logo, badge);
+  return hdr;
 }
 
-function openWidgetsModal() {
-  let dialog = document.querySelector("#widgetsDialog");
+function createPreviewRow(sourceText, timeText, titleText) {
+  const row = document.createElement("div");
+  row.className = "w-md-row";
+  const meta = document.createElement("div");
+  meta.className = "w-md-meta";
+  const s = document.createElement("span");
+  s.className = "w-md-source";
+  s.textContent = sourceText;
+  const tm = document.createElement("span");
+  tm.className = "w-md-time";
+  tm.textContent = timeText;
+  meta.append(s, tm);
+  const p = document.createElement("p");
+  p.className = "w-md-title";
+  p.textContent = titleText;
+  row.append(meta, p);
+  return row;
+}
+
+function renderWidgetPreviewElement(size) {
+  const shell = document.createElement("div");
+  shell.className = `widget-card-shell widget-size-${size}`;
+
+  if (size === "small") {
+    shell.appendChild(createPreviewHeader("LATEST"));
+    const body = document.createElement("div");
+    body.className = "w-sm-body";
+    const src = document.createElement("span");
+    src.className = "w-sm-source";
+    src.textContent = "Alex Gear & Tech";
+    const title = document.createElement("p");
+    title.className = "w-sm-title";
+    title.textContent = "Dell Alienware AW3426DW QD-OLED Review: 4 Years In The Making";
+    body.append(src, title);
+    const foot = document.createElement("span");
+    foot.className = "w-sm-foot";
+    foot.textContent = "34m ago";
+    shell.append(body, foot);
+    return shell;
+  }
+
+  if (size === "large") {
+    shell.appendChild(createPreviewHeader("LATEST POSTS"));
+    const list = document.createElement("div");
+    list.className = "w-lg-list";
+    const items = [
+      { source: "Alex Gear & Tech", time: "34m ago", title: "Dell Alienware AW3426DW QD-OLED Review. You Waited FOUR Years!" },
+      { source: "Electrek", time: "1h ago", title: "BYD sold more EVs last month than the US did all year, topping 300,000" },
+      { source: "Collider", time: "2h ago", title: "Disney+'s 'Percy Jackson' Season 3 Trailer Officially Revealed" },
+      { source: "Duncan Rogoff", time: "4h ago", title: "Auto-dispatching work without human intervention" },
+      { source: "MacRumors", time: "5h ago", title: "Apple M4 Mac Mini tear-down reveals modular SSD storage upgradeability" },
+    ];
+    items.forEach((item, index) => {
+      if (index > 0) {
+        const sep = document.createElement("div");
+        sep.className = "w-separator";
+        list.appendChild(sep);
+      }
+      const row = document.createElement("div");
+      row.className = "w-lg-row";
+      const meta = document.createElement("div");
+      meta.className = "w-md-meta";
+      const s = document.createElement("span");
+      s.className = "w-md-source";
+      s.textContent = item.source;
+      const tm = document.createElement("span");
+      tm.className = "w-md-time";
+      tm.textContent = item.time;
+      meta.append(s, tm);
+      const p = document.createElement("p");
+      p.className = "w-lg-title";
+      p.textContent = item.title;
+      row.append(meta, p);
+      list.appendChild(row);
+    });
+    shell.appendChild(list);
+    return shell;
+  }
+
+  // medium (default)
+  shell.appendChild(createPreviewHeader("2 NEW POSTS"));
+  const wrapper = document.createElement("div");
+  wrapper.style.display = "flex";
+  wrapper.style.flexDirection = "column";
+  wrapper.style.gap = "8px";
+
+  const row1 = createPreviewRow("Alex Gear & Tech", "34m ago", "Dell Alienware AW3426DW QD-OLED Review. You Waited FOUR Years!");
+  const sep = document.createElement("div");
+  sep.className = "w-separator";
+  const row2 = createPreviewRow("Electrek", "1h ago", "BYD sold more EVs last month than the US did all year, topping 300,000");
+
+  wrapper.append(row1, sep, row2);
+  shell.appendChild(wrapper);
+  return shell;
+}
+
+async function openWidgetsModal() {
+  const dialog = document.querySelector("#widgetsDialog");
   if (!dialog) return;
   const mount = document.querySelector("#widgetsMount");
   if (!mount) return;
 
+  let widgetToken = "";
+  if (pickerSignedIn) {
+    try {
+      const tokenRes = await fetch("/api/widget/token");
+      if (tokenRes.ok) {
+        const tokenData = await tokenRes.json();
+        widgetToken = tokenData?.token || "";
+      }
+    } catch {
+      widgetToken = "";
+    }
+  }
+
   const currentOrigin = window.location.origin || "https://picker.rynell.org";
-  const widgetEndpoint = `${currentOrigin}/api/widget/latest`;
-  const scriptCode = generateScriptableCode(widgetEndpoint);
+  const widgetUrlObj = new URL("/api/widget/latest", currentOrigin);
+  if (widgetToken) {
+    widgetUrlObj.searchParams.set("token", widgetToken);
+  }
+  const widgetEndpoint = widgetUrlObj.toString();
+  const scriptCode = generateScriptableCode(widgetEndpoint, widgetToken);
   const scriptableUrl = `scriptable:///add?scriptName=${encodeURIComponent("Picker")}&script=${encodeURIComponent(scriptCode)}`;
 
-  mount.innerHTML = `
-    <p class="widgets-lead">Get live video & feed updates on your iPhone or Android home screen with Mini, Midi, and Maxi sizes.</p>
+  mount.replaceChildren();
 
-    <div class="widgets-cta-box">
-      <div class="widgets-cta-info">
-        <h3>Connect to Scriptable on iPhone</h3>
-        <p>1-tap install directly into Scriptable, or copy the widget script to set it up manually.</p>
-      </div>
-      <div class="widgets-cta-buttons">
-        <a class="primary-button" id="widgetsScriptableLaunchBtn" href="${escapeHtml(scriptableUrl)}">Install in Scriptable</a>
-        <button type="button" class="secondary-button" id="widgetsCopyScriptBtn">Copy script</button>
-      </div>
-    </div>
+  const lead = document.createElement("p");
+  lead.className = "widgets-lead";
+  lead.textContent = "Get live video & feed updates on your iPhone home screen with Mini, Midi, and Maxi sizes.";
+  mount.appendChild(lead);
 
-    <div class="widgets-tab-bar" role="tablist" aria-label="Widget size previews">
-      <button type="button" class="widgets-tab-btn${activeWidgetSize === "small" ? " is-active" : ""}" data-wsize="small">Mini (2×2)</button>
-      <button type="button" class="widgets-tab-btn${activeWidgetSize === "medium" ? " is-active" : ""}" data-wsize="medium">Midi (4×2)</button>
-      <button type="button" class="widgets-tab-btn${activeWidgetSize === "large" ? " is-active" : ""}" data-wsize="large">Maxi (4×4)</button>
-    </div>
+  const ctaBox = document.createElement("div");
+  ctaBox.className = "widgets-cta-box";
 
-    <div class="widgets-preview-stage" id="widgetsPreviewStage">
-      ${renderWidgetPreviewCard(activeWidgetSize)}
-    </div>
+  const ctaInfo = document.createElement("div");
+  ctaInfo.className = "widgets-cta-info";
+  const ctaH3 = document.createElement("h3");
+  ctaH3.textContent = "Connect to Scriptable on iPhone";
+  const ctaP = document.createElement("p");
+  ctaP.textContent = widgetToken
+    ? "Authenticated with your Picker account. 1-tap install directly into Scriptable, or copy the widget script."
+    : "1-tap install directly into Scriptable, or copy the widget script to set it up manually.";
+  ctaInfo.append(ctaH3, ctaP);
 
-    <div class="widgets-steps">
-      <h4>How to add to your Home Screen:</h4>
-      <ol>
-        <li>Tap <strong>Install in Scriptable</strong> above (or install free from the App Store if you haven't yet).</li>
-        <li>On your iPhone Home Screen, <strong>long-press any empty area</strong> until icons wiggle, then tap the <strong>+</strong> button in the top corner.</li>
-        <li>Search for <strong>Scriptable</strong>, choose <strong>Small</strong>, <strong>Medium</strong>, or <strong>Large</strong>, and tap <strong>Add Widget</strong>.</li>
-        <li>Tap the widget on your home screen, set <em>Script</em> to <strong>Picker</strong>, and set <em>When Interacting</em> to <strong>Open URL</strong>.</li>
-      </ol>
-    </div>
-  `;
+  const ctaButtons = document.createElement("div");
+  ctaButtons.className = "widgets-cta-buttons";
 
-  mount.querySelectorAll("[data-wsize]").forEach((btn) => {
+  const launchBtn = document.createElement("a");
+  launchBtn.className = "primary-button";
+  launchBtn.id = "widgetsScriptableLaunchBtn";
+  launchBtn.href = scriptableUrl;
+  launchBtn.textContent = "Install in Scriptable";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "secondary-button";
+  copyBtn.id = "widgetsCopyScriptBtn";
+  copyBtn.textContent = "Copy script";
+
+  ctaButtons.append(launchBtn, copyBtn);
+  ctaBox.append(ctaInfo, ctaButtons);
+  mount.appendChild(ctaBox);
+
+  const tabBar = document.createElement("div");
+  tabBar.className = "widgets-tab-bar";
+  tabBar.setAttribute("role", "tablist");
+  tabBar.setAttribute("aria-label", "Widget size previews");
+
+  const tabDefs = [
+    { size: "small", label: "Mini (2×2)" },
+    { size: "medium", label: "Midi (4×2)" },
+    { size: "large", label: "Maxi (4×4)" },
+  ];
+  tabDefs.forEach(({ size, label }) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `widgets-tab-btn${activeWidgetSize === size ? " is-active" : ""}`;
+    btn.dataset.wsize = size;
+    btn.textContent = label;
+    tabBar.appendChild(btn);
+  });
+  mount.appendChild(tabBar);
+
+  const stage = document.createElement("div");
+  stage.className = "widgets-preview-stage";
+  stage.id = "widgetsPreviewStage";
+  stage.appendChild(renderWidgetPreviewElement(activeWidgetSize));
+  mount.appendChild(stage);
+
+  const steps = document.createElement("div");
+  steps.className = "widgets-steps";
+  const stepsH4 = document.createElement("h4");
+  stepsH4.textContent = "How to add to your Home Screen:";
+  const ol = document.createElement("ol");
+  const stepItems = [
+    "Tap Install in Scriptable above (or install free from the App Store if you haven't yet).",
+    "On your iPhone Home Screen, long-press any empty area until icons wiggle, then tap the + button in the top corner.",
+    "Search for Scriptable, choose Small, Medium, or Large, and tap Add Widget.",
+    "Tap the widget on your home screen, set Script to Picker, and set When Interacting to Open URL.",
+  ];
+  stepItems.forEach((text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    ol.appendChild(li);
+  });
+  steps.append(stepsH4, ol);
+
+  const platformNote = document.createElement("p");
+  platformNote.className = "widgets-platform-note hint";
+  platformNote.style.marginTop = "12px";
+  platformNote.textContent = "Android & other platforms: Use your widget token or JSON endpoint with any custom widget reader app.";
+  steps.appendChild(platformNote);
+
+  mount.appendChild(steps);
+
+  tabBar.querySelectorAll("[data-wsize]").forEach((btn) => {
     btn.addEventListener("click", () => {
       activeWidgetSize = btn.dataset.wsize;
-      mount.querySelectorAll("[data-wsize]").forEach((b) => b.classList.toggle("is-active", b === btn));
-      const stage = mount.querySelector("#widgetsPreviewStage");
-      if (stage) stage.innerHTML = renderWidgetPreviewCard(activeWidgetSize);
+      tabBar.querySelectorAll("[data-wsize]").forEach((b) => b.classList.toggle("is-active", b === btn));
+      stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize));
     });
   });
 
-  const copyBtn = mount.querySelector("#widgetsCopyScriptBtn");
-  copyBtn?.addEventListener("click", async () => {
+  copyBtn.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(scriptCode);
       copyBtn.textContent = "Copied!";

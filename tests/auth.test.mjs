@@ -501,3 +501,107 @@ test("per-user changes across app state and feeds persist across logout and logi
     assert.equal(restoredFeeds.dismissedDiscoverInvite, true, kind);
   }
 });
+
+test("widget latest endpoint authenticates with widget token, loads configured feeds, resolves feed titles, and handles nonnumeric limits", async () => {
+  const store = createMemoryAccountStore();
+  const base = "http://localhost:4173";
+  let fetchCallCount = 0;
+  const mockRssXml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Tech News</title>
+    <link>https://technews.example</link>
+    <item>
+      <title>Latest Tech Breakthrough</title>
+      <link>https://technews.example/breakthrough</link>
+      <pubDate>Sun, 08 Nov 2026 12:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>`;
+
+  const customFetch = async (url) => {
+    fetchCallCount++;
+    if (url === "https://technews.example/feed.xml") {
+      return new Response(mockRssXml, { status: 200, headers: { "content-type": "application/xml" } });
+    }
+    return new Response("Not found", { status: 404 });
+  };
+
+  const call = (route, options = {}) => handleAuthRequest(new Request(`${base}${route}`, options), { store, fetchImpl: customFetch });
+
+  // 1. Unauthenticated request to /api/widget/token returns 401
+  const unauthTokRes = await call("/api/widget/token");
+  assert.equal(unauthTokRes.status, 401);
+
+  // 2. Unauthenticated request to /api/widget/latest returns 401
+  const unauthLatestRes = await call("/api/widget/latest");
+  assert.equal(unauthLatestRes.status, 401);
+
+  // 3. Register user and save feed library
+  const regRes = await call("/api/auth/register", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "widget-test@example.com", password: "Password123!", name: "Widget User" }),
+  });
+  const cookie = regRes.headers.get("set-cookie").split(";")[0];
+
+  // Configure feed library with:
+  // - a configured feed (feedId: "feed-tech", url: "https://technews.example/feed.xml", title: "Tech News")
+  // - a savedItem without author that belongs to "feed-tech"
+  // - an archived item that should be omitted
+  await call("/api/feeds/library", {
+    method: "PUT",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({
+      feeds: [{ id: "feed-tech", url: "https://technews.example/feed.xml", title: "Tech News" }],
+      savedItems: [
+        { id: "item-saved-1", feedId: "feed-tech", title: "Saved Post Without Author", link: "https://technews.example/post-1", publishedAt: "2026-11-08T10:00:00Z" },
+        { id: "item-archived-1", feedId: "feed-tech", title: "Archived Old Post", link: "https://technews.example/post-2", publishedAt: "2026-11-08T11:00:00Z" },
+      ],
+      archived: { "item-archived-1": "2026-11-08T11:30:00Z" },
+    }),
+  });
+
+  // 4. Generate widget token
+  const tokRes = await call("/api/widget/token", { headers: { cookie } });
+  assert.equal(tokRes.status, 200);
+  const { token } = await tokRes.json();
+  assert.ok(token);
+
+  // 5. Query /api/widget/latest with ?token=... (no cookies)
+  const tokenQueryRes = await call(`/api/widget/latest?token=${encodeURIComponent(token)}`);
+  assert.equal(tokenQueryRes.status, 200);
+  const data = await tokenQueryRes.json();
+  assert.equal(data.ok, true);
+  assert.equal(data.user, "Widget User");
+
+  // Verify:
+  // - Configured feed items were fetched ("Latest Tech Breakthrough")
+  const breakthroughItem = data.items.find((i) => i.title === "Latest Tech Breakthrough");
+  assert.ok(breakthroughItem);
+  assert.equal(breakthroughItem.source, "Tech News");
+
+  // - Saved item without author resolved source to feed title "Tech News" (Comment 6)
+  const savedItem = data.items.find((i) => i.id === "item-saved-1");
+  assert.ok(savedItem);
+  assert.equal(savedItem.source, "Tech News");
+
+  // - Archived item is omitted (Comment 2)
+  const archivedItem = data.items.find((i) => i.id === "item-archived-1");
+  assert.equal(archivedItem, undefined);
+
+  // 6. Test Authorization: Bearer <token>
+  const bearerRes = await call("/api/widget/latest", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(bearerRes.status, 200);
+  const bearerData = await bearerRes.json();
+  assert.equal(bearerData.ok, true);
+  assert.equal(bearerData.count, data.count);
+
+  // 7. Nonnumeric limit fallback (Comment 4)
+  const nonnumericLimitRes = await call(`/api/widget/latest?token=${encodeURIComponent(token)}&limit=invalid_limit`);
+  assert.equal(nonnumericLimitRes.status, 200);
+  const nonnumericData = await nonnumericLimitRes.json();
+  assert.ok(nonnumericData.items.length > 0, "Invalid limit should fallback to default rather than returning empty array");
+});
