@@ -1214,7 +1214,7 @@ async function handleWidgetLatest(request, url, store, options) {
                 title: String(item.title || ""),
                 source: String(item.author || feed.title || "Feed"),
                 url: itemUrl,
-                thumbnail: String(item.image || ""),
+                thumbnail: String(item.image || item.thumbnail || ""),
                 publishedAt: String(item.publishedAt || ""),
                 type: "rss",
               });
@@ -1243,7 +1243,7 @@ async function handleWidgetLatest(request, url, store, options) {
           title: String(item.title || ""),
           source: String(item.author || feed?.title || item.feedTitle || "Feed"),
           url: itemUrl,
-          thumbnail: String(item.image || ""),
+          thumbnail: String(item.image || item.thumbnail || ""),
           publishedAt: String(item.publishedAt || ""),
           type: "rss",
         });

@@ -2639,6 +2639,17 @@ async function loadItems() {
   return [];
 }
 
+async function loadImage(url) {
+  if (!url) return null;
+  try {
+    const req = new Request(url);
+    req.timeoutInterval = 4;
+    return await req.loadImage();
+  } catch (e) {
+    return null;
+  }
+}
+
 function timeAgo(dateStr) {
   const t = Date.parse(dateStr || 0);
   if (!t) return "";
@@ -2665,7 +2676,7 @@ async function createWidget() {
   brand.textColor = COLORS.accent;
   brand.font = Font.blackSystemFont(11);
   hdr.addSpacer();
-  const tag = hdr.addText(items.length ? "LATEST" : "SYNC");
+  const tag = hdr.addText(items.length ? (family === "large" ? "5 POSTS" : "LATEST") : "SYNC");
   tag.textColor = COLORS.muted;
   tag.font = Font.semiboldSystemFont(9);
 
@@ -2687,66 +2698,130 @@ async function createWidget() {
     return widget;
   }
 
+  const count = family === "large" ? 5 : family === "medium" ? 2 : 1;
+  const displayItems = items.slice(0, count);
+  const images = await Promise.all(displayItems.map((p) => p.thumbnail ? loadImage(p.thumbnail) : Promise.resolve(null)));
+
   if (family === "small") {
-    const p = items[0] || {};
-    const src = widget.addText((p.source || "Picker").toUpperCase());
-    src.textColor = COLORS.accent;
-    src.font = Font.boldSystemFont(10);
-    widget.addSpacer(2);
+    const p = displayItems[0] || {};
+    const img = images[0];
+
+    if (img) {
+      const topRow = widget.addStack();
+      topRow.layoutHorizontally();
+      topRow.centerAlignContent();
+
+      const metaCol = topRow.addStack();
+      metaCol.layoutVertically();
+      const src = metaCol.addText((p.source || "Picker").toUpperCase());
+      src.textColor = COLORS.accent;
+      src.font = Font.boldSystemFont(9);
+      metaCol.addSpacer(2);
+      const tm = metaCol.addText(timeAgo(p.publishedAt));
+      tm.textColor = COLORS.muted;
+      tm.font = Font.systemFont(9);
+
+      topRow.addSpacer();
+      const imgWidget = topRow.addImage(img);
+      imgWidget.imageSize = new Size(38, 38);
+      imgWidget.cornerRadius = 8;
+      imgWidget.applyFillingContentMode();
+    } else {
+      const src = widget.addText((p.source || "Picker").toUpperCase());
+      src.textColor = COLORS.accent;
+      src.font = Font.boldSystemFont(9);
+      widget.addSpacer(2);
+      const tm = widget.addText(timeAgo(p.publishedAt));
+      tm.textColor = COLORS.muted;
+      tm.font = Font.systemFont(9);
+    }
+
+    widget.addSpacer(6);
     const title = widget.addText(p.title || "No posts yet");
     title.textColor = COLORS.ink;
     title.font = Font.boldSystemFont(12);
     title.lineLimit = 3;
-    widget.addSpacer();
-    const time = widget.addText(timeAgo(p.publishedAt));
-    time.textColor = COLORS.muted;
-    time.font = Font.systemFont(10);
     if (p.url) widget.url = p.url;
   } else if (family === "medium") {
-    const limit = Math.min(items.length, 2);
+    const limit = displayItems.length;
     for (let i = 0; i < limit; i++) {
-      const p = items[i];
+      const p = displayItems[i];
       const row = widget.addStack();
-      row.layoutVertically();
+      row.layoutHorizontally();
+      row.centerAlignContent();
       if (p.url) row.url = p.url;
-      const meta = row.addStack();
+
+      const copyCol = row.addStack();
+      copyCol.layoutVertically();
+
+      const meta = copyCol.addStack();
       meta.layoutHorizontally();
-      const s = meta.addText(p.source || "Feed");
+      meta.centerAlignContent();
+      const s = meta.addText((p.source || "Feed").toUpperCase());
       s.textColor = COLORS.accent;
-      s.font = Font.boldSystemFont(10);
+      s.font = Font.boldSystemFont(9);
       meta.addSpacer();
       const tm = meta.addText(timeAgo(p.publishedAt));
       tm.textColor = COLORS.muted;
-      tm.font = Font.systemFont(10);
-      row.addSpacer(2);
-      const title = row.addText(p.title || "");
+      tm.font = Font.systemFont(9);
+
+      copyCol.addSpacer(2);
+      const title = copyCol.addText(p.title || "");
       title.textColor = COLORS.ink;
       title.font = Font.semiboldSystemFont(12);
-      title.lineLimit = 1;
+      title.lineLimit = 2;
+
+      const img = images[i];
+      if (img) {
+        row.addSpacer(10);
+        const imgWidget = row.addImage(img);
+        imgWidget.imageSize = new Size(44, 44);
+        imgWidget.cornerRadius = 8;
+        imgWidget.applyFillingContentMode();
+      }
+
       if (i < limit - 1) widget.addSpacer(8);
     }
   } else {
-    const limit = Math.min(items.length, 5);
+    // Large / Maxi: exactly 5 posts with thumbnails
+    const limit = displayItems.length;
     for (let i = 0; i < limit; i++) {
-      const p = items[i];
+      const p = displayItems[i];
       const row = widget.addStack();
-      row.layoutVertically();
+      row.layoutHorizontally();
+      row.centerAlignContent();
       if (p.url) row.url = p.url;
-      const meta = row.addStack();
+
+      const copyCol = row.addStack();
+      copyCol.layoutVertically();
+
+      const meta = copyCol.addStack();
       meta.layoutHorizontally();
-      const s = meta.addText(p.source || "Feed");
+      meta.centerAlignContent();
+      const s = meta.addText((p.source || "Feed").toUpperCase());
       s.textColor = COLORS.accent;
-      s.font = Font.boldSystemFont(10);
+      s.font = Font.boldSystemFont(9);
       meta.addSpacer();
       const tm = meta.addText(timeAgo(p.publishedAt));
       tm.textColor = COLORS.muted;
-      tm.font = Font.systemFont(10);
-      row.addSpacer(1);
-      const title = row.addText(p.title || "");
+      tm.font = Font.systemFont(9);
+
+      copyCol.addSpacer(1);
+      const title = copyCol.addText(p.title || "");
       title.textColor = COLORS.ink;
-      title.font = Font.semiboldSystemFont(12);
-      title.lineLimit = 1;
-      if (i < limit - 1) widget.addSpacer(6);
+      title.font = Font.semiboldSystemFont(11);
+      title.lineLimit = 2;
+
+      const img = images[i];
+      if (img) {
+        row.addSpacer(8);
+        const imgWidget = row.addImage(img);
+        imgWidget.imageSize = new Size(40, 40);
+        imgWidget.cornerRadius = 8;
+        imgWidget.applyFillingContentMode();
+      }
+
+      if (i < limit - 1) widget.addSpacer(5);
     }
   }
 
@@ -2779,9 +2854,13 @@ function createPreviewHeader(badgeText) {
   return hdr;
 }
 
-function createPreviewRow(sourceText, timeText, titleText) {
+function createPreviewRow(sourceText, timeText, titleText, thumbUrl) {
   const row = document.createElement("div");
-  row.className = "w-md-row";
+  row.className = "w-row";
+
+  const content = document.createElement("div");
+  content.className = "w-row-content";
+
   const meta = document.createElement("div");
   meta.className = "w-md-meta";
   const s = document.createElement("span");
@@ -2791,10 +2870,24 @@ function createPreviewRow(sourceText, timeText, titleText) {
   tm.className = "w-md-time";
   tm.textContent = timeText;
   meta.append(s, tm);
+
   const p = document.createElement("p");
-  p.className = "w-md-title";
+  p.className = "w-row-title";
   p.textContent = titleText;
-  row.append(meta, p);
+  content.append(meta, p);
+
+  row.appendChild(content);
+
+  if (thumbUrl) {
+    const img = document.createElement("img");
+    img.className = "w-row-thumb";
+    img.src = thumbUrl;
+    img.alt = "";
+    img.loading = "lazy";
+    img.onerror = () => { img.style.display = "none"; };
+    row.appendChild(img);
+  }
+
   return row;
 }
 
@@ -2804,71 +2897,109 @@ function renderWidgetPreviewElement(size) {
 
   if (size === "small") {
     shell.appendChild(createPreviewHeader("LATEST"));
-    const body = document.createElement("div");
-    body.className = "w-sm-body";
+
+    const top = document.createElement("div");
+    top.className = "w-sm-top";
+
+    const meta = document.createElement("div");
+    meta.className = "w-sm-body";
     const src = document.createElement("span");
     src.className = "w-sm-source";
-    src.textContent = "Alex Gear & Tech";
-    const title = document.createElement("p");
-    title.className = "w-sm-title";
-    title.textContent = "Dell Alienware AW3426DW QD-OLED Review: 4 Years In The Making";
-    body.append(src, title);
+    src.textContent = "IndieWire";
     const foot = document.createElement("span");
     foot.className = "w-sm-foot";
-    foot.textContent = "34m ago";
-    shell.append(body, foot);
+    foot.textContent = "44m ago";
+    meta.append(src, foot);
+
+    const img = document.createElement("img");
+    img.className = "w-sm-thumb";
+    img.src = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80";
+    img.alt = "";
+    img.loading = "lazy";
+    img.onerror = () => { img.style.display = "none"; };
+
+    top.append(meta, img);
+    shell.appendChild(top);
+
+    const title = document.createElement("p");
+    title.className = "w-sm-title";
+    title.textContent = "Box Office: 'Godzilla Minus Zero' Thunders with $31.6 Million";
+    shell.appendChild(title);
+
     return shell;
   }
 
   if (size === "large") {
-    shell.appendChild(createPreviewHeader("LATEST POSTS"));
+    shell.appendChild(createPreviewHeader("5 NEW POSTS"));
     const list = document.createElement("div");
     list.className = "w-lg-list";
     const items = [
-      { source: "Alex Gear & Tech", time: "34m ago", title: "Dell Alienware AW3426DW QD-OLED Review. You Waited FOUR Years!" },
-      { source: "Electrek", time: "1h ago", title: "BYD sold more EVs last month than the US did all year, topping 300,000" },
-      { source: "Collider", time: "2h ago", title: "Disney+'s 'Percy Jackson' Season 3 Trailer Officially Revealed" },
-      { source: "Duncan Rogoff", time: "4h ago", title: "Auto-dispatching work without human intervention" },
-      { source: "MacRumors", time: "5h ago", title: "Apple M4 Mac Mini tear-down reveals modular SSD storage upgradeability" },
+      {
+        source: "IndieWire",
+        time: "44m ago",
+        title: "Box Office: 'Godzilla Minus Zero' Thunders with $31.6 Million",
+        thumb: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80",
+      },
+      {
+        source: "Engadget",
+        time: "1h ago",
+        title: "How much did an iPhone cost in 2007 vs. 2026? The gap is narrowing",
+        thumb: "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=100&auto=format&fit=crop&q=80",
+      },
+      {
+        source: "Alex Gear & Tech",
+        time: "2h ago",
+        title: "Dell Alienware AW3426DW QD-OLED Review. 4 Years in the Making!",
+        thumb: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=100&auto=format&fit=crop&q=80",
+      },
+      {
+        source: "Electrek",
+        time: "3h ago",
+        title: "BYD sold more EVs last month than the US did all year, topping 300,000",
+        thumb: "https://images.unsplash.com/photo-1536700503339-1e4b06520771?w=100&auto=format&fit=crop&q=80",
+      },
+      {
+        source: "9to5Mac",
+        time: "5h ago",
+        title: "Apple Arcade adds four games, including Crossy Road Rush and NBA 2K",
+        thumb: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=100&auto=format&fit=crop&q=80",
+      },
     ];
+
     items.forEach((item, index) => {
       if (index > 0) {
         const sep = document.createElement("div");
         sep.className = "w-separator";
         list.appendChild(sep);
       }
-      const row = document.createElement("div");
-      row.className = "w-lg-row";
-      const meta = document.createElement("div");
-      meta.className = "w-md-meta";
-      const s = document.createElement("span");
-      s.className = "w-md-source";
-      s.textContent = item.source;
-      const tm = document.createElement("span");
-      tm.className = "w-md-time";
-      tm.textContent = item.time;
-      meta.append(s, tm);
-      const p = document.createElement("p");
-      p.className = "w-lg-title";
-      p.textContent = item.title;
-      row.append(meta, p);
-      list.appendChild(row);
+      list.appendChild(createPreviewRow(item.source, item.time, item.title, item.thumb));
     });
+
     shell.appendChild(list);
     return shell;
   }
 
-  // medium (default)
+  // medium (default): 2 posts with thumbnails
   shell.appendChild(createPreviewHeader("2 NEW POSTS"));
   const wrapper = document.createElement("div");
   wrapper.style.display = "flex";
   wrapper.style.flexDirection = "column";
   wrapper.style.gap = "8px";
 
-  const row1 = createPreviewRow("Alex Gear & Tech", "34m ago", "Dell Alienware AW3426DW QD-OLED Review. You Waited FOUR Years!");
+  const row1 = createPreviewRow(
+    "IndieWire",
+    "44m ago",
+    "Box Office: 'Godzilla Minus Zero' Thunders with $31.6 Million",
+    "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80"
+  );
   const sep = document.createElement("div");
   sep.className = "w-separator";
-  const row2 = createPreviewRow("Electrek", "1h ago", "BYD sold more EVs last month than the US did all year, topping 300,000");
+  const row2 = createPreviewRow(
+    "Engadget",
+    "1h ago",
+    "How much did an iPhone cost in 2007 vs. 2026? The gap is narrowing",
+    "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=100&auto=format&fit=crop&q=80"
+  );
 
   wrapper.append(row1, sep, row2);
   shell.appendChild(wrapper);
