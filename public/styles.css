@@ -11672,6 +11672,30 @@ button[value="close"]:active {
   border-radius: 14px;
 }
 
+.widgets-platform-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.3rem;
+}
+
+.widgets-platform-btn {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 0.35rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.widgets-platform-btn.is-active {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+
 .widgets-steps h4 {
   font-size: 0.92rem;
   margin-bottom: 0.3rem;

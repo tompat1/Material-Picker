@@ -3039,7 +3039,7 @@ async function openWidgetsModal() {
 
   const lead = document.createElement("p");
   lead.className = "widgets-lead";
-  lead.textContent = "Get live video & feed updates on your iPhone home screen with Mini, Midi, and Maxi sizes.";
+  lead.textContent = "Get live video & feed updates on your iPhone Home Screen and Mac Desktop with Mini, Midi, and Maxi sizes.";
   mount.appendChild(lead);
 
   const ctaBox = document.createElement("div");
@@ -3048,11 +3048,11 @@ async function openWidgetsModal() {
   const ctaInfo = document.createElement("div");
   ctaInfo.className = "widgets-cta-info";
   const ctaH3 = document.createElement("h3");
-  ctaH3.textContent = "Connect to Scriptable on iPhone";
+  ctaH3.textContent = "Connect to Scriptable (iPhone & Mac)";
   const ctaP = document.createElement("p");
   ctaP.textContent = widgetToken
-    ? "Authenticated with your Picker account. 1-tap install directly into Scriptable, or copy the widget script."
-    : "1-tap install directly into Scriptable, or copy the widget script to set it up manually.";
+    ? "Authenticated with your Picker account. 1-tap install on iPhone, or copy the widget script. Works seamlessly on both iOS and macOS Desktop."
+    : "1-tap install on iPhone, or copy the widget script. Works on iOS Home Screen and macOS Desktop.";
   ctaInfo.append(ctaH3, ctaP);
 
   const ctaButtons = document.createElement("div");
@@ -3123,28 +3123,76 @@ async function openWidgetsModal() {
   stage.appendChild(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme));
   mount.appendChild(stage);
 
+  let activeGuidePlatform = "iphone";
+
   const steps = document.createElement("div");
   steps.className = "widgets-steps";
-  const stepsH4 = document.createElement("h4");
-  stepsH4.textContent = "How to add to your Home Screen:";
-  const ol = document.createElement("ol");
-  const stepItems = [
-    "Tap Install in Scriptable above (or install free from the App Store if you haven't yet).",
-    "On your iPhone Home Screen, long-press any empty area until icons wiggle, then tap the + button in the top corner.",
-    "Search for Scriptable, choose Small, Medium, or Large, and tap Add Widget.",
-    "Tap the widget on your home screen, set Script to Picker, and set When Interacting to Open URL.",
+
+  const guideTabs = document.createElement("div");
+  guideTabs.className = "widgets-platform-tabs";
+  guideTabs.setAttribute("role", "tablist");
+  guideTabs.setAttribute("aria-label", "Widget platform instructions");
+
+  const guideDefs = [
+    { id: "iphone", label: "iPhone Home Screen" },
+    { id: "mac", label: "Mac Desktop" },
   ];
-  stepItems.forEach((text) => {
-    const li = document.createElement("li");
-    li.textContent = text;
-    ol.appendChild(li);
+  guideDefs.forEach(({ id, label }) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `widgets-platform-btn${activeGuidePlatform === id ? " is-active" : ""}`;
+    btn.dataset.guidePlatform = id;
+    btn.textContent = label;
+    guideTabs.appendChild(btn);
   });
-  steps.append(stepsH4, ol);
+  steps.appendChild(guideTabs);
+
+  const guideContainer = document.createElement("div");
+  guideContainer.id = "widgetsGuideContainer";
+
+  function renderGuide(platform) {
+    const wrap = document.createElement("div");
+    const h4 = document.createElement("h4");
+    const ol = document.createElement("ol");
+
+    if (platform === "mac") {
+      h4.textContent = "How to add to your Mac Desktop:";
+      const macSteps = [
+        "First complete the iPhone setup using the iPhone tab above (or install free Scriptable from the Mac App Store).",
+        "On your Mac, right-click any empty desktop space and select Edit Widgets…",
+        "In the widget gallery sidebar, select Scriptable (from iPhone).",
+        "Choose Small, Medium, or Large (Maxi) and drag it straight onto your Mac desktop or Notification Center.",
+      ];
+      macSteps.forEach((text) => {
+        const li = document.createElement("li");
+        li.textContent = text;
+        ol.appendChild(li);
+      });
+    } else {
+      h4.textContent = "How to add to your iPhone Home Screen:";
+      const iphoneSteps = [
+        "Tap Install in Scriptable above (or install free from the App Store if you haven't yet).",
+        "On your iPhone Home Screen, long-press any empty area until icons wiggle, then tap the + button in the top corner.",
+        "Search for Scriptable, choose Small, Medium, or Large, and tap Add Widget.",
+        "Tap the widget on your home screen, set Script to Picker, and set When Interacting to Open URL.",
+      ];
+      iphoneSteps.forEach((text) => {
+        const li = document.createElement("li");
+        li.textContent = text;
+        ol.appendChild(li);
+      });
+    }
+    wrap.append(h4, ol);
+    return wrap;
+  }
+
+  guideContainer.appendChild(renderGuide(activeGuidePlatform));
+  steps.appendChild(guideContainer);
 
   const themeNote = document.createElement("p");
   themeNote.className = "widgets-platform-note hint";
   themeNote.style.marginTop = "12px";
-  themeNote.textContent = "Automatic Appearance: The installed widget uses iOS dynamic colors and automatically matches your iPhone's system Light and Dark mode without any manual setup.";
+  themeNote.textContent = "Automatic Appearance: The widget automatically adapts to system Light & Dark mode on both iPhone and Mac desktop using native dynamic colors.";
   steps.appendChild(themeNote);
 
   const platformNote = document.createElement("p");
@@ -3154,6 +3202,14 @@ async function openWidgetsModal() {
   steps.appendChild(platformNote);
 
   mount.appendChild(steps);
+
+  guideTabs.querySelectorAll("[data-guide-platform]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeGuidePlatform = btn.dataset.guidePlatform;
+      guideTabs.querySelectorAll("[data-guide-platform]").forEach((b) => b.classList.toggle("is-active", b === btn));
+      guideContainer.replaceChildren(renderGuide(activeGuidePlatform));
+    });
+  });
 
   tabBar.querySelectorAll("[data-wsize]").forEach((btn) => {
     btn.addEventListener("click", () => {
