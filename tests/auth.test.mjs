@@ -617,14 +617,19 @@ test("Scriptable widget code generation produces valid, error-free JavaScript", 
   const generateScriptableCode = eval(fnCode);
 
   const testEndpoint = "https://picker.rynell.org/api/widget/latest?token=test-widget-token-123";
-  const script = generateScriptableCode(testEndpoint, "test-widget-token-123");
+  const script = generateScriptableCode(testEndpoint, "test-widget-token-123", "large");
 
   assert.ok(script.includes(testEndpoint));
   assert.ok(script.includes("test-widget-token-123"));
+  assert.ok(script.includes('PREFERRED_SIZE = "large"'));
+  assert.ok(script.includes("presentLarge()"));
   assert.ok(!script.includes("replace(//"), "Must not contain broken unescaped regex literal in template string");
 
-  // Validate JavaScript syntax parses cleanly (including async/await)
-  assert.doesNotThrow(() => {
-    new Function("async () => {\n" + script + "\n}");
-  }, "Generated Scriptable code must be 100% syntactically valid JavaScript");
+  // Validate JavaScript syntax parses cleanly for all widget sizes
+  for (const s of ["small", "medium", "large"]) {
+    const sCode = generateScriptableCode(testEndpoint, "test-widget-token-123", s);
+    assert.doesNotThrow(() => {
+      new Function("async () => {\n" + sCode + "\n}");
+    }, `Generated Scriptable code for ${s} must be 100% syntactically valid JavaScript`);
+  }
 });

@@ -2607,12 +2607,13 @@ function restoreRemovedYouTubeChannels(targetId) {
   }
 }
 
-function generateScriptableCode(endpointUrl, widgetToken = "") {
+function generateScriptableCode(endpointUrl, widgetToken = "", initialSize = "medium") {
   return `// Scriptable Widget for Picker
 // Supports Small (Mini), Medium (Midi), and Large (Maxi) sizes
 
 const ENDPOINT_URL = "${endpointUrl}";
 const WIDGET_TOKEN = "${widgetToken}";
+const PREFERRED_SIZE = "${initialSize}"; // "small", "medium", or "large"
 
 const COLORS = {
   bg: Color.dynamic(new Color("#fbf9f6"), new Color("#1c1511")),
@@ -2621,6 +2622,19 @@ const COLORS = {
   muted: Color.dynamic(new Color("#76675a"), new Color("#a89a8c")),
   border: Color.dynamic(new Color("#e8e0d5"), new Color("#3d2f28")),
 };
+
+function getWidgetFamily() {
+  if (config.runsInWidget && config.widgetFamily) {
+    return config.widgetFamily;
+  }
+  if (typeof args !== "undefined" && args && args.widgetParameter) {
+    const p = String(args.widgetParameter).toLowerCase().trim();
+    if (p.includes("maxi") || p.includes("large") || p === "4x4") return "large";
+    if (p.includes("mini") || p.includes("small") || p === "2x2") return "small";
+    if (p.includes("midi") || p.includes("medium") || p === "4x2") return "medium";
+  }
+  return PREFERRED_SIZE || "medium";
+}
 
 async function loadItems() {
   try {
@@ -2666,7 +2680,7 @@ async function createWidget() {
   const items = await loadItems();
   const widget = new ListWidget();
   widget.backgroundColor = COLORS.bg;
-  const family = config.widgetFamily || "medium";
+  const family = getWidgetFamily();
 
   // Header
   const hdr = widget.addStack();
@@ -2829,11 +2843,18 @@ async function createWidget() {
   return widget;
 }
 
+const family = getWidgetFamily();
 const w = await createWidget();
 if (config.runsInWidget) {
   Script.setWidget(w);
 } else {
-  w.presentMedium();
+  if (family === "large") {
+    await w.presentLarge();
+  } else if (family === "small") {
+    await w.presentSmall();
+  } else {
+    await w.presentMedium();
+  }
 }
 Script.complete();
 `;
@@ -3032,8 +3053,11 @@ async function openWidgetsModal() {
     widgetUrlObj.searchParams.set("token", widgetToken);
   }
   const widgetEndpoint = widgetUrlObj.toString();
-  const scriptCode = generateScriptableCode(widgetEndpoint, widgetToken);
-  const scriptableUrl = `scriptable:///add?scriptName=${encodeURIComponent("Picker")}&script=${encodeURIComponent(scriptCode)}`;
+  let scriptCode = generateScriptableCode(widgetEndpoint, widgetToken, activeWidgetSize);
+
+  function updateScriptCode() {
+    scriptCode = generateScriptableCode(widgetEndpoint, widgetToken, activeWidgetSize);
+  }
 
   mount.replaceChildren();
 
@@ -3160,6 +3184,7 @@ async function openWidgetsModal() {
     const wrap = document.createElement("div");
     const h4 = document.createElement("h4");
     const ol = document.createElement("ol");
+    const sizeName = activeWidgetSize === "large" ? "Large (Maxi 4×4)" : activeWidgetSize === "small" ? "Small (Mini 2×2)" : "Medium (Midi 4×2)";
 
     if (platform === "mac") {
       h4.textContent = "How to add to your Mac Desktop:";
@@ -3167,7 +3192,7 @@ async function openWidgetsModal() {
         "First complete the iPhone setup using the iPhone tab above (or install free Scriptable from the Mac App Store, paste the script, and tap Done).",
         "On your Mac, right-click any empty desktop space and select Edit Widgets…",
         "In the widget gallery sidebar, select Scriptable (or Scriptable from iPhone).",
-        "Choose Small, Medium, or Large (Maxi) and drag it straight onto your Mac desktop or Notification Center.",
+        `Choose ${sizeName} and drag it straight onto your Mac desktop or Notification Center.`,
       ];
       macSteps.forEach((text) => {
         const li = document.createElement("li");
@@ -3180,8 +3205,8 @@ async function openWidgetsModal() {
         "Tap Install in Scriptable above (the widget script is automatically copied to your clipboard and Scriptable opens a new script).",
         "In Scriptable, tap the blank editor area, select Paste, and tap Done in the top corner.",
         "On your iPhone Home Screen, long-press any empty area until icons jiggle, then tap the + button in the top corner.",
-        "Search for Scriptable, choose Small (Mini), Medium (Midi), or Large (Maxi), and tap Add Widget.",
-        "Tap the widget on your home screen, set Script to Picker (or Untitled Script), and set When Interacting to Open URL.",
+        `Search for Scriptable, swipe to choose ${sizeName}, and tap Add Widget.`,
+        "Tap the new widget on your home screen, set Script to Picker (or Untitled Script), and set When Interacting to Open URL.",
       ];
       iphoneSteps.forEach((text) => {
         const li = document.createElement("li");
@@ -3223,6 +3248,8 @@ async function openWidgetsModal() {
       activeWidgetSize = btn.dataset.wsize;
       tabBar.querySelectorAll("[data-wsize]").forEach((b) => b.classList.toggle("is-active", b === btn));
       stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme));
+      updateScriptCode();
+      guideContainer.replaceChildren(renderGuide(activeGuidePlatform));
     });
   });
 
