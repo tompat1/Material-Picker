@@ -3075,8 +3075,8 @@ async function openWidgetsModal() {
   ctaH3.textContent = "Connect to Scriptable (iPhone & Mac)";
   const ctaP = document.createElement("p");
   ctaP.textContent = widgetToken
-    ? "Authenticated with your Picker account. Tap install to copy and launch Scriptable, or copy / download the script. Works seamlessly on both iOS and macOS Desktop."
-    : "Tap install to copy and launch Scriptable, or copy / download the script. Works on iOS Home Screen and macOS Desktop.";
+    ? "Authenticated with your Picker account. Tap install to copy the code and launch Scriptable—then simply paste into the new script window and tap Done."
+    : "Tap install to copy the code and launch Scriptable—then simply paste into the new script window and tap Done.";
   ctaInfo.append(ctaH3, ctaP);
 
   const ctaButtons = document.createElement("div");
@@ -3101,7 +3101,22 @@ async function openWidgetsModal() {
   downloadBtn.textContent = "Download .js";
 
   ctaButtons.append(launchBtn, copyBtn, downloadBtn);
-  ctaBox.append(ctaInfo, ctaButtons);
+
+  const pasteCallout = document.createElement("p");
+  pasteCallout.className = "widgets-paste-callout hint";
+  pasteCallout.style.marginTop = "0.75rem";
+  pasteCallout.style.fontSize = "0.82rem";
+  pasteCallout.style.lineHeight = "1.4";
+  pasteCallout.style.color = "var(--muted)";
+  pasteCallout.style.width = "100%";
+
+  const strongSpan = document.createElement("strong");
+  strongSpan.textContent = "When Scriptable opens: ";
+  const textSpan = document.createElement("span");
+  textSpan.textContent = "Tap inside the blank script editor, select Paste, and tap Done in the top corner.";
+  pasteCallout.append(strongSpan, textSpan);
+
+  ctaBox.append(ctaInfo, ctaButtons, pasteCallout);
   mount.appendChild(ctaBox);
 
   const controlsBar = document.createElement("div");
@@ -3202,8 +3217,8 @@ async function openWidgetsModal() {
     } else {
       h4.textContent = "How to add to your iPhone Home Screen:";
       const iphoneSteps = [
-        "Tap Install in Scriptable above (the widget script is automatically copied to your clipboard and Scriptable opens a new script).",
-        "In Scriptable, tap the blank editor area, select Paste, and tap Done in the top corner.",
+        "Tap Install in Scriptable above (the widget script is automatically copied to your clipboard and Scriptable opens).",
+        "When Scriptable opens with an empty Untitled Script, tap the blank editor area, select Paste, and tap Done in the top corner.",
         "On your iPhone Home Screen, long-press any empty area until icons jiggle, then tap the + button in the top corner.",
         `Search for Scriptable, swipe to choose ${sizeName}, and tap Add Widget.`,
         "Tap the new widget on your home screen, set Script to Picker (or Untitled Script), and set When Interacting to Open URL.",
@@ -3265,13 +3280,14 @@ async function openWidgetsModal() {
     e.preventDefault();
     try {
       await navigator.clipboard.writeText(scriptCode);
-      launchBtn.textContent = "Copied! Opening…";
+      launchBtn.textContent = "Copied! Paste in Scriptable…";
+      showActionNotice(launchBtn.getBoundingClientRect(), "Script copied! Paste it in Scriptable & tap Done");
     } catch {
       // Fallback
     }
     setTimeout(() => {
       launchBtn.textContent = "Install in Scriptable";
-    }, 3000);
+    }, 4000);
     window.location.href = "scriptable:///add";
   });
 
