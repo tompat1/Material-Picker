@@ -2607,13 +2607,15 @@ function restoreRemovedYouTubeChannels(targetId) {
   }
 }
 
-function generateScriptableCode(endpointUrl, widgetToken = "", initialSize = "medium") {
+function generateScriptableCode(endpointUrl, widgetToken = "", initialSize = "medium", initialSource = "feeds") {
   return `// Scriptable Widget for Picker
 // Supports Small (Mini), Medium (Midi), and Large (Maxi) sizes
+// Supports Feeds (RSS / Feedly) and YouTube subscriptions
 
 const ENDPOINT_URL = "${endpointUrl}";
 const WIDGET_TOKEN = "${widgetToken}";
 const PREFERRED_SIZE = "${initialSize}"; // "small", "medium", or "large"
+const PREFERRED_SOURCE = "${initialSource}"; // "feeds" or "youtube"
 
 const COLORS = {
   bg: Color.dynamic(new Color("#fbf9f6"), new Color("#1c1511")),
@@ -2636,11 +2638,26 @@ function getWidgetFamily() {
   return PREFERRED_SIZE || "medium";
 }
 
+function getWidgetSource() {
+  if (typeof args !== "undefined" && args && args.widgetParameter) {
+    const p = String(args.widgetParameter).toLowerCase();
+    if (p.includes("youtube") || p.includes("video")) return "youtube";
+    if (p.includes("feed")) return "feeds";
+  }
+  return PREFERRED_SOURCE || "feeds";
+}
+
 async function loadItems() {
   try {
     let url = ENDPOINT_URL;
     if (WIDGET_TOKEN && !url.includes("token=")) {
       url += (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(WIDGET_TOKEN);
+    }
+    const source = getWidgetSource();
+    if (url.includes("source=")) {
+      url = url.replace(/source=[^&]*/, "source=" + encodeURIComponent(source));
+    } else {
+      url += (url.includes("?") ? "&" : "?") + "source=" + encodeURIComponent(source);
     }
     const req = new Request(url);
     req.timeoutInterval = 10;
@@ -2682,6 +2699,7 @@ async function createWidget() {
   widget.backgroundColor = COLORS.bg;
   widget.setPadding(14, 16, 14, 16);
   const family = getWidgetFamily();
+  const source = getWidgetSource();
 
   // Header
   const hdr = widget.addStack();
@@ -2691,7 +2709,11 @@ async function createWidget() {
   brand.textColor = COLORS.accent;
   brand.font = Font.blackSystemFont(12);
   hdr.addSpacer();
-  const tag = hdr.addText(items.length ? (family === "large" ? "5 POSTS" : "LATEST") : "SYNC");
+  const defaultBadge = source === "youtube" ? "YOUTUBE" : "FEEDS";
+  const countBadge = family === "large"
+    ? (source === "youtube" ? "5 VIDEOS" : "5 POSTS")
+    : defaultBadge;
+  const tag = hdr.addText(items.length ? countBadge : "SYNC");
   tag.textColor = COLORS.muted;
   tag.font = Font.semiboldSystemFont(9.5);
 
@@ -2700,11 +2722,15 @@ async function createWidget() {
   if (!items.length) {
     const emptyRow = widget.addStack();
     emptyRow.layoutVertically();
-    const emptyTitle = emptyRow.addText("No new updates");
+    const emptyTitle = emptyRow.addText(source === "youtube" ? "No new videos" : "No new updates");
     emptyTitle.textColor = COLORS.ink;
     emptyTitle.font = Font.boldSystemFont(family === "small" ? 11 : 13);
     emptyRow.addSpacer(3);
-    const emptySub = emptyRow.addText("Open Picker in Safari to refresh your feed.");
+    const emptySub = emptyRow.addText(
+      source === "youtube"
+        ? "Connect Google in Picker to sync your YouTube channels."
+        : "Open Picker in Safari to refresh your feed."
+    );
     emptySub.textColor = COLORS.muted;
     emptySub.font = Font.systemFont(family === "small" ? 9 : 11);
     emptySub.lineLimit = 2;
@@ -2869,6 +2895,7 @@ Script.complete();
 
 let activeWidgetSize = "medium";
 let activeWidgetTheme = "dark";
+let activeWidgetSource = "feeds";
 
 function createPreviewHeader(badgeText) {
   const hdr = document.createElement("div");
@@ -2920,12 +2947,13 @@ function createPreviewRow(sourceText, timeText, titleText, thumbUrl) {
   return row;
 }
 
-function renderWidgetPreviewElement(size, theme = activeWidgetTheme) {
+function renderWidgetPreviewElement(size, theme = activeWidgetTheme, source = activeWidgetSource) {
+  const isYouTube = source === "youtube";
   const shell = document.createElement("div");
   shell.className = `widget-card-shell widget-size-${size}${theme === "light" ? " theme-light" : ""}`;
 
   if (size === "small") {
-    shell.appendChild(createPreviewHeader("LATEST"));
+    shell.appendChild(createPreviewHeader(isYouTube ? "YOUTUBE" : "FEEDS"));
 
     const top = document.createElement("div");
     top.className = "w-sm-top";
@@ -2934,15 +2962,17 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme) {
     meta.className = "w-sm-body";
     const src = document.createElement("span");
     src.className = "w-sm-source";
-    src.textContent = "IndieWire";
+    src.textContent = isYouTube ? "MKBHD" : "IndieWire";
     const foot = document.createElement("span");
     foot.className = "w-sm-foot";
-    foot.textContent = "44m ago";
+    foot.textContent = isYouTube ? "2h ago" : "44m ago";
     meta.append(src, foot);
 
     const img = document.createElement("img");
     img.className = "w-sm-thumb";
-    img.src = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80";
+    img.src = isYouTube
+      ? "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=100&auto=format&fit=crop&q=80"
+      : "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80";
     img.alt = "";
     img.loading = "lazy";
     img.onerror = () => { img.style.display = "none"; };
@@ -2952,48 +2982,83 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme) {
 
     const title = document.createElement("p");
     title.className = "w-sm-title";
-    title.textContent = "Box Office: 'Godzilla Minus Zero' Thunders with $31.6 Million";
+    title.textContent = isYouTube
+      ? "M4 Max MacBook Pro Review: The Sweet Spot!"
+      : "Box Office: 'Godzilla Minus Zero' Thunders with $31.6 Million";
     shell.appendChild(title);
 
     return shell;
   }
 
   if (size === "large") {
-    shell.appendChild(createPreviewHeader("5 NEW POSTS"));
+    shell.appendChild(createPreviewHeader(isYouTube ? "5 NEW VIDEOS" : "5 NEW POSTS"));
     const list = document.createElement("div");
     list.className = "w-lg-list";
-    const items = [
-      {
-        source: "IndieWire",
-        time: "44m ago",
-        title: "Box Office: 'Godzilla Minus Zero' Thunders with $31.6 Million",
-        thumb: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80",
-      },
-      {
-        source: "Engadget",
-        time: "1h ago",
-        title: "How much did an iPhone cost in 2007 vs. 2026? The gap is narrowing",
-        thumb: "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=100&auto=format&fit=crop&q=80",
-      },
-      {
-        source: "Alex Gear & Tech",
-        time: "2h ago",
-        title: "Dell Alienware AW3426DW QD-OLED Review. 4 Years in the Making!",
-        thumb: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=100&auto=format&fit=crop&q=80",
-      },
-      {
-        source: "Electrek",
-        time: "3h ago",
-        title: "BYD sold more EVs last month than the US did all year, topping 300,000",
-        thumb: "https://images.unsplash.com/photo-1536700503339-1e4b06520771?w=100&auto=format&fit=crop&q=80",
-      },
-      {
-        source: "9to5Mac",
-        time: "5h ago",
-        title: "Apple Arcade adds four games, including Crossy Road Rush and NBA 2K",
-        thumb: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=100&auto=format&fit=crop&q=80",
-      },
-    ];
+    const items = isYouTube
+      ? [
+          {
+            source: "Alex Gear & Tech",
+            time: "1h ago",
+            title: "Dell Alienware AW3426DW QD-OLED Review. 4 Years in the Making!",
+            thumb: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=100&auto=format&fit=crop&q=80",
+          },
+          {
+            source: "MKBHD",
+            time: "2h ago",
+            title: "M4 Max MacBook Pro Review: The Sweet Spot!",
+            thumb: "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=100&auto=format&fit=crop&q=80",
+          },
+          {
+            source: "Dave2D",
+            time: "3h ago",
+            title: "Don't Buy the Wrong M4 Mac - Real World Testing",
+            thumb: "https://images.unsplash.com/photo-1536700503339-1e4b06520771?w=100&auto=format&fit=crop&q=80",
+          },
+          {
+            source: "The Verge",
+            time: "5h ago",
+            title: "Inside the Secret World of Smartphone Camera Sensors",
+            thumb: "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=100&auto=format&fit=crop&q=80",
+          },
+          {
+            source: "Mrwhosetheboss",
+            time: "6h ago",
+            title: "I Tested the Most Powerful Phone in the World!",
+            thumb: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=100&auto=format&fit=crop&q=80",
+          },
+        ]
+      : [
+          {
+            source: "IndieWire",
+            time: "44m ago",
+            title: "Box Office: 'Godzilla Minus Zero' Thunders with $31.6 Million",
+            thumb: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80",
+          },
+          {
+            source: "Engadget",
+            time: "1h ago",
+            title: "How much did an iPhone cost in 2007 vs. 2026? The gap is narrowing",
+            thumb: "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=100&auto=format&fit=crop&q=80",
+          },
+          {
+            source: "Alex Gear & Tech",
+            time: "2h ago",
+            title: "Dell Alienware AW3426DW QD-OLED Review. 4 Years in the Making!",
+            thumb: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=100&auto=format&fit=crop&q=80",
+          },
+          {
+            source: "Electrek",
+            time: "3h ago",
+            title: "BYD sold more EVs last month than the US did all year, topping 300,000",
+            thumb: "https://images.unsplash.com/photo-1536700503339-1e4b06520771?w=100&auto=format&fit=crop&q=80",
+          },
+          {
+            source: "9to5Mac",
+            time: "5h ago",
+            title: "Apple Arcade adds four games, including Crossy Road Rush and NBA 2K",
+            thumb: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=100&auto=format&fit=crop&q=80",
+          },
+        ];
 
     items.forEach((item, index) => {
       if (index > 0) {
@@ -3009,26 +3074,40 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme) {
   }
 
   // medium (default): 2 posts with thumbnails
-  shell.appendChild(createPreviewHeader("2 NEW POSTS"));
+  shell.appendChild(createPreviewHeader(isYouTube ? "2 NEW VIDEOS" : "2 NEW POSTS"));
   const wrapper = document.createElement("div");
   wrapper.style.display = "flex";
   wrapper.style.flexDirection = "column";
   wrapper.style.gap = "8px";
 
-  const row1 = createPreviewRow(
-    "IndieWire",
-    "44m ago",
-    "Box Office: 'Godzilla Minus Zero' Thunders with $31.6 Million",
-    "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80"
-  );
+  const row1 = isYouTube
+    ? createPreviewRow(
+        "Alex Gear & Tech",
+        "1h ago",
+        "Dell Alienware AW3426DW QD-OLED Review. 4 Years in the Making!",
+        "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=100&auto=format&fit=crop&q=80"
+      )
+    : createPreviewRow(
+        "IndieWire",
+        "44m ago",
+        "Box Office: 'Godzilla Minus Zero' Thunders with $31.6 Million",
+        "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80"
+      );
   const sep = document.createElement("div");
   sep.className = "w-separator";
-  const row2 = createPreviewRow(
-    "Engadget",
-    "1h ago",
-    "How much did an iPhone cost in 2007 vs. 2026? The gap is narrowing",
-    "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=100&auto=format&fit=crop&q=80"
-  );
+  const row2 = isYouTube
+    ? createPreviewRow(
+        "MKBHD",
+        "2h ago",
+        "M4 Max MacBook Pro Review: The Sweet Spot!",
+        "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=100&auto=format&fit=crop&q=80"
+      )
+    : createPreviewRow(
+        "Engadget",
+        "1h ago",
+        "How much did an iPhone cost in 2007 vs. 2026? The gap is narrowing",
+        "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=100&auto=format&fit=crop&q=80"
+      );
 
   wrapper.append(row1, sep, row2);
   shell.appendChild(wrapper);
@@ -3055,22 +3134,27 @@ async function openWidgetsModal() {
   }
 
   const currentOrigin = window.location.origin || "https://picker.rynell.org";
-  const widgetUrlObj = new URL("/api/widget/latest", currentOrigin);
-  if (widgetToken) {
-    widgetUrlObj.searchParams.set("token", widgetToken);
+
+  function buildWidgetEndpoint(source = activeWidgetSource) {
+    const widgetUrlObj = new URL("/api/widget/latest", currentOrigin);
+    if (widgetToken) {
+      widgetUrlObj.searchParams.set("token", widgetToken);
+    }
+    widgetUrlObj.searchParams.set("source", source);
+    return widgetUrlObj.toString();
   }
-  const widgetEndpoint = widgetUrlObj.toString();
-  let scriptCode = generateScriptableCode(widgetEndpoint, widgetToken, activeWidgetSize);
+
+  let scriptCode = generateScriptableCode(buildWidgetEndpoint(activeWidgetSource), widgetToken, activeWidgetSize, activeWidgetSource);
 
   function updateScriptCode() {
-    scriptCode = generateScriptableCode(widgetEndpoint, widgetToken, activeWidgetSize);
+    scriptCode = generateScriptableCode(buildWidgetEndpoint(activeWidgetSource), widgetToken, activeWidgetSize, activeWidgetSource);
   }
 
   mount.replaceChildren();
 
   const lead = document.createElement("p");
   lead.className = "widgets-lead";
-  lead.textContent = "Get live feed updates on your iPhone Home Screen and Mac Desktop with Mini, Midi, and Maxi sizes.";
+  lead.textContent = "Get live feed and video updates on your iPhone Home Screen and Mac Desktop with Mini, Midi, and Maxi sizes.";
   mount.appendChild(lead);
 
   const ctaBox = document.createElement("div");
@@ -3079,11 +3163,22 @@ async function openWidgetsModal() {
   const ctaInfo = document.createElement("div");
   ctaInfo.className = "widgets-cta-info";
   const ctaH3 = document.createElement("h3");
-  ctaH3.textContent = "Connect to Scriptable (iPhone & Mac)";
   const ctaP = document.createElement("p");
-  ctaP.textContent = widgetToken
-    ? "Authenticated with your Picker account. Tap install to copy the code and launch Scriptable—then simply paste into the new script window and tap Done."
-    : "Tap install to copy the code and launch Scriptable—then simply paste into the new script window and tap Done.";
+
+  function updateCtaText() {
+    if (activeWidgetSource === "youtube") {
+      ctaH3.textContent = "Connect YouTube Widget (iPhone & Mac)";
+      ctaP.textContent = widgetToken
+        ? "Configured for your YouTube subscriptions. Tap install to copy the code and launch Scriptable—then simply paste into the new script window."
+        : "Configured for your YouTube subscriptions. Sign in with Google to sync your subscribed channels.";
+    } else {
+      ctaH3.textContent = "Connect Feeds Widget (iPhone & Mac)";
+      ctaP.textContent = widgetToken
+        ? "Configured for your RSS & Feedly subscriptions. Tap install to copy the code and launch Scriptable—then simply paste into the new script window."
+        : "Tap install to copy the code and launch Scriptable—then simply paste into the new script window and tap Done.";
+    }
+  }
+  updateCtaText();
   ctaInfo.append(ctaH3, ctaP);
 
   const ctaButtons = document.createElement("div");
@@ -3129,6 +3224,24 @@ async function openWidgetsModal() {
   const controlsBar = document.createElement("div");
   controlsBar.className = "widgets-controls-bar";
 
+  const sourceBar = document.createElement("div");
+  sourceBar.className = "widgets-tab-bar";
+  sourceBar.setAttribute("role", "tablist");
+  sourceBar.setAttribute("aria-label", "Widget source selection");
+
+  const sourceDefs = [
+    { source: "feeds", label: "📰 Feeds" },
+    { source: "youtube", label: "📺 My YouTube" },
+  ];
+  sourceDefs.forEach(({ source, label }) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `widgets-tab-btn${activeWidgetSource === source ? " is-active" : ""}`;
+    btn.dataset.wsource = source;
+    btn.textContent = label;
+    sourceBar.appendChild(btn);
+  });
+
   const tabBar = document.createElement("div");
   tabBar.className = "widgets-tab-bar";
   tabBar.setAttribute("role", "tablist");
@@ -3166,13 +3279,13 @@ async function openWidgetsModal() {
     themeBar.appendChild(btn);
   });
 
-  controlsBar.append(tabBar, themeBar);
+  controlsBar.append(sourceBar, tabBar, themeBar);
   mount.appendChild(controlsBar);
 
   const stage = document.createElement("div");
   stage.className = "widgets-preview-stage";
   stage.id = "widgetsPreviewStage";
-  stage.appendChild(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme));
+  stage.appendChild(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme, activeWidgetSource));
   mount.appendChild(stage);
 
   let activeGuidePlatform = "iphone";
@@ -3207,6 +3320,7 @@ async function openWidgetsModal() {
     const h4 = document.createElement("h4");
     const ol = document.createElement("ol");
     const sizeName = activeWidgetSize === "large" ? "Large (Maxi 4×4)" : activeWidgetSize === "small" ? "Small (Mini 2×2)" : "Medium (Midi 4×2)";
+    const scriptName = activeWidgetSource === "youtube" ? "PickerYouTube" : "PickerFeeds";
 
     if (platform === "mac") {
       h4.textContent = "How to add to your Mac Desktop:";
@@ -3228,7 +3342,7 @@ async function openWidgetsModal() {
         "When Scriptable opens with an empty Untitled Script, tap the blank editor area, select Paste, and tap Done in the top corner.",
         "On your iPhone Home Screen, long-press any empty area until icons jiggle, then tap the + button in the top corner.",
         `Search for Scriptable, swipe to choose ${sizeName}, and tap Add Widget.`,
-        "Tap the new widget on your home screen, set Script to Picker (or Untitled Script), and set When Interacting to Open URL.",
+        `Tap the new widget on your home screen, set Script to ${scriptName} (or Untitled Script), and set When Interacting to Open URL.`,
       ];
       iphoneSteps.forEach((text) => {
         const li = document.createElement("li");
@@ -3249,6 +3363,12 @@ async function openWidgetsModal() {
   themeNote.textContent = "Automatic Appearance: The widget automatically adapts to system Light & Dark mode on both iPhone and Mac desktop using native dynamic colors.";
   steps.appendChild(themeNote);
 
+  const multiWidgetNote = document.createElement("p");
+  multiWidgetNote.className = "widgets-platform-note hint";
+  multiWidgetNote.style.marginTop = "6px";
+  multiWidgetNote.textContent = "💡 Two Widgets Tip: You can install both Feeds and My YouTube widgets side-by-side on your Home Screen or Mac desktop. Switch the source tab above to generate each script.";
+  steps.appendChild(multiWidgetNote);
+
   const platformNote = document.createElement("p");
   platformNote.className = "widgets-platform-note hint";
   platformNote.style.marginTop = "6px";
@@ -3256,6 +3376,17 @@ async function openWidgetsModal() {
   steps.appendChild(platformNote);
 
   mount.appendChild(steps);
+
+  sourceBar.querySelectorAll("[data-wsource]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeWidgetSource = btn.dataset.wsource;
+      sourceBar.querySelectorAll("[data-wsource]").forEach((b) => b.classList.toggle("is-active", b === btn));
+      stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme, activeWidgetSource));
+      updateScriptCode();
+      updateCtaText();
+      guideContainer.replaceChildren(renderGuide(activeGuidePlatform));
+    });
+  });
 
   guideTabs.querySelectorAll("[data-guide-platform]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -3269,7 +3400,7 @@ async function openWidgetsModal() {
     btn.addEventListener("click", () => {
       activeWidgetSize = btn.dataset.wsize;
       tabBar.querySelectorAll("[data-wsize]").forEach((b) => b.classList.toggle("is-active", b === btn));
-      stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme));
+      stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme, activeWidgetSource));
       updateScriptCode();
       guideContainer.replaceChildren(renderGuide(activeGuidePlatform));
     });
@@ -3279,7 +3410,7 @@ async function openWidgetsModal() {
     btn.addEventListener("click", () => {
       activeWidgetTheme = btn.dataset.wtheme;
       themeBar.querySelectorAll("[data-wtheme]").forEach((b) => b.classList.toggle("is-active", b === btn));
-      stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme));
+      stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme, activeWidgetSource));
     });
   });
 
@@ -3314,7 +3445,7 @@ async function openWidgetsModal() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "Picker.js";
+      a.download = activeWidgetSource === "youtube" ? "PickerYouTube.js" : "PickerFeeds.js";
       document.body.appendChild(a);
       a.click();
       a.remove();

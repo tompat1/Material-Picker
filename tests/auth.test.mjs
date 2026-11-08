@@ -593,6 +593,20 @@ test("widget latest endpoint authenticates with widget token, loads configured f
   // - Widget items are exclusively from Feeds (no YouTube subscription channel videos)
   assert.ok(data.items.every((i) => i.type === "rss"), "All widget items must be from Feeds");
 
+  // 5b. Query with source=feeds vs source=youtube
+  const feedsOnlyRes = await call(`/api/widget/latest?token=${encodeURIComponent(token)}&source=feeds`);
+  assert.equal(feedsOnlyRes.status, 200);
+  const feedsOnlyData = await feedsOnlyRes.json();
+  assert.equal(feedsOnlyData.ok, true);
+  assert.ok(feedsOnlyData.items.every((i) => i.type === "rss"));
+
+  // source=youtube for user without youtubeConnected returns empty items
+  const ytOnlyRes = await call(`/api/widget/latest?token=${encodeURIComponent(token)}&source=youtube`);
+  assert.equal(ytOnlyRes.status, 200);
+  const ytOnlyData = await ytOnlyRes.json();
+  assert.equal(ytOnlyData.ok, true);
+  assert.deepEqual(ytOnlyData.items, []);
+
   // 6. Test Authorization: Bearer <token>
   const bearerRes = await call("/api/widget/latest", {
     headers: { authorization: `Bearer ${token}` },
@@ -620,19 +634,26 @@ test("Scriptable widget code generation produces valid, error-free JavaScript", 
   const generateScriptableCode = eval(fnCode);
 
   const testEndpoint = "https://picker.rynell.org/api/widget/latest?token=test-widget-token-123";
-  const script = generateScriptableCode(testEndpoint, "test-widget-token-123", "large");
+  const script = generateScriptableCode(testEndpoint, "test-widget-token-123", "large", "feeds");
 
   assert.ok(script.includes(testEndpoint));
   assert.ok(script.includes("test-widget-token-123"));
   assert.ok(script.includes('PREFERRED_SIZE = "large"'));
+  assert.ok(script.includes('PREFERRED_SOURCE = "feeds"'));
   assert.ok(script.includes("presentLarge()"));
   assert.ok(!script.includes("replace(//"), "Must not contain broken unescaped regex literal in template string");
 
-  // Validate JavaScript syntax parses cleanly for all widget sizes
+  const ytScript = generateScriptableCode(testEndpoint, "test-widget-token-123", "medium", "youtube");
+  assert.ok(ytScript.includes('PREFERRED_SOURCE = "youtube"'));
+  assert.ok(ytScript.includes("5 VIDEOS"));
+
+  // Validate JavaScript syntax parses cleanly for all widget sizes and sources
   for (const s of ["small", "medium", "large"]) {
-    const sCode = generateScriptableCode(testEndpoint, "test-widget-token-123", s);
-    assert.doesNotThrow(() => {
-      new Function("async () => {\n" + sCode + "\n}");
-    }, `Generated Scriptable code for ${s} must be 100% syntactically valid JavaScript`);
+    for (const src of ["feeds", "youtube"]) {
+      const sCode = generateScriptableCode(testEndpoint, "test-widget-token-123", s, src);
+      assert.doesNotThrow(() => {
+        new Function("async () => {\n" + sCode + "\n}");
+      }, `Generated Scriptable code for ${s} / ${src} must be 100% syntactically valid JavaScript`);
+    }
   }
 });

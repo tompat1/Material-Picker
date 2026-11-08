@@ -1161,8 +1161,11 @@ async function handleWidgetLatest(request, url, store, options) {
   const items = [];
   const fetchImpl = options.fetchImpl || fetch;
 
-  // 1. YouTube subscriptions are omitted by default so the widget exclusively displays Feeds
-  const includeYouTube = url.searchParams.get("includeYouTube") === "true";
+  const sourceParam = (url.searchParams.get("source") || (url.searchParams.get("includeYouTube") === "true" ? "youtube" : "feeds")).toLowerCase();
+  const includeFeeds = sourceParam === "feeds" || sourceParam === "all";
+  const includeYouTube = sourceParam === "youtube" || sourceParam === "all";
+
+  // 1. YouTube subscriptions (when requested via source=youtube or source=all)
   if (includeYouTube && user.youtubeConnected && typeof store.subscriptionsForUser === "function") {
     try {
       const cached = await cachedYouTubeHome(user.id, store, options, fetchImpl);
@@ -1184,8 +1187,8 @@ async function handleWidgetLatest(request, url, store, options) {
     }
   }
 
-  // 2. Collect RSS feeds and saved items
-  if (typeof store.feedLibraryForUser === "function") {
+  // 2. RSS feeds and saved items (when requested via source=feeds or source=all)
+  if (includeFeeds && typeof store.feedLibraryForUser === "function") {
     try {
       const library = await store.feedLibraryForUser(user.id);
       const feeds = Array.isArray(library?.feeds) ? library.feeds : [];
