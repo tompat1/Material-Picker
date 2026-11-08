@@ -590,6 +590,9 @@ test("widget latest endpoint authenticates with widget token, loads configured f
   const archivedItem = data.items.find((i) => i.id === "item-archived-1");
   assert.equal(archivedItem, undefined);
 
+  // - Widget items are exclusively from Feeds (no YouTube subscription channel videos)
+  assert.ok(data.items.every((i) => i.type === "rss"), "All widget items must be from Feeds");
+
   // 6. Test Authorization: Bearer <token>
   const bearerRes = await call("/api/widget/latest", {
     headers: { authorization: `Bearer ${token}` },

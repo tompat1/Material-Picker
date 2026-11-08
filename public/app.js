@@ -3070,7 +3070,7 @@ async function openWidgetsModal() {
 
   const lead = document.createElement("p");
   lead.className = "widgets-lead";
-  lead.textContent = "Get live video & feed updates on your iPhone Home Screen and Mac Desktop with Mini, Midi, and Maxi sizes.";
+  lead.textContent = "Get live feed updates on your iPhone Home Screen and Mac Desktop with Mini, Midi, and Maxi sizes.";
   mount.appendChild(lead);
 
   const ctaBox = document.createElement("div");

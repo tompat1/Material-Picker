@@ -1161,8 +1161,9 @@ async function handleWidgetLatest(request, url, store, options) {
   const items = [];
   const fetchImpl = options.fetchImpl || fetch;
 
-  // 1. Collect YouTube subscriptions
-  if (user.youtubeConnected && typeof store.subscriptionsForUser === "function") {
+  // 1. YouTube subscriptions are omitted by default so the widget exclusively displays Feeds
+  const includeYouTube = url.searchParams.get("includeYouTube") === "true";
+  if (includeYouTube && user.youtubeConnected && typeof store.subscriptionsForUser === "function") {
     try {
       const cached = await cachedYouTubeHome(user.id, store, options, fetchImpl);
       const subs = Array.isArray(cached?.videos) ? cached.videos : [];
@@ -1193,8 +1194,8 @@ async function handleWidgetLatest(request, url, store, options) {
       const seenUrls = new Set(items.map((i) => i.url).filter(Boolean));
       const seenIds = new Set(items.map((i) => i.id).filter(Boolean));
 
-      // 2a. Load recent entries from user's configured feeds
-      const configuredFeeds = feeds.slice(0, 8);
+      // 2a. Load recent entries from user's configured feeds (check up to 25 feeds)
+      const configuredFeeds = feeds.slice(0, 25);
       if (configuredFeeds.length > 0) {
         await Promise.allSettled(configuredFeeds.map(async (feed) => {
           if (!feed?.url) return;
@@ -1212,7 +1213,7 @@ async function handleWidgetLatest(request, url, store, options) {
               items.push({
                 id,
                 title: String(item.title || ""),
-                source: String(item.author || feed.title || "Feed"),
+                source: String(feed.title || item.author || "Feed"),
                 url: itemUrl,
                 thumbnail: String(item.image || item.thumbnail || ""),
                 publishedAt: String(item.publishedAt || ""),
@@ -1241,7 +1242,7 @@ async function handleWidgetLatest(request, url, store, options) {
         items.push({
           id,
           title: String(item.title || ""),
-          source: String(item.author || feed?.title || item.feedTitle || "Feed"),
+          source: String(feed?.title || item.author || item.feedTitle || "Feed"),
           url: itemUrl,
           thumbnail: String(item.image || item.thumbnail || ""),
           publishedAt: String(item.publishedAt || ""),
