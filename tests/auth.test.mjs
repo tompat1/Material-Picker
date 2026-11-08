@@ -478,6 +478,14 @@ test("per-user changes across app state and feeds persist across logout and logi
     assert.deepEqual(me.state.youtubeRemovedChannels, ["UCrem1"], kind);
     assert.equal(me.state.youtubeSubFilter, "favourites", kind);
     assert.equal(me.state.thumbnailStyle, "new-age", kind);
+
+    // Verify widget latest endpoint works with session cookie
+    const widgetRes = await call("/api/widget/latest", { headers: { cookie: cookie2 } });
+    assert.equal(widgetRes.status, 200, kind);
+    const widgetJson = await widgetRes.json();
+    assert.equal(widgetJson.ok, true, kind);
+    assert.ok(Array.isArray(widgetJson.items), kind);
+    assert.equal(widgetJson.items[0]?.title, "Saved Article", kind);
     assert.deepEqual(me.state.merchCart, [{ id: "hoodie-black:L", productId: "hoodie-black", option: "L", qty: 2 }], kind);
     assert.deepEqual(me.state.recentSearches, ["quantum computing", "oled monitor"], kind);
 

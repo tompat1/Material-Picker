@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Picker iOS Widgets Preview (Mini, Midi, Maxi)</title>
+  <style>
+    :root {
+      --bg: #140e0b;
+      --card-bg: #1e1713;
+      --card-border: rgba(244, 235, 221, 0.08);
+      --accent: #ff7a3d;
+      --accent-soft: rgba(255, 122, 61, 0.15);
+      --ink: #f4ebdd;
+      --muted: #a89a8c;
+      --faint: #736557;
+      --radius-sm: 22px;
+      --radius-md: 26px;
+      --radius-lg: 28px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      padding: 2.5rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2.5rem;
+    }
+
+    header {
+      text-align: center;
+      max-width: 650px;
+    }
+
+    header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+    }
+
+    header h1 .logo-badge {
+      background: var(--accent);
+      color: #1a0f0a;
+      font-size: 1rem;
+      font-weight: 800;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    .widget-container {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      width: 100%;
+      max-width: 760px;
+    }
+
+    .widget-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.75rem;
+      align-items: flex-start;
+      justify-content: center;
+    }
+
+    .widget-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .widget-label {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 0.25rem;
+    }
+
+    .widget-label span.dim {
+      font-weight: 500;
+      color: var(--faint);
+    }
+
+    /* iOS Native Widget Shells */
+    .ios-widget {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+      transition: transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1), box-shadow 0.2s ease;
+    }
+
+    .ios-widget:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 20px 42px rgba(0, 0, 0, 0.55);
+    }
+
+    /* Small / Mini: 158 x 158pt (approx 170x170px) */
+    .widget-small {
+      width: 172px;
+      height: 172px;
+      border-radius: var(--radius-sm);
+      padding: 15px;
+      justify-content: space-between;
+    }
+
+    /* Medium / Midi: 338 x 158pt (approx 360x170px) */
+    .widget-medium {
+      width: 360px;
+      height: 172px;
+      border-radius: var(--radius-md);
+      padding: 15px 17px;
+      justify-content: space-between;
+    }
+
+    /* Large / Maxi: 338 x 354pt (approx 360x376px) */
+    .widget-large {
+      width: 360px;
+      height: 376px;
+      border-radius: var(--radius-lg);
+      padding: 17px;
+      gap: 10px;
+    }
+
+    /* Widget Header */
+    .w-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .w-brand {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+
+    .w-brand svg {
+      width: 13px;
+      height: 13px;
+      fill: currentColor;
+    }
+
+    .w-tag {
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* Small Widget Specifics */
+    .w-small-body {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .w-small-source {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .w-small-title {
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.25;
+      color: var(--ink);
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .w-small-foot {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+    }
+
+    /* Medium Widget Specifics */
+    .w-medium-list {
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+
+    .w-post-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .w-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10.5px;
+    }
+
+    .w-meta-source {
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 220px;
+    }
+
+    .w-meta-time {
+      font-weight: 500;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .w-post-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      line-height: 1.25;
+      color: var(--ink);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .w-divider {
+      height: 1px;
+      background: rgba(244, 235, 221, 0.06);
+      width: 100%;
+      margin: 1px 0;
+    }
+
+    /* Large Widget Specifics */
+    .w-large-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+      justify-content: space-between;
+    }
+
+    .w-large-item {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .w-large-thumb {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: var(--card-border);
+      flex-shrink: 0;
+      object-fit: cover;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--faint);
+      font-size: 9px;
+      font-weight: 700;
+      overflow: hidden;
+    }
+
+    .w-large-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .w-large-item-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .w-large-item-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      line-height: 1.25;
+      color: var(--ink);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .notice-card {
+      background: rgba(255, 122, 61, 0.08);
+      border: 1px solid rgba(255, 122, 61, 0.25);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      max-width: 760px;
+      width: 100%;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .notice-card strong {
+      color: var(--ink);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1><span class="logo-badge">P</span> Mobile Home Screen Widgets</h1>
+    <p>Live design simulation of the iOS WidgetKit / Scriptable widgets in Mini, Midi, and Maxi sizes using real Picker typography and color styling.</p>
+  </header>
+
+  <div class="widget-container">
+
+    <!-- Top Row: Mini & Midi -->
+    <div class="widget-row">
+      <!-- Mini -->
+      <div class="widget-box">
+        <div class="widget-label">
+          <span>Mini (Small)</span>
+          <span class="dim">2 × 2</span>
+        </div>
+        <div class="ios-widget widget-small">
+          <div class="w-head">
+            <div class="w-brand">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+              PICKER
+            </div>
+            <div class="w-tag">LATEST</div>
+          </div>
+          <div class="w-small-body">
+            <div class="w-small-source">Alex Gear & Tech</div>
+            <div class="w-small-title">Dell Alienware AW3426DW QD-OLED Review: 4 Years In The Making</div>
+          </div>
+          <div class="w-small-foot">34m ago</div>
+        </div>
+      </div>
+
+      <!-- Midi -->
+      <div class="widget-box">
+        <div class="widget-label">
+          <span>Midi (Medium)</span>
+          <span class="dim">4 × 2</span>
+        </div>
+        <div class="ios-widget widget-medium">
+          <div class="w-head">
+            <div class="w-brand">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+              PICKER
+            </div>
+            <div class="w-tag">2 NEW POSTS</div>
+          </div>
+          <div class="w-medium-list">
+            <div class="w-post-row">
+              <div class="w-meta-row">
+                <span class="w-meta-source">Alex Gear & Tech</span>
+                <span class="w-meta-time">34m ago</span>
+              </div>
+              <div class="w-post-title">Dell Alienware AW3426DW QD-OLED Review. You Waited FOUR Years!</div>
+            </div>
+            <div class="w-divider"></div>
+            <div class="w-post-row">
+              <div class="w-meta-row">
+                <span class="w-meta-source">Electrek</span>
+                <span class="w-meta-time">1h ago</span>
+              </div>
+              <div class="w-post-title">BYD sold more EVs last month than the US did all year, topping 300,000</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Row: Maxi -->
+    <div class="widget-row">
+      <div class="widget-box">
+        <div class="widget-label">
+          <span>Maxi (Large)</span>
+          <span class="dim">4 × 4</span>
+        </div>
+        <div class="ios-widget widget-large">
+          <div class="w-head">
+            <div class="w-brand">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>
+              PICKER
+            </div>
+            <div class="w-tag">LATEST POSTS</div>
+          </div>
+
+          <div class="w-large-list">
+            <div class="w-large-item">
+              <div class="w-large-thumb" style="background:#2a1f18; color:var(--accent)">VID</div>
+              <div class="w-large-item-info">
+                <div class="w-meta-row">
+                  <span class="w-meta-source">Alex Gear & Tech</span>
+                  <span class="w-meta-time">34m ago</span>
+                </div>
+                <div class="w-large-item-title">Dell Alienware AW3426DW QD-OLED Review. You Waited FOUR Years For THIS Upgrade!</div>
+              </div>
+            </div>
+            <div class="w-divider"></div>
+
+            <div class="w-large-item">
+              <div class="w-large-thumb" style="background:#201e2b; color:#818cf8">POST</div>
+              <div class="w-large-item-info">
+                <div class="w-meta-row">
+                  <span class="w-meta-source">Electrek</span>
+                  <span class="w-meta-time">1h ago</span>
+                </div>
+                <div class="w-large-item-title">BYD sold more EVs last month than the US did all year, topping 300,000</div>
+              </div>
+            </div>
+            <div class="w-divider"></div>
+
+            <div class="w-large-item">
+              <div class="w-large-thumb" style="background:#1d2925; color:#34d399">TRAILER</div>
+              <div class="w-large-item-info">
+                <div class="w-meta-row">
+                  <span class="w-meta-source">Collider</span>
+                  <span class="w-meta-time">2h ago</span>
+                </div>
+                <div class="w-large-item-title">Disney+'s 'Percy Jackson' Season 3 Trailer Officially Reveals Race to Save Annabeth</div>
+              </div>
+            </div>
+            <div class="w-divider"></div>
+
+            <div class="w-large-item">
+              <div class="w-large-thumb" style="background:#292219; color:#fbbf24">DEV</div>
+              <div class="w-large-item-info">
+                <div class="w-meta-row">
+                  <span class="w-meta-source">Duncan Rogoff | Claude Code</span>
+                  <span class="w-meta-time">4h ago</span>
+                </div>
+                <div class="w-large-item-title">Pretty freaking cool: Auto-dispatching work without human intervention</div>
+              </div>
+            </div>
+            <div class="w-divider"></div>
+
+            <div class="w-large-item">
+              <div class="w-large-thumb" style="background:#281b24; color:#f472b6">NEWS</div>
+              <div class="w-large-item-info">
+                <div class="w-meta-row">
+                  <span class="w-meta-source">MacRumors</span>
+                  <span class="w-meta-time">5h ago</span>
+                </div>
+                <div class="w-large-item-title">Apple M4 Mac Mini tear-down reveals modular SSD storage upgradeability</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="notice-card">
+    <strong>Authentication Note:</strong> Because widgets run in the background on your phone without your browser's login session cookie, a small dedicated token or public feed endpoint (e.g. <code>/api/widget/latest?token=...</code>) is recommended so the widget can fetch your live subscription feed securely without cookie prompts.
+  </div>
+
+</body>
+</html>
+

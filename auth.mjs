@@ -893,7 +893,14 @@ async function feedlyRow(db, userId) {
 
 export async function handleAuthRequest(request, options) {
   const url = new URL(request.url);
-  if (!url.pathname.startsWith("/api/auth") && !url.pathname.startsWith("/api/youtube/") && url.pathname !== "/api/feeds/library") return null;
+  if (
+    !url.pathname.startsWith("/api/auth") &&
+    !url.pathname.startsWith("/api/youtube/") &&
+    url.pathname !== "/api/feeds/library" &&
+    !url.pathname.startsWith("/api/widget/")
+  ) {
+    return null;
+  }
   const store = options.store;
   if (!store) {
     return json(503, {
@@ -963,6 +970,13 @@ export async function handleAuthRequest(request, options) {
   }
   if (url.pathname === "/api/auth/state" && (request.method === "GET" || request.method === "PUT")) {
     return handleUserState(request, store);
+  }
+  if (request.method === "GET" && url.pathname === "/api/widget/latest") {
+    try {
+      return await handleWidgetLatest(request, url, store, options);
+    } catch (error) {
+      return json(error.status || 500, { error: error.message || "Failed to load widget items." });
+    }
   }
   if (request.method === "GET" && url.pathname === "/api/youtube/playlist") {
     try {
@@ -1099,6 +1113,89 @@ async function cachedYouTubeHome(userId, store, options, fetchImpl) {
   cached = { ...await fetchYouTubeHome(accessToken, fetchImpl), syncedAt: new Date().toISOString() };
   await store.saveSubscriptions(userId, cached);
   return cached;
+}
+
+async function handleWidgetLatest(request, url, store, options) {
+  let user = null;
+  const token = url.searchParams.get("token") || url.searchParams.get("key");
+  if (token && typeof store.userForSession === "function") {
+    user = await store.userForSession(token);
+  }
+  if (!user) {
+    user = await currentUser(request, store);
+  }
+  if (!user) {
+    return json(401, { error: "A valid widget token or session is required." });
+  }
+
+  const items = [];
+  const fetchImpl = options.fetchImpl || fetch;
+
+  // 1. Collect YouTube subscriptions
+  if (user.youtubeConnected && typeof store.subscriptionsForUser === "function") {
+    try {
+      const cached = await cachedYouTubeHome(user.id, store, options, fetchImpl);
+      const subs = Array.isArray(cached?.videos) ? cached.videos : [];
+      subs.forEach((v) => {
+        if (!v || !v.title) return;
+        items.push({
+          id: String(v.id || ""),
+          title: String(v.title || ""),
+          source: String(v.speaker || v.channelTitle || "YouTube"),
+          url: String(v.url || (v.id ? `https://www.youtube.com/watch?v=${v.id}` : "")),
+          thumbnail: String(v.thumbnail || ""),
+          publishedAt: String(v.publishedAt || ""),
+          type: "youtube",
+        });
+      });
+    } catch {
+      // Non-fatal if YouTube token expired
+    }
+  }
+
+  // 2. Collect RSS saved/recent items
+  if (typeof store.feedLibraryForUser === "function") {
+    try {
+      const library = await store.feedLibraryForUser(user.id);
+      const savedItems = Array.isArray(library?.savedItems) ? library.savedItems : [];
+      savedItems.forEach((item) => {
+        if (!item || !item.title) return;
+        items.push({
+          id: String(item.id || ""),
+          title: String(item.title || ""),
+          source: String(item.author || item.feedTitle || "Feed"),
+          url: String(item.link || item.videoUrl || ""),
+          thumbnail: String(item.image || ""),
+          publishedAt: String(item.publishedAt || ""),
+          type: "rss",
+        });
+      });
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  // Sort descending by date
+  items.sort((a, b) => {
+    const timeA = Date.parse(a.publishedAt || 0) || 0;
+    const timeB = Date.parse(b.publishedAt || 0) || 0;
+    return timeB - timeA;
+  });
+
+  const limit = Math.max(1, Math.min(parseInt(url.searchParams.get("limit") || "10", 10), 30));
+  const results = items.slice(0, limit);
+
+  const headers = new Headers({
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "public, max-age=180",
+    "access-control-allow-origin": "*",
+  });
+  return new Response(JSON.stringify({
+    ok: true,
+    user: user.name || user.email || "Picker User",
+    count: results.length,
+    items: results,
+  }), { status: 200, headers });
 }
 
 async function handleYouTubeHome(request, store, options) {
