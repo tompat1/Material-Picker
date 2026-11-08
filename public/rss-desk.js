@@ -1765,12 +1765,12 @@ function renderList() {
     const itemImage = cleanImageUrl(item.image);
     const isReadInAll = Boolean(feedState.read[item.id] && !showReadPosts);
     const readMark = isReadInAll
-      ? `<span class="feed-row-read-mark" aria-hidden="true">✓ Read</span>`
+      ? `<span class="feed-row-read-mark" aria-hidden="true"><i class="ph ph-check" aria-hidden="true"></i> Read</span>`
       : "";
     return `${heading}<button class="feed-row${isReadInAll ? " is-read" : ""}${selectedItemId === item.id ? " is-selected" : ""}" type="button" data-open-story="${escapeFeedText(item.id)}">
       <span class="feed-row-copy">
         <span class="feed-row-source"><span>${escapeFeedText(feed?.title || "Feed")}</span>${when ? `<time>${escapeFeedText(when)}</time>` : ""}</span>
-        <strong>${feedState.starred[item.id] ? "★ " : ""}${escapeFeedText(item.title)}</strong>
+        <strong>${feedState.starred[item.id] ? '<i class="ph ph-star feed-row-star" aria-hidden="true"></i> ' : ""}${escapeFeedText(item.title)}</strong>
         ${item.summary ? `<span>${escapeFeedText(item.summary)}</span>` : ""}
       </span>
       ${itemImage ? `<span class="feed-row-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.closest('.feed-row-thumb-wrap')?.remove()" />${readMark}</span>` : `<span class="feed-row-thumb" aria-hidden="true">${readMark}</span>`}

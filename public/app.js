@@ -2494,7 +2494,7 @@ function checkYouTubeSwipeHint() {
     const hint = document.createElement("div");
     hint.className = "yt-swipe-hint";
     hint.id = "ytSwipeHint";
-    hint.innerHTML = `<span><svg class="yt-swipe-hint-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Swipe a video to remove it</span><button class="yt-swipe-hint-close" type="button" aria-label="Dismiss hint">✕</button>`;
+    hint.innerHTML = `<span><svg class="yt-swipe-hint-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 19l-7-7 7-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Swipe a video to remove it</span><button class="yt-swipe-hint-close" type="button" aria-label="Dismiss hint"><i class="ph ph-x" aria-hidden="true"></i></button>`;
     hint.querySelector(".yt-swipe-hint-close")?.addEventListener("click", () => {
       hint.remove();
       localStorage.setItem(HINT_KEY, "true");
@@ -3315,15 +3315,23 @@ async function openWidgetsModal() {
   guideTabs.setAttribute("aria-label", "Widget platform instructions");
 
   const guideDefs = [
-    { id: "iphone", label: "iPhone Home Screen" },
-    { id: "mac", label: "Mac Desktop" },
+    { id: "iphone", icon: "ph-device-mobile", label: "iPhone Home Screen" },
+    { id: "mac", icon: "ph-desktop", label: "Mac Desktop" },
   ];
-  guideDefs.forEach(({ id, label }) => {
+  guideDefs.forEach(({ id, icon, label }) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `widgets-platform-btn${activeGuidePlatform === id ? " is-active" : ""}`;
     btn.dataset.guidePlatform = id;
-    btn.textContent = label;
+
+    const iconEl = document.createElement("i");
+    iconEl.className = `ph ${icon} widgets-platform-icon`;
+    iconEl.setAttribute("aria-hidden", "true");
+
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = label;
+
+    btn.append(iconEl, labelSpan);
     guideTabs.appendChild(btn);
   });
   steps.appendChild(guideTabs);
@@ -3376,19 +3384,52 @@ async function openWidgetsModal() {
   const themeNote = document.createElement("p");
   themeNote.className = "widgets-platform-note hint";
   themeNote.style.marginTop = "12px";
-  themeNote.textContent = "Automatic Appearance: The widget automatically adapts to system Light & Dark mode on both iPhone and Mac desktop using native dynamic colors.";
+
+  const themeIcon = document.createElement("i");
+  themeIcon.className = "ph ph-sparkle widgets-tip-icon";
+  themeIcon.setAttribute("aria-hidden", "true");
+
+  const themeStrong = document.createElement("strong");
+  themeStrong.textContent = "Automatic Appearance: ";
+
+  const themeBody = document.createTextNode(
+    "The widget automatically adapts to system Light & Dark mode on both iPhone and Mac desktop using native dynamic colors."
+  );
+  themeNote.append(themeIcon, themeStrong, themeBody);
   steps.appendChild(themeNote);
 
   const multiWidgetNote = document.createElement("p");
   multiWidgetNote.className = "widgets-platform-note hint";
   multiWidgetNote.style.marginTop = "6px";
-  multiWidgetNote.textContent = "💡 Two Widgets Tip: You can install both Feeds and My YouTube widgets side-by-side on your Home Screen or Mac desktop. Switch the source tab above to generate each script.";
+
+  const tipIcon = document.createElement("i");
+  tipIcon.className = "ph ph-lightbulb widgets-tip-icon";
+  tipIcon.setAttribute("aria-hidden", "true");
+
+  const tipStrong = document.createElement("strong");
+  tipStrong.textContent = "Two Widgets Tip: ";
+
+  const tipBody = document.createTextNode(
+    "You can install both Feeds and My YouTube widgets side-by-side on your Home Screen or Mac desktop. Switch the source tab above to generate each script."
+  );
+  multiWidgetNote.append(tipIcon, tipStrong, tipBody);
   steps.appendChild(multiWidgetNote);
 
   const platformNote = document.createElement("p");
   platformNote.className = "widgets-platform-note hint";
   platformNote.style.marginTop = "6px";
-  platformNote.textContent = "Android & other platforms: Use your widget token or JSON endpoint with any custom widget reader app.";
+
+  const platIcon = document.createElement("i");
+  platIcon.className = "ph ph-info widgets-tip-icon";
+  platIcon.setAttribute("aria-hidden", "true");
+
+  const platStrong = document.createElement("strong");
+  platStrong.textContent = "Android & other platforms: ";
+
+  const platBody = document.createTextNode(
+    "Use your widget token or JSON endpoint with any custom widget reader app."
+  );
+  platformNote.append(platIcon, platStrong, platBody);
   steps.appendChild(platformNote);
 
   mount.appendChild(steps);
@@ -3501,7 +3542,7 @@ function openYouTubeRestoreModal() {
     <div class="yt-restore-dialog-inner">
       <div class="yt-restore-dialog-header">
         <h3>Hidden Subscriptions (${removedChannels.length})</h3>
-        <button type="button" class="yt-restore-dialog-close" data-restore-dialog-close aria-label="Close">✕</button>
+        <button type="button" class="yt-restore-dialog-close" data-restore-dialog-close aria-label="Close"><i class="ph ph-x" aria-hidden="true"></i></button>
       </div>
       <p class="yt-restore-dialog-lead">These channels are hidden from your subscriptions panel and feed. Tap restore to bring them back.</p>
       <div class="yt-restore-dialog-list">
@@ -3601,7 +3642,7 @@ function renderYouTubeChannels() {
   let channelsHtml = "";
   if (displayedChannels.length === 0) {
     if (subFilter === "favourites") {
-      channelsHtml = `<div class="yt-subs-empty"><p class="hint">No favourite subscriptions yet.<br><span class="yt-subs-empty-sub">Tap ★ on any channel to add it to favourites.</span></p></div>`;
+      channelsHtml = `<div class="yt-subs-empty"><p class="hint">No favourite subscriptions yet.<br><span class="yt-subs-empty-sub">Tap <i class="ph ph-star" aria-hidden="true"></i> on any channel to add it to favourites.</span></p></div>`;
     } else if (subFilter === "new") {
       channelsHtml = `<div class="yt-subs-empty"><p class="hint">No channels with new content right now.</p></div>`;
     } else if (activeChannels.length === 0 && rawChannels.length > 0) {
@@ -3621,7 +3662,7 @@ function renderYouTubeChannels() {
             <div class="yt-avatar-wrap">
               ${youtubeChannelMark(channel.thumbnail, channel.title)}
               ${hasNew ? `<span class="yt-channel-badge" title="New videos" aria-label="New videos"></span>` : ""}
-              ${isFav ? `<span class="yt-channel-fav-badge" title="Favourite" aria-label="Favourite">★</span>` : ""}
+              ${isFav ? `<span class="yt-channel-fav-badge" title="Favourite" aria-label="Favourite"><i class="ph ph-star" aria-hidden="true"></i></span>` : ""}
             </div>
             <span class="yt-channel-name">${escapeHtml(channel.title)}</span>
           </button>
@@ -3654,7 +3695,7 @@ function renderYouTubeChannels() {
       </div>
       ${isManaging ? `<p class="yt-subs-manage-hint" role="status">Choose <strong>★</strong> to favourite or <strong>×</strong> to hide a channel.</p>` : ""}
       <div class="yt-subs-filter-bar" role="group" aria-label="Filter subscriptions">
-        <button type="button" class="yt-sub-filter-chip${subFilter === "favourites" ? " is-active" : ""}" data-youtube-sub-filter="favourites" aria-pressed="${subFilter === "favourites" ? "true" : "false"}">★ Favourites${favCount ? ` (${favCount})` : ""}</button>
+        <button type="button" class="yt-sub-filter-chip${subFilter === "favourites" ? " is-active" : ""}" data-youtube-sub-filter="favourites" aria-pressed="${subFilter === "favourites" ? "true" : "false"}"><i class="ph ph-star" aria-hidden="true"></i> Favourites${favCount ? ` (${favCount})` : ""}</button>
         <button type="button" class="yt-sub-filter-chip${subFilter === "alphabetical" ? " is-active" : ""}" data-youtube-sub-filter="alphabetical" aria-pressed="${subFilter === "alphabetical" ? "true" : "false"}">A–Z</button>
         <button type="button" class="yt-sub-filter-chip${subFilter === "new" ? " is-active" : ""}" data-youtube-sub-filter="new" aria-pressed="${subFilter === "new" ? "true" : "false"}">New content${newCount ? ` (${newCount})` : ""}</button>
       </div>
@@ -6184,7 +6225,7 @@ function renderPlaylists() {
     const adding = playlistAddOpenId === playlist.id;
     const adder = playlistAdderHtml(playlist);
     const playing = playingPlaylistId === playlist.id;
-    return `<section class="playlist-block${collapsed ? " is-collapsed" : ""}${playing ? " is-playing" : ""}"><header><button class="playlist-toggle" type="button" data-toggle-playlist="${escapeHtml(playlist.id)}" aria-expanded="${collapsed ? "false" : "true"}" aria-controls="${escapeHtml(panelId)}"><svg class="playlist-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="playlist-heading"><span class="playlist-name">${escapeHtml(playlist.name)}</span><span class="playlist-count">${count}</span></span></button><div class="playlist-actions"><button class="playlist-play" type="button" data-play-playlist="${escapeHtml(playlist.id)}"${videos.length ? "" : " disabled"}>Play</button><button class="playlist-add" type="button" data-add-to-playlist="${escapeHtml(playlist.id)}" aria-expanded="${adding ? "true" : "false"}">${adding ? "✕" : "Add videos"}</button><button class="playlist-delete" type="button" data-delete-playlist="${escapeHtml(playlist.id)}">Delete</button></div></header>${adder}<ul class="playlist-videos" id="${escapeHtml(panelId)}"${collapsed ? " hidden" : ""}>${rows}</ul></section>`;
+    return `<section class="playlist-block${collapsed ? " is-collapsed" : ""}${playing ? " is-playing" : ""}"><header><button class="playlist-toggle" type="button" data-toggle-playlist="${escapeHtml(playlist.id)}" aria-expanded="${collapsed ? "false" : "true"}" aria-controls="${escapeHtml(panelId)}"><svg class="playlist-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6.2 8 10.2 12 6.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="playlist-heading"><span class="playlist-name">${escapeHtml(playlist.name)}</span><span class="playlist-count">${count}</span></span></button><div class="playlist-actions"><button class="playlist-play" type="button" data-play-playlist="${escapeHtml(playlist.id)}"${videos.length ? "" : " disabled"}>Play</button><button class="playlist-add" type="button" data-add-to-playlist="${escapeHtml(playlist.id)}" aria-expanded="${adding ? "true" : "false"}">${adding ? '<i class="ph ph-x" aria-hidden="true"></i>' : "Add videos"}</button><button class="playlist-delete" type="button" data-delete-playlist="${escapeHtml(playlist.id)}">Delete</button></div></header>${adder}<ul class="playlist-videos" id="${escapeHtml(panelId)}"${collapsed ? " hidden" : ""}>${rows}</ul></section>`;
   }).join("");
   renderPlaylistAddCandidates();
 }
@@ -11021,7 +11062,8 @@ function indexLibraryTranscripts(videos) {
     pills.push({
       text: author,
       type: "author",
-      label: `👤 ${author}`,
+      iconClass: "ph-user",
+      label: author,
       count: vids.size,
       videoIds: Array.from(vids),
     });
@@ -11032,7 +11074,8 @@ function indexLibraryTranscripts(videos) {
       pills.push({
         text: subject,
         type: "subject",
-        label: `📚 ${subject}`,
+        iconClass: "ph-book-open",
+        label: subject,
         count: vids.size,
         videoIds: Array.from(vids),
       });
@@ -11044,7 +11087,8 @@ function indexLibraryTranscripts(videos) {
       pills.push({
         text: term,
         type: "term",
-        label: `🏷️ ${term}`,
+        iconClass: "ph-tag",
+        label: term,
         count: vids.size,
         videoIds: Array.from(vids),
       });
@@ -11181,7 +11225,7 @@ function performScriptDeskSearch() {
           return `<div class="script-desk-result-card${isActive ? " active-video" : ""}" data-video-id="${escapeHtml(video.id)}">
             <div class="result-card-header">
               <span class="result-card-title">${escapeHtml(video.title || "Untitled video")}</span>
-              ${video.speaker ? `<span class="result-card-speaker">👤 ${escapeHtml(video.speaker)}</span>` : ""}
+              ${video.speaker ? `<span class="result-card-speaker"><i class="ph ph-user" aria-hidden="true"></i> ${escapeHtml(video.speaker)}</span>` : ""}
             </div>
             <div class="result-card-snippet">${highlightSnippet(snippetSource, query)}</div>
           </div>`;
@@ -12268,7 +12312,7 @@ function buildGlobalAppIndex() {
       id: `lib:${video.id || video.url}`,
       category: "Library Videos",
       badge: "Library",
-      icon: "🎬",
+      iconClass: "ph-film-strip",
       title,
       subtitle: [speaker, folder, video.duration].filter(Boolean).join(" · ") || "Local video",
       text: `${title} ${speaker} ${folder} ${tags} ${transcript} ${notes}`.toLowerCase(),
@@ -12287,7 +12331,7 @@ function buildGlobalAppIndex() {
       id: `rss:${feed.url || feed.id}`,
       category: "RSS Feeds",
       badge: "RSS",
-      icon: "📰",
+      iconClass: "ph-newspaper",
       title,
       subtitle: feed.url,
       text: `${title} ${feed.url} ${topics}`.toLowerCase(),
@@ -12307,7 +12351,7 @@ function buildGlobalAppIndex() {
       id: `yt:${item.url || item.id}`,
       category: "YouTube",
       badge: "YouTube",
-      icon: "▶️",
+      iconClass: "ph-youtube-logo",
       title,
       subtitle: speaker,
       text: `${title} ${speaker}`.toLowerCase(),
@@ -12327,7 +12371,7 @@ function buildGlobalAppIndex() {
       id: `ytchan:${channel.id}`,
       category: "YouTube Channels",
       badge: "Channel",
-      icon: "🔴",
+      iconClass: "ph-broadcast",
       title,
       subtitle: "Subscribed Channel",
       text: `${title}`.toLowerCase(),
@@ -12345,7 +12389,7 @@ function buildGlobalAppIndex() {
       id: `ytpl:${pl.id}`,
       category: "Playlists",
       badge: "Playlist",
-      icon: "🎵",
+      iconClass: "ph-playlist",
       title,
       subtitle: `${pl.count || 0} videos`,
       text: `${title}`.toLowerCase(),
@@ -12366,7 +12410,7 @@ function buildGlobalAppIndex() {
       id: `shop:${piece.id}`,
       category: "Shop Goods",
       badge: "Shop",
-      icon: "🛍️",
+      iconClass: "ph-bag",
       title,
       subtitle: [price, lead].filter(Boolean).join(" · "),
       text: `${title} ${lead} merch shop`.toLowerCase(),
@@ -12433,8 +12477,8 @@ function renderGlobalSearchBody() {
           ? `<div class="global-search-recent-list">
               ${recent.map((q) => `
                 <span class="global-search-recent-chip" data-search-term="${escapeHtml(q)}">
-                  🔍 ${escapeHtml(q)}
-                  <button type="button" class="global-search-recent-del" data-del-search="${escapeHtml(q)}" title="Remove">✕</button>
+                  <i class="ph ph-clock-counter-clockwise" aria-hidden="true"></i> ${escapeHtml(q)}
+                  <button type="button" class="global-search-recent-del" data-del-search="${escapeHtml(q)}" title="Remove"><i class="ph ph-x" aria-hidden="true"></i></button>
                 </span>
               `).join("")}
             </div>`
@@ -12445,7 +12489,7 @@ function renderGlobalSearchBody() {
         <div class="global-search-section-title"><span>Suggested Topics</span></div>
         <div class="global-search-recent-list">
           ${suggestions.map((s) => `
-            <button type="button" class="global-search-recent-chip" data-search-term="${escapeHtml(s)}">✨ ${escapeHtml(s)}</button>
+            <button type="button" class="global-search-recent-chip" data-search-term="${escapeHtml(s)}"><i class="ph ph-sparkle" aria-hidden="true"></i> ${escapeHtml(s)}</button>
           `).join("")}
         </div>
       </div>
@@ -12489,7 +12533,7 @@ function renderGlobalSearchBody() {
     html += `
       <div class="global-search-autocomplete">
         ${autocompleteTerms.map((term) => `
-          <button type="button" class="global-search-autocomplete-chip" data-search-term="${escapeHtml(term)}">💡 ${escapeHtml(term)}</button>
+          <button type="button" class="global-search-autocomplete-chip" data-search-term="${escapeHtml(term)}"><i class="ph ph-magnifying-glass" aria-hidden="true"></i> ${escapeHtml(term)}</button>
         `).join("")}
       </div>
     `;
@@ -12504,7 +12548,7 @@ function renderGlobalSearchBody() {
           const highlightedTitle = highlightSearchMatch(item.title, query);
           return `
             <button type="button" class="global-search-item" data-search-hit="${escapeHtml(item.id)}">
-              <span class="global-search-item-icon">${item.icon}</span>
+              <span class="global-search-item-icon"><i class="ph ${item.iconClass || 'ph-magnifying-glass'}" aria-hidden="true"></i></span>
               <div class="global-search-item-info">
                 <p class="global-search-item-title">${highlightedTitle}</p>
                 <p class="global-search-item-sub">${escapeHtml(item.subtitle)}</p>

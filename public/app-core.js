@@ -923,7 +923,8 @@
       pills.push({
         text: author,
         type: "author",
-        label: `👤 ${author}`,
+        iconClass: "ph-user",
+        label: author,
         count: vids.size,
         videoIds: Array.from(vids),
       });
@@ -934,7 +935,8 @@
         pills.push({
           text: subject,
           type: "subject",
-          label: `📚 ${subject}`,
+          iconClass: "ph-book-open",
+          label: subject,
           count: vids.size,
           videoIds: Array.from(vids),
         });
@@ -946,7 +948,8 @@
         pills.push({
           text: term,
           type: "term",
-          label: `🏷️ ${term}`,
+          iconClass: "ph-tag",
+          label: term,
           count: vids.size,
           videoIds: Array.from(vids),
         });

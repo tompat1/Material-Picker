@@ -9907,6 +9907,13 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   line-height: 1.25;
 }
 
+.feed-row-star {
+  color: #f59e0b;
+  vertical-align: -0.05em;
+  font-size: 0.9em;
+  margin-right: 0.2rem;
+}
+
 .feed-row-copy > span:last-child {
   color: var(--muted);
   font-size: 0.86rem;
@@ -11696,21 +11703,39 @@ button[value="close"]:active {
 }
 
 .widgets-platform-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   border: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
-  padding: 0.35rem 0.85rem;
+  padding: 0.38rem 0.85rem;
   border-radius: 8px;
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
+  line-height: 1;
 }
 
 .widgets-platform-btn.is-active {
   background: var(--ink);
   color: var(--bg);
   border-color: var(--ink);
+}
+
+.widgets-platform-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  color: inherit;
+}
+
+.widgets-tip-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--accent);
+  margin-right: 0.35rem;
+  vertical-align: -0.1em;
 }
 
 .widgets-steps h4 {
