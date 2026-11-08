@@ -2615,11 +2615,11 @@ const ENDPOINT_URL = "${endpointUrl}";
 const WIDGET_TOKEN = "${widgetToken}";
 
 const COLORS = {
-  bg: new Color("#1c1511"),
-  accent: new Color("#ff7a3d"),
-  ink: new Color("#f4ebdd"),
-  muted: new Color("#a89a8c"),
-  border: new Color("#3d2f28"),
+  bg: Color.dynamic(new Color("#fbf9f6"), new Color("#1c1511")),
+  accent: Color.dynamic(new Color("#e05316"), new Color("#ff7a3d")),
+  ink: Color.dynamic(new Color("#1c1511"), new Color("#f4ebdd")),
+  muted: Color.dynamic(new Color("#76675a"), new Color("#a89a8c")),
+  border: Color.dynamic(new Color("#e8e0d5"), new Color("#3d2f28")),
 };
 
 async function loadItems() {
@@ -2840,6 +2840,7 @@ Script.complete();
 }
 
 let activeWidgetSize = "medium";
+let activeWidgetTheme = "dark";
 
 function createPreviewHeader(badgeText) {
   const hdr = document.createElement("div");
@@ -2891,9 +2892,9 @@ function createPreviewRow(sourceText, timeText, titleText, thumbUrl) {
   return row;
 }
 
-function renderWidgetPreviewElement(size) {
+function renderWidgetPreviewElement(size, theme = activeWidgetTheme) {
   const shell = document.createElement("div");
-  shell.className = `widget-card-shell widget-size-${size}`;
+  shell.className = `widget-card-shell widget-size-${size}${theme === "light" ? " theme-light" : ""}`;
 
   if (size === "small") {
     shell.appendChild(createPreviewHeader("LATEST"));
@@ -3073,6 +3074,9 @@ async function openWidgetsModal() {
   ctaBox.append(ctaInfo, ctaButtons);
   mount.appendChild(ctaBox);
 
+  const controlsBar = document.createElement("div");
+  controlsBar.className = "widgets-controls-bar";
+
   const tabBar = document.createElement("div");
   tabBar.className = "widgets-tab-bar";
   tabBar.setAttribute("role", "tablist");
@@ -3091,12 +3095,32 @@ async function openWidgetsModal() {
     btn.textContent = label;
     tabBar.appendChild(btn);
   });
-  mount.appendChild(tabBar);
+
+  const themeBar = document.createElement("div");
+  themeBar.className = "widgets-tab-bar";
+  themeBar.setAttribute("role", "tablist");
+  themeBar.setAttribute("aria-label", "Widget theme preview");
+
+  const themeDefs = [
+    { theme: "dark", label: "Dark" },
+    { theme: "light", label: "Light" },
+  ];
+  themeDefs.forEach(({ theme, label }) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `widgets-tab-btn${activeWidgetTheme === theme ? " is-active" : ""}`;
+    btn.dataset.wtheme = theme;
+    btn.textContent = label;
+    themeBar.appendChild(btn);
+  });
+
+  controlsBar.append(tabBar, themeBar);
+  mount.appendChild(controlsBar);
 
   const stage = document.createElement("div");
   stage.className = "widgets-preview-stage";
   stage.id = "widgetsPreviewStage";
-  stage.appendChild(renderWidgetPreviewElement(activeWidgetSize));
+  stage.appendChild(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme));
   mount.appendChild(stage);
 
   const steps = document.createElement("div");
@@ -3117,9 +3141,15 @@ async function openWidgetsModal() {
   });
   steps.append(stepsH4, ol);
 
+  const themeNote = document.createElement("p");
+  themeNote.className = "widgets-platform-note hint";
+  themeNote.style.marginTop = "12px";
+  themeNote.textContent = "Automatic Appearance: The installed widget uses iOS dynamic colors and automatically matches your iPhone's system Light and Dark mode without any manual setup.";
+  steps.appendChild(themeNote);
+
   const platformNote = document.createElement("p");
   platformNote.className = "widgets-platform-note hint";
-  platformNote.style.marginTop = "12px";
+  platformNote.style.marginTop = "6px";
   platformNote.textContent = "Android & other platforms: Use your widget token or JSON endpoint with any custom widget reader app.";
   steps.appendChild(platformNote);
 
@@ -3129,7 +3159,15 @@ async function openWidgetsModal() {
     btn.addEventListener("click", () => {
       activeWidgetSize = btn.dataset.wsize;
       tabBar.querySelectorAll("[data-wsize]").forEach((b) => b.classList.toggle("is-active", b === btn));
-      stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize));
+      stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme));
+    });
+  });
+
+  themeBar.querySelectorAll("[data-wtheme]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeWidgetTheme = btn.dataset.wtheme;
+      themeBar.querySelectorAll("[data-wtheme]").forEach((b) => b.classList.toggle("is-active", b === btn));
+      stage.replaceChildren(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme));
     });
   });
 

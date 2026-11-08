@@ -11367,6 +11367,55 @@ button[value="close"]:active {
   align-self: center;
 }
 
+.widgets-controls-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.widget-card-shell.theme-light {
+  background: #fbf9f6;
+  border: 1px solid rgba(28, 21, 17, 0.12);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
+}
+
+.widget-card-shell.theme-light .w-hdr-logo {
+  color: #e05316;
+}
+
+.widget-card-shell.theme-light .w-hdr-badge {
+  color: #76675a;
+}
+
+.widget-card-shell.theme-light .w-sm-source,
+.widget-card-shell.theme-light .w-md-source {
+  color: #e05316;
+}
+
+.widget-card-shell.theme-light .w-sm-foot,
+.widget-card-shell.theme-light .w-md-time {
+  color: #76675a;
+}
+
+.widget-card-shell.theme-light .w-sm-title,
+.widget-card-shell.theme-light .w-md-title,
+.widget-card-shell.theme-light .w-row-title {
+  color: #1c1511;
+}
+
+.widget-card-shell.theme-light .w-separator {
+  background: rgba(28, 21, 17, 0.08);
+}
+
+.widget-card-shell.theme-light .w-row-thumb,
+.widget-card-shell.theme-light .w-sm-thumb {
+  background: rgba(28, 21, 17, 0.06);
+  border-color: rgba(28, 21, 17, 0.1);
+}
+
 .widgets-tab-btn {
   border: 0;
   background: transparent;
