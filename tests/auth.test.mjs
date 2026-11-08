@@ -580,6 +580,7 @@ test("widget latest endpoint authenticates with widget token, loads configured f
   const breakthroughItem = data.items.find((i) => i.title === "Latest Tech Breakthrough");
   assert.ok(breakthroughItem);
   assert.equal(breakthroughItem.source, "Tech News");
+  assert.equal(breakthroughItem.feedUrl, "https://technews.example/feed.xml");
 
   // - Saved item without author resolved source to feed title "Tech News" (Comment 6)
   const savedItem = data.items.find((i) => i.id === "item-saved-1");
@@ -641,11 +642,14 @@ test("Scriptable widget code generation produces valid, error-free JavaScript", 
   assert.ok(script.includes('PREFERRED_SIZE = "large"'));
   assert.ok(script.includes('PREFERRED_SOURCE = "feeds"'));
   assert.ok(script.includes("presentLarge()"));
+  assert.ok(script.includes("getItemWebUrl"), "Script must route tapped posts to Picker web app");
+  assert.ok(script.includes("desk=feeds"), "Script must route feed posts to Feeds desk in web app");
   assert.ok(!script.includes("replace(//"), "Must not contain broken unescaped regex literal in template string");
 
   const ytScript = generateScriptableCode(testEndpoint, "test-widget-token-123", "medium", "youtube");
   assert.ok(ytScript.includes('PREFERRED_SOURCE = "youtube"'));
   assert.ok(ytScript.includes("5 VIDEOS"));
+  assert.ok(ytScript.includes("desk=youtube"), "Script must route YouTube posts to YouTube desk in web app");
 
   // Validate JavaScript syntax parses cleanly for all widget sizes and sources
   for (const s of ["small", "medium", "large"]) {

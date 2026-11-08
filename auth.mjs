@@ -1180,6 +1180,7 @@ async function handleWidgetLatest(request, url, store, options) {
           thumbnail: String(v.thumbnail || ""),
           publishedAt: String(v.publishedAt || ""),
           type: "youtube",
+          speaker: String(v.speaker || v.channelTitle || "YouTube"),
         });
       });
     } catch {
@@ -1221,6 +1222,9 @@ async function handleWidgetLatest(request, url, store, options) {
                 thumbnail: String(item.image || item.thumbnail || ""),
                 publishedAt: String(item.publishedAt || ""),
                 type: "rss",
+                summary: String(item.summary || "").slice(0, 400),
+                feedId: String(feed.id || ""),
+                feedUrl: String(feed.url || ""),
               });
             }
           } catch {
@@ -1250,6 +1254,9 @@ async function handleWidgetLatest(request, url, store, options) {
           thumbnail: String(item.image || item.thumbnail || ""),
           publishedAt: String(item.publishedAt || ""),
           type: "rss",
+          summary: String(item.summary || "").slice(0, 400),
+          feedId: String(item.feedId || feed?.id || ""),
+          feedUrl: String(feed?.url || ""),
         });
       });
     } catch {

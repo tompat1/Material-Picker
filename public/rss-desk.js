@@ -623,8 +623,41 @@ function feedRecord(feedId) {
 }
 
 function itemById(id) {
-  return feedState.items.find((item) => item.id === id);
+  if (!id) return null;
+  return (
+    feedState.items.find((item) => item.id === id) ||
+    feedState.items.find((item) => item.link === id || item.videoUrl === id)
+  );
 }
+
+function openWidgetStory(params) {
+  if (!params) return;
+  const storyId = params.get("storyId") || "";
+  const storyUrl = params.get("storyUrl") || "";
+  const title = params.get("title") || "";
+  const source = params.get("source") || "";
+  const summary = params.get("summary") || "";
+  const thumb = params.get("thumb") || "";
+
+  let item = itemById(storyId) || (storyUrl ? itemById(storyUrl) : null);
+  if (!item && (storyId || storyUrl)) {
+    item = {
+      id: storyId || storyUrl,
+      title: title || "Story",
+      link: storyUrl || (storyId.startsWith("http") ? storyId : ""),
+      source: source || "Feed",
+      summary: summary || "",
+      image: thumb || "",
+      publishedAt: new Date().toISOString(),
+    };
+    feedState.items.unshift(item);
+  }
+  if (item) {
+    selectedSource = "all";
+    openStory(item.id);
+  }
+}
+window.openWidgetStory = openWidgetStory;
 
 function isUnread(item) {
   return item && !feedState.read[item.id] && !feedState.archived[item.id];
@@ -3075,6 +3108,12 @@ function bindFeedsDesk() {
   window.addEventListener("resize", applyPane);
   renderFeeds();
   watchFeedRefresh();
+
+  const initialParams = window.__pendingWidgetStoryParams || new URLSearchParams(window.location.search);
+  if (initialParams.get("storyId") || initialParams.get("storyUrl")) {
+    openWidgetStory(initialParams);
+    window.__pendingWidgetStoryParams = null;
+  }
 }
 
 document.addEventListener("DOMContentLoaded", bindFeedsDesk);

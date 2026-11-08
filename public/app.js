@@ -517,17 +517,15 @@ function init() {
   saveState();
   const accountReady = loadAccount().then(() => {
     const params = new URLSearchParams(location.search);
+    const storyId = params.get("storyId");
+    const storyUrl = params.get("storyUrl");
+    const videoId = params.get("video") || params.get("videoId");
+    const videoUrl = params.get("videoUrl");
+
     if (youtubeConnected && params.get("feed") === "subscriptions") {
       libraryFeed = "youtube-subscriptions";
     }
-    if (youtubeConnected && params.get("desk") === "youtube") {
-      const desk = document.querySelector("#desk-youtube");
-      if (desk) {
-        desk.checked = true;
-        desk.dispatchEvent(new Event("change", { bubbles: true }));
-      }
-    }
-    if (params.get("desk") === "feeds" || params.get("feedly")) {
+    if (params.get("desk") === "feeds" || storyId || storyUrl || params.get("feedly")) {
       if (params.get("feedly") === "error") document.querySelector("#feedsHome")?.setAttribute("data-feedly-error", "1");
       if (params.get("feedly") === "signin") {
         document.querySelector("#accountDialog")?.showModal();
@@ -538,6 +536,40 @@ function init() {
       if (desk) {
         desk.checked = true;
         desk.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      if (storyId || storyUrl) {
+        if (typeof window.openWidgetStory === "function") {
+          window.openWidgetStory(params);
+        } else {
+          window.__pendingWidgetStoryParams = params;
+        }
+      }
+      history.replaceState(null, "", location.pathname);
+    } else if (params.get("desk") === "youtube" || videoId || videoUrl) {
+      if (youtubeConnected) {
+        const desk = document.querySelector("#desk-youtube");
+        if (desk) {
+          desk.checked = true;
+          desk.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+      if (videoId || videoUrl) {
+        const targetUrl = videoUrl || (videoId.startsWith("http") ? videoId : `https://www.youtube.com/watch?v=${videoId}`);
+        const videoTitle = params.get("title") || "YouTube Video";
+        const vSpeaker = params.get("source") || "YouTube";
+        const vThumb = params.get("thumb") || "";
+        const item = {
+          id: videoId || targetUrl,
+          title: videoTitle,
+          url: targetUrl,
+          speaker: vSpeaker,
+          thumbnail: vThumb,
+        };
+        startPlaybackOnLoad = true;
+        const id = ensureTopicVideo(item);
+        if (id) {
+          selectVideo(id, { autoplay: true });
+        }
       }
       history.replaceState(null, "", location.pathname);
     }
@@ -2616,6 +2648,30 @@ const ENDPOINT_URL = "${endpointUrl}";
 const WIDGET_TOKEN = "${widgetToken}";
 const PREFERRED_SIZE = "${initialSize}"; // "small", "medium", or "large"
 const PREFERRED_SOURCE = "${initialSource}"; // "feeds" or "youtube"
+const APP_BASE = ENDPOINT_URL.split("/api/widget/latest")[0] || "https://picker.rynell.org";
+
+function getItemWebUrl(p) {
+  if (!p) return APP_BASE;
+  const isYt = (p.type === "youtube") || (p.url && (p.url.includes("youtube.com") || p.url.includes("youtu.be")));
+  if (isYt) {
+    const vId = p.id || "";
+    let u = APP_BASE + "/?desk=youtube";
+    if (vId) u += "&video=" + encodeURIComponent(vId);
+    if (p.url) u += "&videoUrl=" + encodeURIComponent(p.url);
+    if (p.title) u += "&title=" + encodeURIComponent(p.title);
+    if (p.source) u += "&source=" + encodeURIComponent(p.source);
+    if (p.thumbnail) u += "&thumb=" + encodeURIComponent(p.thumbnail);
+    return u;
+  }
+  let u = APP_BASE + "/?desk=feeds";
+  if (p.id) u += "&storyId=" + encodeURIComponent(p.id);
+  if (p.url) u += "&storyUrl=" + encodeURIComponent(p.url);
+  if (p.title) u += "&title=" + encodeURIComponent(p.title);
+  if (p.source) u += "&source=" + encodeURIComponent(p.source);
+  if (p.thumbnail) u += "&thumb=" + encodeURIComponent(p.thumbnail);
+  if (p.summary) u += "&summary=" + encodeURIComponent(String(p.summary).slice(0, 300));
+  return u;
+}
 
 const COLORS = {
   bg: Color.dynamic(new Color("#fbf9f6"), new Color("#1c1511")),
@@ -2735,7 +2791,7 @@ async function createWidget() {
     emptySub.font = Font.systemFont(family === "small" ? 9 : 11);
     emptySub.lineLimit = 2;
     widget.addSpacer();
-    widget.url = ENDPOINT_URL.split("/api/widget/latest")[0] || ENDPOINT_URL;
+    widget.url = APP_BASE + (source === "youtube" ? "/?desk=youtube" : "/?desk=feeds");
     widget.refreshAfterDate = new Date(Date.now() + 1000 * 60 * 15);
     return widget;
   }
@@ -2783,16 +2839,17 @@ async function createWidget() {
     title.textColor = COLORS.ink;
     title.font = Font.boldSystemFont(12.5);
     title.lineLimit = 3;
-    if (p.url) widget.url = p.url;
+    widget.url = getItemWebUrl(p);
     widget.addSpacer();
   } else if (family === "medium") {
+    widget.url = APP_BASE + (source === "youtube" ? "/?desk=youtube" : "/?desk=feeds");
     const limit = displayItems.length;
     for (let i = 0; i < limit; i++) {
       const p = displayItems[i];
       const row = widget.addStack();
       row.layoutHorizontally();
       row.centerAlignContent();
-      if (p.url) row.url = p.url;
+      row.url = getItemWebUrl(p);
 
       const copyCol = row.addStack();
       copyCol.layoutVertically();
@@ -2828,13 +2885,14 @@ async function createWidget() {
     if (limit < 2) widget.addSpacer();
   } else {
     // Large / Maxi: exactly 5 posts with large thumbnails and balanced edge-to-edge distribution
+    widget.url = APP_BASE + (source === "youtube" ? "/?desk=youtube" : "/?desk=feeds");
     const limit = displayItems.length;
     for (let i = 0; i < limit; i++) {
       const p = displayItems[i];
       const row = widget.addStack();
       row.layoutHorizontally();
       row.centerAlignContent();
-      if (p.url) row.url = p.url;
+      row.url = getItemWebUrl(p);
 
       const copyCol = row.addStack();
       copyCol.layoutVertically();
