@@ -1,6 +1,6 @@
 const MAX_ITEMS = 40;
 const TITLE_LIMIT = 300;
-const SUMMARY_LIMIT = 280;
+const SUMMARY_LIMIT = 2000;
 
 function fail(status, message) {
   const error = new Error(message);
@@ -29,13 +29,16 @@ function stripTags(value) {
   return decodeXml(value)
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|blockquote|li|h[1-6])>/gi, "\n\n")
     .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/\n\s*\n\s*\n+/g, "\n\n")
     .trim();
 }
 
 function clip(value, limit) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const text = String(value || "").replace(/[^\S\n]+/g, " ").trim();
   if (text.length <= limit) return text;
   return `${text.slice(0, limit - 1).trimEnd()}…`;
 }
@@ -86,6 +89,19 @@ function innerRaw(block, names) {
 
 function textOf(block, names, limit) {
   return clip(stripTags(innerRaw(block, names)), limit);
+}
+
+function longestTextOf(block, names, limit) {
+  let best = "";
+  for (const name of names) {
+    const raw = innerRaw(block, [name]);
+    if (!raw) continue;
+    const cleaned = clip(stripTags(raw), limit);
+    if (cleaned.length > best.length) {
+      best = cleaned;
+    }
+  }
+  return best;
 }
 
 function attrValue(source, name) {
@@ -231,7 +247,7 @@ function itemFrom(block, base, index) {
   const enclosed = enclosureUrl(block, base);
   const videoUrl = enclosed || (videoPage(link) ? link : "") || (videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : "");
   const title = textOf(block, ["title"], TITLE_LIMIT) || "Untitled";
-  const summary = textOf(block, ["description", "summary", "subtitle", "encoded", "content"], SUMMARY_LIMIT);
+  const summary = longestTextOf(block, ["encoded", "content", "description", "summary", "subtitle"], SUMMARY_LIMIT);
   const guid = textOf(block, ["guid", "id"], 400);
   return {
     id: guid || link || `${index}:${title}`,

@@ -1297,6 +1297,7 @@ function storeFeed(feed, options = {}) {
     if (matched) {
       activeWidgetStory = matched;
       selectedItemId = matched.id;
+      if (feedPane === 1) renderReader();
     } else if (activeWidgetStory.feedId === record.id && !merged.some((i) => i.id === activeWidgetStory.id)) {
       merged.unshift(activeWidgetStory);
     }
@@ -1322,13 +1323,28 @@ function applyPane() {
   const article = itemById(selectedItemId) || activeWidgetStory;
   const onArticle = isPhoneFeeds() && feedPane === 1;
 
+  const panel = document.querySelector("#feedsPanel");
+  if (panel) {
+    panel.classList.toggle("is-article-view", onArticle);
+  }
+
+  const sortBlock = document.querySelector(".feeds-sort-block");
+  if (sortBlock) {
+    sortBlock.hidden = onArticle;
+  }
+
+  const reederActions = document.querySelector(".feeds-reeder-actions");
+  if (reederActions) {
+    reederActions.hidden = onArticle;
+  }
+
   if (favoriteTabs) {
     favoriteTabs.hidden = onArticle;
   }
 
   if (kicker) {
     if (onArticle) {
-      kicker.textContent = "Article";
+      kicker.textContent = "";
     } else if (previousSource) {
       kicker.innerHTML = `<button class="feeds-back-kicker" type="button" data-action="back-source">← Back to ${escapeFeedText(sourceTitle(previousSource))}</button>`;
     } else {
@@ -1339,7 +1355,7 @@ function applyPane() {
   if (title) {
     if (onArticle && article) {
       const feed = feedRecord(article.feedId);
-      const feedTitleText = feed?.title || "Article";
+      const feedTitleText = feed?.title || article.source || "Article";
       if (feed) {
         title.innerHTML = `<button class="feeds-title-link" type="button" data-open-feed="${escapeFeedText(feed.id)}" title="View ${escapeFeedText(feedTitleText)} feed">${escapeFeedText(feedTitleText)} <span class="feeds-title-arrow">→</span></button>`;
       } else {
@@ -1352,7 +1368,7 @@ function applyPane() {
 
   if (subtitle) {
     if (onArticle) {
-      subtitle.textContent = article?.author || "";
+      subtitle.textContent = "";
     } else {
       const count = itemsForSource().length;
       subtitle.textContent = `${countLabel(count)} ${showReadPosts ? "read" : "posts"}`;
@@ -1879,6 +1895,16 @@ function renderList() {
   bindRiverLoadMore(items.length);
 }
 
+function formatArticleBody(summary) {
+  if (!summary) return "";
+  const paragraphs = String(summary)
+    .split(/\n\s*\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!paragraphs.length) return "";
+  return paragraphs.map((p) => `<p class="feed-article-body">${escapeFeedText(p)}</p>`).join("");
+}
+
 function renderReader() {
   const reader = document.querySelector("#feedReader");
   if (!reader) return;
@@ -1910,7 +1936,7 @@ function renderReader() {
     ${sourceHtml}
     ${readerImage ? `<div class="feed-article-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(readerImage)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.closest('.feed-article-thumb-wrap')?.remove()" /></div>` : ""}
     ${targetUrl ? `<a class="feed-article-link" href="${escapeFeedText(targetUrl)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(targetUrl) || "Open")} →</a>` : ""}
-    ${item.summary ? `<p class="feed-article-body">${escapeFeedText(item.summary)}</p>` : ""}
+    ${formatArticleBody(item.summary)}
     <div class="feed-article-actions">
       <button class="ghost-button" type="button" data-star-item="${escapeFeedText(item.id)}">${feedState.starred[item.id] ? "Starred" : "Star"}</button>
       <button class="ghost-button" type="button" data-archive-item="${escapeFeedText(item.id)}">${feedState.archived[item.id] ? "Archived" : "Archive"}</button>

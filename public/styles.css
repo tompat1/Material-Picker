@@ -10043,9 +10043,19 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 
 .feed-article-date,
 .feed-article-by,
-.feed-article-source,
+.feed-article-source {
+  margin: 0;
+}
+
 .feed-article-body {
   margin: 0;
+  line-height: 1.6;
+  font-size: 1.02rem;
+  color: var(--ink);
+}
+
+.feed-article-body + .feed-article-body {
+  margin-top: 0.85rem;
 }
 
 .feed-article-date,
@@ -11251,6 +11261,37 @@ button[value="close"]:active {
   body:has(#desk-feeds:checked) .feeds-reeder-bar:has(#feedsBack:not([hidden])) .feeds-reeder-actions {
     grid-column: 3;
     grid-row: 1;
+  }
+
+  body:has(#desk-feeds:checked) .feeds-panel.is-article-view .feeds-reeder-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+    margin: 0 0 0.35rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  body:has(#desk-feeds:checked) .feeds-panel.is-article-view .feeds-reeder-title {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    flex: 1;
+  }
+
+  body:has(#desk-feeds:checked) .feeds-panel.is-article-view .feeds-heading-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  body:has(#desk-feeds:checked) .feeds-panel.is-article-view .feeds-kicker-row,
+  body:has(#desk-feeds:checked) .feeds-panel.is-article-view .feeds-count,
+  body:has(#desk-feeds:checked) .feeds-panel.is-article-view .feeds-sort-block,
+  body:has(#desk-feeds:checked) .feeds-panel.is-article-view .feeds-reeder-actions,
+  body:has(#desk-feeds:checked) .feeds-panel.is-article-view .feeds-status {
+    display: none !important;
   }
 
   body:has(#desk-feeds:checked) .feeds-discover-cta[aria-expanded="true"],

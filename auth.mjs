@@ -742,7 +742,7 @@ export function normalizeFeedLibrary(value) {
         feedId,
         title: String(item.title || "").slice(0, 300),
         link: String(item.link || "").slice(0, 500),
-        summary: String(item.summary || "").slice(0, 600),
+        summary: String(item.summary || "").slice(0, 2400),
         author: String(item.author || "").slice(0, 120),
         publishedAt: String(item.publishedAt || "").slice(0, 40),
         image: String(item.image || "").slice(0, 500),
@@ -1244,7 +1244,7 @@ async function handleWidgetLatest(request, url, store, options) {
                 sourceIcon: getSourceIconUrl(feed, itemUrl),
                 publishedAt: String(item.publishedAt || ""),
                 type: "rss",
-                summary: String(item.summary || "").slice(0, 400),
+                summary: String(item.summary || "").slice(0, 1500),
                 feedId: String(feed.id || ""),
                 feedUrl: String(feed.url || ""),
               });
@@ -1277,7 +1277,7 @@ async function handleWidgetLatest(request, url, store, options) {
           sourceIcon: getSourceIconUrl(feed, itemUrl),
           publishedAt: String(item.publishedAt || ""),
           type: "rss",
-          summary: String(item.summary || "").slice(0, 400),
+          summary: String(item.summary || "").slice(0, 1500),
           feedId: String(item.feedId || feed?.id || ""),
           feedUrl: String(feed?.url || ""),
         });

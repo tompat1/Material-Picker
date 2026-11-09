@@ -2670,7 +2670,7 @@ function getItemWebUrl(p) {
   if (p.source) u += "&source=" + encodeURIComponent(p.source);
   if (p.thumbnail) u += "&thumb=" + encodeURIComponent(p.thumbnail);
   if (p.feedId) u += "&feedId=" + encodeURIComponent(p.feedId);
-  if (p.summary) u += "&summary=" + encodeURIComponent(String(p.summary).slice(0, 300));
+  if (p.summary) u += "&summary=" + encodeURIComponent(String(p.summary).slice(0, 1200));
   return u;
 }
 
