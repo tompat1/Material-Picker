@@ -1063,7 +1063,7 @@ function paintFeedHealth(message = "") {
   node.innerHTML = `<p>${escapeFeedText(lead)}</p><ul class="feeds-repair">${rows.join("")}</ul>`;
 }
 
-function setFeedStatus(message) {
+function setFeedStatus(message, options = {}) {
   const node = document.querySelector("#feedsStatus");
   if (!node) return;
   window.clearTimeout(feedStatusTimer);
@@ -1073,10 +1073,13 @@ function setFeedStatus(message) {
 
   if (message && (isUpdating || (!broken.length && !dead.length))) {
     node.classList.remove("is-warn");
-    const throbberHtml = `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"></span>`;
+    const throbberHtml = isUpdating
+      ? `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"></span>`
+      : `<i class="ph ph-check" aria-hidden="true"></i>`;
     node.innerHTML = `<p class="feeds-status-line">${throbberHtml}<span>${escapeFeedText(message)}</span></p>`;
     window.paintPickerLoader?.();
-    if (!isUpdating && message) {
+    const duration = options.autoClear ?? (isUpdating ? 2400 : 2500);
+    if (duration > 0) {
       feedStatusTimer = window.setTimeout(() => {
         if (brokenFeeds().length || deadFeeds().length) {
           paintFeedHealth();
@@ -1084,7 +1087,7 @@ function setFeedStatus(message) {
           node.innerHTML = "";
         }
         window.paintPickerLoader?.();
-      }, 3000);
+      }, duration);
     }
     return;
   }
@@ -2356,7 +2359,7 @@ async function pullFeeds(options = {}) {
   const total = queue.length;
   let done = 0;
   const failures = [];
-  setFeedStatus(total === 1 ? "Refreshing 1 feed…" : `Refreshing ${total} feeds…`);
+  setFeedStatus(total === 1 ? "Refreshing 1 feed…" : "Refreshing feeds…", { autoClear: 2400 });
   const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
     while (queue.length) {
       const feed = queue.shift();
@@ -2376,18 +2379,17 @@ async function pullFeeds(options = {}) {
         }
       }
       done += 1;
-      if (done < total) setFeedStatus(`Refreshing feeds… ${done} of ${total}`);
     }
   });
   await Promise.all(workers);
   dedupeFeedLibrary();
   saveFeedState();
   if (failures.length) {
-    setFeedStatus(`Some feeds could not refresh: ${failures.slice(0, 3).join(", ")}${failures.length > 3 ? "…" : ""}`);
+    setFeedStatus(`Some feeds could not refresh: ${failures.slice(0, 3).join(", ")}${failures.length > 3 ? "…" : ""}`, { autoClear: 3500 });
   } else if (deadFeeds().length) {
-    setFeedStatus("Feeds are up to date. Remove the dead subscriptions below.");
+    setFeedStatus("Feeds updated. Remove dead subscriptions below.", { autoClear: 3500 });
   } else {
-    setFeedStatus("Feeds are up to date.");
+    setFeedStatus("Feeds updated.", { autoClear: 2500 });
   }
   if (selectedItemId) paintIncomingFeeds();
   else renderFeeds();
