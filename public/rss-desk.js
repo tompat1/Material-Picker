@@ -237,7 +237,7 @@ async function syncFeedLibrary() {
   const beforeCount = feedState.feeds.length;
   feedState.feeds = feedState.feeds.filter((feed) => !remoteRemoved.has(canonicalFeedUrl(feed.url)));
   const keptIds = new Set(feedState.feeds.map((feed) => feed.id));
-  feedState.items = feedState.items.filter((item) => keptIds.has(item.feedId));
+  feedState.items = feedState.items.filter((item) => keptIds.has(item.feedId) || item === activeWidgetStory || item?.isWidgetStory);
   remoteRemoved.forEach((url) => feedState.removedUrls.add(url));
   const removed = beforeCount !== feedState.feeds.length;
   if (selectedSource.startsWith("feed:") && !keptIds.has(selectedSource.slice(5))) {
@@ -618,15 +618,19 @@ function isPhoneFeeds() {
   return window.matchMedia("(max-width: 760px)").matches;
 }
 
+let activeWidgetStory = null;
+
 function feedRecord(feedId) {
   return feedState.feeds.find((entry) => entry.id === feedId);
 }
 
 function itemById(id) {
-  if (!id) return null;
+  if (!id) return activeWidgetStory;
   return (
     feedState.items.find((item) => item.id === id) ||
-    feedState.items.find((item) => item.link === id || item.videoUrl === id)
+    feedState.items.find((item) => item.link === id || item.videoUrl === id) ||
+    feedState.items.find((item) => item.id.endsWith(`:${id}`) || id.endsWith(`:${item.id}`)) ||
+    (activeWidgetStory && (activeWidgetStory.id === id || activeWidgetStory.link === id) ? activeWidgetStory : null)
   );
 }
 
@@ -638,21 +642,32 @@ function openWidgetStory(params) {
   const source = params.get("source") || "";
   const summary = params.get("summary") || "";
   const thumb = params.get("thumb") || "";
+  const feedId = params.get("feedId") || "";
 
-  let item = itemById(storyId) || (storyUrl ? itemById(storyUrl) : null);
-  if (!item && (storyId || storyUrl)) {
+  let item = (storyId ? itemById(storyId) : null) || (storyUrl ? itemById(storyUrl) : null);
+  if (!item && (storyId || storyUrl || title)) {
+    const feed = (feedId && feedRecord(feedId)) ||
+      feedState.feeds.find((f) => f.id === feedId) ||
+      feedState.feeds.find((f) => f.title === source) ||
+      feedState.feeds.find((f) => {
+        try { return new URL(f.siteUrl || f.url).origin === new URL(storyUrl || storyId).origin; } catch { return false; }
+      });
+    const resolvedFeedId = feed?.id || feedId || "widget-feed";
     item = {
-      id: storyId || storyUrl,
+      id: storyId || storyUrl || `widget:${Date.now()}`,
+      feedId: resolvedFeedId,
       title: title || "Story",
       link: storyUrl || (storyId.startsWith("http") ? storyId : ""),
-      source: source || "Feed",
+      source: feed?.title || source || "Feed",
       summary: summary || "",
       image: thumb || "",
       publishedAt: new Date().toISOString(),
+      isWidgetStory: true,
     };
     feedState.items.unshift(item);
   }
   if (item) {
+    activeWidgetStory = item;
     selectedSource = "all";
     openStory(item.id);
   }
@@ -1277,7 +1292,16 @@ function storeFeed(feed, options = {}) {
       if (!isUserKeptItem(item)) transientCount += 1;
     });
   const merged = [...kept.values()].sort((a, b) => feedTime(b) - feedTime(a));
-  feedState.items = feedState.items.filter((item) => item.feedId !== record.id).concat(merged);
+  if (activeWidgetStory) {
+    const matched = merged.find((i) => i.id === activeWidgetStory.id || (i.link && i.link === activeWidgetStory.link));
+    if (matched) {
+      activeWidgetStory = matched;
+      selectedItemId = matched.id;
+    } else if (activeWidgetStory.feedId === record.id && !merged.some((i) => i.id === activeWidgetStory.id)) {
+      merged.unshift(activeWidgetStory);
+    }
+  }
+  feedState.items = feedState.items.filter((item) => item.feedId !== record.id || item === activeWidgetStory).concat(merged);
   if ((feed.items || []).length) setFeedHealth(record, "ok");
   saveFeedState();
   return record;
@@ -1295,7 +1319,7 @@ function applyPane() {
   const subtitle = document.querySelector("#feedsSubtitle");
   const kicker = document.querySelector("#feedsKicker");
   const favoriteTabs = document.querySelector("#feedsFavoriteTabs");
-  const article = itemById(selectedItemId);
+  const article = itemById(selectedItemId) || activeWidgetStory;
   const onArticle = isPhoneFeeds() && feedPane === 1;
 
   if (favoriteTabs) {
@@ -1858,11 +1882,12 @@ function renderList() {
 function renderReader() {
   const reader = document.querySelector("#feedReader");
   if (!reader) return;
-  const item = itemById(selectedItemId);
+  const item = itemById(selectedItemId) || activeWidgetStory;
   if (!item) {
     reader.innerHTML = `<p class="feeds-river-empty">Select a story to read it.</p>`;
     return;
   }
+  if (!selectedItemId && activeWidgetStory) selectedItemId = activeWidgetStory.id;
   const feed = feedRecord(item.feedId) || feedState.feeds.find((f) => f.title === item.source);
   const fallbackFeed = feed || {
     id: item.feedId || "",
@@ -2709,10 +2734,14 @@ function bindFeedsDesk() {
   });
   document.querySelector("#feedsBack")?.addEventListener("click", () => {
     if (isPhoneFeeds() && feedPane === 1) {
+      activeWidgetStory = null;
+      selectedItemId = "";
       showPane(0);
+      renderFeeds();
     } else if (previousSource) {
       selectedSource = previousSource;
       previousSource = null;
+      activeWidgetStory = null;
       selectedItemId = "";
       feedPane = 0;
       renderFeeds();
