@@ -7905,9 +7905,45 @@ label.cms-image-choose {
 
 .shop-lightbox-close {
   position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
-  z-index: 2;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.42rem 0.95rem;
+  min-height: 2.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: capitalize;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.shop-lightbox-close:hover {
+  background: color-mix(in srgb, var(--accent) 85%, #ffffff);
+  color: #ffffff;
+  transform: scale(1.05);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+}
+
+.shop-lightbox-close:active {
+  transform: scale(0.96);
+}
+
+.shop-lightbox-close:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }
 
 .shop-lightbox-hint,
@@ -10194,8 +10230,6 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 .dialog-bar .ghost-button[value="close"],
 .dialog-bar .ghost-button[aria-label="Close"],
 .shop-drawer-head .ghost-button[aria-label="Close"],
-.shop-lightbox-close.ghost-button,
-.shop-lightbox-close,
 .global-search-close,
 .account-dialog-close,
 .feeds-discover-dismiss,
@@ -10225,8 +10259,6 @@ button[value="close"] {
 .dialog-bar .ghost-button[value="close"] svg,
 .dialog-bar .ghost-button[aria-label="Close"] svg,
 .shop-drawer-head .ghost-button[aria-label="Close"] svg,
-.shop-lightbox-close.ghost-button svg,
-.shop-lightbox-close svg,
 .global-search-close svg,
 .account-dialog-close svg,
 .feeds-discover-dismiss svg,
@@ -10244,8 +10276,6 @@ button[value="close"] svg {
 .dialog-bar .ghost-button[value="close"]:hover,
 .dialog-bar .ghost-button[aria-label="Close"]:hover,
 .shop-drawer-head .ghost-button[aria-label="Close"]:hover,
-.shop-lightbox-close.ghost-button:hover,
-.shop-lightbox-close:hover,
 .global-search-close:hover,
 .account-dialog-close:hover,
 .feeds-discover-dismiss:hover,
@@ -10262,8 +10292,6 @@ button[value="close"]:hover {
 .dialog-bar .ghost-button[value="close"]:active,
 .dialog-bar .ghost-button[aria-label="Close"]:active,
 .shop-drawer-head .ghost-button[aria-label="Close"]:active,
-.shop-lightbox-close.ghost-button:active,
-.shop-lightbox-close:active,
 .global-search-close:active,
 .account-dialog-close:active,
 .feeds-discover-dismiss:active,
@@ -10279,8 +10307,6 @@ button[value="close"]:active {
   .dialog-bar .ghost-button[value="close"],
   .dialog-bar .ghost-button[aria-label="Close"],
   .shop-drawer-head .ghost-button[aria-label="Close"],
-  .shop-lightbox-close.ghost-button,
-  .shop-lightbox-close,
   .global-search-close,
   .account-dialog-close,
   .menu-close,
@@ -10301,8 +10327,6 @@ button[value="close"]:active {
   .dialog-bar .ghost-button[value="close"]:hover,
   .dialog-bar .ghost-button[aria-label="Close"]:hover,
   .shop-drawer-head .ghost-button[aria-label="Close"]:hover,
-  .shop-lightbox-close.ghost-button:hover,
-  .shop-lightbox-close:hover,
   .global-search-close:hover,
   .account-dialog-close:hover,
   .menu-close:hover,
@@ -10317,8 +10341,6 @@ button[value="close"]:active {
   .dialog-bar .ghost-button[value="close"] svg,
   .dialog-bar .ghost-button[aria-label="Close"] svg,
   .shop-drawer-head .ghost-button[aria-label="Close"] svg,
-  .shop-lightbox-close.ghost-button svg,
-  .shop-lightbox-close svg,
   .global-search-close svg,
   .account-dialog-close svg,
   .menu-close svg,
