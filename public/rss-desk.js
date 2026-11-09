@@ -1343,9 +1343,22 @@ function getUnreadCountsMap() {
   return counts;
 }
 
-function feedIconUrl(feed) {
-  const candidates = [feed?.siteUrl, feed?.site ? `https://${feed.site}` : "", feed?.url];
-  for (const candidate of candidates) {
+function feedIconUrl(feed, item = null) {
+  const candidates = [
+    feed?.iconUrl,
+    feed?.siteUrl,
+    feed?.site ? `https://${feed.site}` : "",
+    feed?.url,
+    item?.feedUrl,
+    item?.link,
+    item?.url,
+  ];
+  for (let candidate of candidates) {
+    if (!candidate) continue;
+    candidate = String(candidate).trim();
+    if (!candidate.startsWith("http://") && !candidate.startsWith("https://")) {
+      candidate = `https://${candidate}`;
+    }
     try {
       const url = new URL(candidate);
       if (url.protocol === "http:" || url.protocol === "https:") return `${url.origin}/favicon.ico`;
@@ -1356,8 +1369,9 @@ function feedIconUrl(feed) {
   return "";
 }
 
-function feedIconMarkup(feed) {
-  const title = String(feed?.title || "Feed").trim();
+function feedIconMarkup(feed, options = {}) {
+  const item = options.item || null;
+  const title = String(feed?.title || item?.source || item?.author || options.title || "Feed").trim();
   const initials = title
     .split(/\s+/)
     .filter(Boolean)
@@ -1366,10 +1380,11 @@ function feedIconMarkup(feed) {
     .join("")
     .toUpperCase() || "F";
   const hue = Array.from(title).reduce((total, character) => total + character.charCodeAt(0), 0) % 360;
-  const iconUrl = feedIconUrl(feed);
-  return `<span class="feeds-feed-icon" style="--feed-icon-hue:${hue}" aria-hidden="true">
+  const iconUrl = feedIconUrl(feed, item);
+  const extraClass = options.className ? ` ${options.className}` : "";
+  return `<span class="feeds-feed-icon${extraClass}" style="--feed-icon-hue:${hue}" aria-hidden="true">
     <span>${escapeFeedText(initials)}</span>
-    ${iconUrl ? `<img src="${escapeFeedText(iconUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-feed-icon />` : ""}
+    ${iconUrl ? `<img src="${escapeFeedText(iconUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-feed-icon onerror="this.hidden=true" />` : ""}
   </span>`;
 }
 
@@ -1788,7 +1803,14 @@ function renderList() {
   const signedOutNote = feedsSignInNote();
   let lastDay = "";
   const rowsHtml = visibleItems.map((item) => {
-    const feed = feedRecord(item.feedId);
+    const feed = feedRecord(item.feedId) || feedState.feeds.find((f) => f.title === item.source);
+    const itemFeed = feed || {
+      id: item.feedId || "",
+      title: item.source || item.author || "Feed",
+      url: item.feedUrl || item.link || item.videoUrl || "",
+      siteUrl: item.link ? (() => { try { return new URL(item.link).origin; } catch { return ""; } })() : "",
+    };
+    const sourceIconHtml = feedIconMarkup(itemFeed, { item, className: "feed-row-source-icon" });
     const day = dayKey(item.publishedAt);
     const heading = feedSort === "latest" && day !== lastDay
       ? `<h3 class="feeds-day">${escapeFeedText(dayLabel(item.publishedAt))}</h3>`
@@ -1800,13 +1822,21 @@ function renderList() {
     const readMark = isReadInAll
       ? `<span class="feed-row-read-mark" aria-hidden="true"><i class="ph ph-check" aria-hidden="true"></i> Read</span>`
       : "";
+    const thumbHtml = itemImage
+      ? `<span class="feed-row-thumb-wrap">
+          <span class="thumb-spinner" aria-hidden="true"></span>
+          ${sourceIconHtml}
+          <img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add('is-loaded');this.previousElementSibling?.previousElementSibling?.remove();" onerror="this.remove()" />
+          ${readMark}
+        </span>`
+      : `<span class="feed-row-thumb feed-row-thumb-icon" aria-hidden="true">${sourceIconHtml}${readMark}</span>`;
     return `${heading}<button class="feed-row${isReadInAll ? " is-read" : ""}${selectedItemId === item.id ? " is-selected" : ""}" type="button" data-open-story="${escapeFeedText(item.id)}">
       <span class="feed-row-copy">
-        <span class="feed-row-source"><span>${escapeFeedText(feed?.title || "Feed")}</span>${when ? `<time>${escapeFeedText(when)}</time>` : ""}</span>
+        <span class="feed-row-source"><span>${escapeFeedText(itemFeed.title)}</span>${when ? `<time>${escapeFeedText(when)}</time>` : ""}</span>
         <strong>${feedState.starred[item.id] ? '<i class="ph ph-star feed-row-star" aria-hidden="true"></i> ' : ""}${escapeFeedText(item.title)}</strong>
         ${item.summary ? `<span>${escapeFeedText(item.summary)}</span>` : ""}
       </span>
-      ${itemImage ? `<span class="feed-row-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(itemImage)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.closest('.feed-row-thumb-wrap')?.remove()" />${readMark}</span>` : `<span class="feed-row-thumb" aria-hidden="true">${readMark}</span>`}
+      ${thumbHtml}
     </button>`;
   }).join("");
 
@@ -1830,12 +1860,19 @@ function renderReader() {
     reader.innerHTML = `<p class="feeds-river-empty">Select a story to read it.</p>`;
     return;
   }
-  const feed = feedRecord(item.feedId);
+  const feed = feedRecord(item.feedId) || feedState.feeds.find((f) => f.title === item.source);
+  const fallbackFeed = feed || {
+    id: item.feedId || "",
+    title: item.source || item.author || "Feed",
+    url: item.feedUrl || item.link || item.videoUrl || "",
+    siteUrl: item.link ? (() => { try { return new URL(item.link).origin; } catch { return ""; } })() : "",
+  };
   const when = item.publishedAt ? new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(item.publishedAt)) : "";
   const targetUrl = item.link || item.videoUrl || "";
+  const sourceIconHtml = feedIconMarkup(feed || fallbackFeed, { item, className: "feed-article-source-icon" });
   const sourceHtml = feed
-    ? `<button class="feed-article-source-btn" type="button" data-open-feed="${escapeFeedText(feed.id)}" title="View ${escapeFeedText(feed.title)} feed">${escapeFeedText(feed.title)} →</button>`
-    : (feed?.title ? `<p class="feed-article-source">${escapeFeedText(feed.title)}</p>` : "");
+    ? `<button class="feed-article-source-btn" type="button" data-open-feed="${escapeFeedText(feed.id)}" title="View ${escapeFeedText(feed.title)} feed">${sourceIconHtml}<span>${escapeFeedText(feed.title)} →</span></button>`
+    : `<p class="feed-article-source">${sourceIconHtml}<span>${escapeFeedText(fallbackFeed.title)}</span></p>`;
 
   const readerImage = cleanImageUrl(item.image);
   reader.innerHTML = `<article class="feed-article" data-article-link="${escapeFeedText(targetUrl)}">

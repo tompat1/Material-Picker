@@ -9937,14 +9937,44 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   flex-shrink: 0;
 }
 
-.feed-row-thumb-wrap img,
-.feed-row img {
+.feed-row-thumb-wrap img:not([data-feed-icon]),
+.feed-row img:not([data-feed-icon]) {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   border-radius: 10px;
   object-fit: cover;
+  z-index: 1;
+}
+
+.feed-row-thumb .feeds-feed-icon,
+.feed-row-thumb-wrap .feeds-feed-icon {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  flex: 0 0 100%;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, hsl(var(--feed-icon-hue) 42% 48%) 22%, var(--line));
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: color-mix(in srgb, hsl(var(--feed-icon-hue) 58% 70%) 20%, var(--bg-card, var(--bg)));
+  box-shadow: none;
+  z-index: 0;
+}
+
+.feed-row-thumb .feeds-feed-icon img[data-feed-icon],
+.feed-row-thumb-wrap .feeds-feed-icon img[data-feed-icon] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 4%, var(--bg-card, var(--bg)));
 }
 
 .feed-article-thumb-wrap {
@@ -10022,6 +10052,15 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
 .feed-article-source-btn:hover {
   color: var(--ink);
   text-decoration: underline;
+}
+
+.feed-article-source-btn .feeds-feed-icon,
+.feed-article-source .feeds-feed-icon {
+  flex: 0 0 1.35rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 0.3rem;
+  font-size: 10px;
 }
 
 .feed-article img {

@@ -1142,6 +1142,26 @@ async function fetchRecentFeedItems(feedUrl, fetchImpl) {
   }
 }
 
+function getSourceIconUrl(feed, itemUrl) {
+  const candidates = [feed?.siteUrl, feed?.url, itemUrl];
+  for (let candidate of candidates) {
+    if (!candidate) continue;
+    candidate = String(candidate).trim();
+    if (!candidate.startsWith("http://") && !candidate.startsWith("https://")) {
+      candidate = "https://" + candidate;
+    }
+    try {
+      const u = new URL(candidate);
+      if (u.protocol === "http:" || u.protocol === "https:") {
+        return `${u.origin}/favicon.ico`;
+      }
+    } catch {
+      // Continue to next candidate
+    }
+  }
+  return "";
+}
+
 async function handleWidgetLatest(request, url, store, options) {
   let user = null;
   const authHeader = request.headers.get("authorization") || "";
@@ -1178,6 +1198,7 @@ async function handleWidgetLatest(request, url, store, options) {
           source: String(v.speaker || v.channelTitle || "YouTube"),
           url: String(v.url || (v.id ? `https://www.youtube.com/watch?v=${v.id}` : "")),
           thumbnail: String(v.thumbnail || ""),
+          sourceIcon: "https://www.youtube.com/favicon.ico",
           publishedAt: String(v.publishedAt || ""),
           type: "youtube",
           speaker: String(v.speaker || v.channelTitle || "YouTube"),
@@ -1220,6 +1241,7 @@ async function handleWidgetLatest(request, url, store, options) {
                 source: String(feed.title || item.author || "Feed"),
                 url: itemUrl,
                 thumbnail: String(item.image || item.thumbnail || ""),
+                sourceIcon: getSourceIconUrl(feed, itemUrl),
                 publishedAt: String(item.publishedAt || ""),
                 type: "rss",
                 summary: String(item.summary || "").slice(0, 400),
@@ -1252,6 +1274,7 @@ async function handleWidgetLatest(request, url, store, options) {
           source: String(feed?.title || item.author || item.feedTitle || "Feed"),
           url: itemUrl,
           thumbnail: String(item.image || item.thumbnail || ""),
+          sourceIcon: getSourceIconUrl(feed, itemUrl),
           publishedAt: String(item.publishedAt || ""),
           type: "rss",
           summary: String(item.summary || "").slice(0, 400),

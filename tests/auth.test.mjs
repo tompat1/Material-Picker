@@ -581,6 +581,7 @@ test("widget latest endpoint authenticates with widget token, loads configured f
   assert.ok(breakthroughItem);
   assert.equal(breakthroughItem.source, "Tech News");
   assert.equal(breakthroughItem.feedUrl, "https://technews.example/feed.xml");
+  assert.equal(breakthroughItem.sourceIcon, "https://technews.example/favicon.ico");
 
   // - Saved item without author resolved source to feed title "Tech News" (Comment 6)
   const savedItem = data.items.find((i) => i.id === "item-saved-1");
@@ -644,6 +645,9 @@ test("Scriptable widget code generation produces valid, error-free JavaScript", 
   assert.ok(script.includes("presentLarge()"));
   assert.ok(script.includes("getItemWebUrl"), "Script must route tapped posts to Picker web app");
   assert.ok(script.includes("desk=feeds"), "Script must route feed posts to Feeds desk in web app");
+  assert.ok(script.includes("getItemImage"), "Script must resolve item image or source icon");
+  assert.ok(script.includes("getSourceFaviconUrl"), "Script must extract publishing source icon");
+  assert.ok(script.includes("createSourceBadge"), "Script must generate fallback source badge with initials");
   assert.ok(!script.includes("replace(//"), "Must not contain broken unescaped regex literal in template string");
 
   const ytScript = generateScriptableCode(testEndpoint, "test-widget-token-123", "medium", "youtube");

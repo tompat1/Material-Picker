@@ -2737,6 +2737,62 @@ async function loadImage(url) {
   }
 }
 
+function getSourceFaviconUrl(p) {
+  if (!p) return "";
+  const candidates = [p.sourceIcon, p.feedUrl, p.url];
+  for (let i = 0; i < candidates.length; i++) {
+    let c = candidates[i];
+    if (!c) continue;
+    c = String(c).trim();
+    if (!c.startsWith("http://") && !c.startsWith("https://")) c = "https://" + c;
+    try {
+      const u = new URL(c);
+      if (u.protocol === "http:" || u.protocol === "https:") {
+        return u.origin + "/favicon.ico";
+      }
+    } catch (e) {}
+  }
+  return "";
+}
+
+function createSourceBadge(sourceName, size) {
+  try {
+    const s = size || 50;
+    const name = String(sourceName || "Feed").trim();
+    const words = name.split(" ").filter(Boolean);
+    const initials = words.slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "F";
+    const ctx = new DrawContext();
+    ctx.size = new Size(s, s);
+    ctx.opaque = false;
+    ctx.respectScreenScale = true;
+    ctx.setFillColor(new Color("#28201b"));
+    ctx.fillRect(new Rect(0, 0, s, s));
+    ctx.setFont(Font.boldSystemFont(Math.round(s * 0.4)));
+    ctx.setTextColor(new Color("#ff7a3d"));
+    ctx.setTextAlignedCenter();
+    ctx.drawTextInRect(initials, new Rect(0, Math.round(s * 0.24), s, Math.round(s * 0.52)));
+    return ctx.getImage();
+  } catch (e) {
+    return null;
+  }
+}
+
+async function getItemImage(p, targetSize) {
+  if (!p) return null;
+  if (p.thumbnail) {
+    const img = await loadImage(p.thumbnail);
+    if (img) return { image: img, isSourceIcon: false };
+  }
+  const iconUrl = p.sourceIcon || getSourceFaviconUrl(p);
+  if (iconUrl) {
+    const icon = await loadImage(iconUrl);
+    if (icon) return { image: icon, isSourceIcon: true };
+  }
+  const badge = createSourceBadge(p.source || "Feed", targetSize);
+  if (badge) return { image: badge, isSourceIcon: false };
+  return null;
+}
+
 function timeAgo(dateStr) {
   const t = Date.parse(dateStr || 0);
   if (!t) return "";
@@ -2798,40 +2854,48 @@ async function createWidget() {
 
   const count = family === "large" ? 5 : family === "medium" ? 2 : 1;
   const displayItems = items.slice(0, count);
-  const images = await Promise.all(displayItems.map((p) => p.thumbnail ? loadImage(p.thumbnail) : Promise.resolve(null)));
+  const thumbSize = family === "large" ? 50 : family === "medium" ? 48 : 40;
+  const images = await Promise.all(displayItems.map((p) => getItemImage(p, thumbSize)));
 
   if (family === "small") {
     const p = displayItems[0] || {};
-    const img = images[0];
+    const imgInfo = images[0];
 
-    if (img) {
-      const topRow = widget.addStack();
-      topRow.layoutHorizontally();
-      topRow.centerAlignContent();
+    const topRow = widget.addStack();
+    topRow.layoutHorizontally();
+    topRow.centerAlignContent();
 
-      const metaCol = topRow.addStack();
-      metaCol.layoutVertically();
-      const src = metaCol.addText((p.source || "Picker").toUpperCase());
-      src.textColor = COLORS.accent;
-      src.font = Font.boldSystemFont(9.5);
-      metaCol.addSpacer(2);
-      const tm = metaCol.addText(timeAgo(p.publishedAt));
-      tm.textColor = COLORS.muted;
-      tm.font = Font.systemFont(9);
+    const metaCol = topRow.addStack();
+    metaCol.layoutVertically();
+    const src = metaCol.addText((p.source || "Picker").toUpperCase());
+    src.textColor = COLORS.accent;
+    src.font = Font.boldSystemFont(9.5);
+    metaCol.addSpacer(2);
+    const tm = metaCol.addText(timeAgo(p.publishedAt));
+    tm.textColor = COLORS.muted;
+    tm.font = Font.systemFont(9);
 
+    if (imgInfo && imgInfo.image) {
       topRow.addSpacer();
-      const imgWidget = topRow.addImage(img);
-      imgWidget.imageSize = new Size(40, 40);
-      imgWidget.cornerRadius = 9;
-      imgWidget.applyFillingContentMode();
-    } else {
-      const src = widget.addText((p.source || "Picker").toUpperCase());
-      src.textColor = COLORS.accent;
-      src.font = Font.boldSystemFont(9.5);
-      widget.addSpacer(2);
-      const tm = widget.addText(timeAgo(p.publishedAt));
-      tm.textColor = COLORS.muted;
-      tm.font = Font.systemFont(9);
+      const imgBox = topRow.addStack();
+      imgBox.size = new Size(40, 40);
+      imgBox.cornerRadius = 9;
+      if (imgInfo.isSourceIcon) {
+        imgBox.backgroundColor = Color.dynamic(new Color("#ede6dc"), new Color("#2a211b"));
+        imgBox.centerAlignContent();
+        imgBox.layoutHorizontally();
+        imgBox.addSpacer();
+        const imgWidget = imgBox.addImage(imgInfo.image);
+        imgWidget.imageSize = new Size(26, 26);
+        imgWidget.cornerRadius = 5;
+        imgWidget.applyFittingContentMode();
+        imgBox.addSpacer();
+      } else {
+        const imgWidget = imgBox.addImage(imgInfo.image);
+        imgWidget.imageSize = new Size(40, 40);
+        imgWidget.cornerRadius = 9;
+        imgWidget.applyFillingContentMode();
+      }
     }
 
     widget.addSpacer(6);
@@ -2871,13 +2935,28 @@ async function createWidget() {
       title.font = Font.semiboldSystemFont(12.5);
       title.lineLimit = 2;
 
-      const img = images[i];
-      if (img) {
+      const imgInfo = images[i];
+      if (imgInfo && imgInfo.image) {
         row.addSpacer(10);
-        const imgWidget = row.addImage(img);
-        imgWidget.imageSize = new Size(48, 48);
-        imgWidget.cornerRadius = 10;
-        imgWidget.applyFillingContentMode();
+        const imgBox = row.addStack();
+        imgBox.size = new Size(48, 48);
+        imgBox.cornerRadius = 10;
+        if (imgInfo.isSourceIcon) {
+          imgBox.backgroundColor = Color.dynamic(new Color("#ede6dc"), new Color("#2a211b"));
+          imgBox.centerAlignContent();
+          imgBox.layoutHorizontally();
+          imgBox.addSpacer();
+          const imgWidget = imgBox.addImage(imgInfo.image);
+          imgWidget.imageSize = new Size(30, 30);
+          imgWidget.cornerRadius = 6;
+          imgWidget.applyFittingContentMode();
+          imgBox.addSpacer();
+        } else {
+          const imgWidget = imgBox.addImage(imgInfo.image);
+          imgWidget.imageSize = new Size(48, 48);
+          imgWidget.cornerRadius = 10;
+          imgWidget.applyFillingContentMode();
+        }
       }
 
       if (i < limit - 1) widget.addSpacer();
@@ -2914,13 +2993,28 @@ async function createWidget() {
       title.font = Font.semiboldSystemFont(12.5);
       title.lineLimit = 2;
 
-      const img = images[i];
-      if (img) {
+      const imgInfo = images[i];
+      if (imgInfo && imgInfo.image) {
         row.addSpacer(10);
-        const imgWidget = row.addImage(img);
-        imgWidget.imageSize = new Size(50, 50);
-        imgWidget.cornerRadius = 10;
-        imgWidget.applyFillingContentMode();
+        const imgBox = row.addStack();
+        imgBox.size = new Size(50, 50);
+        imgBox.cornerRadius = 10;
+        if (imgInfo.isSourceIcon) {
+          imgBox.backgroundColor = Color.dynamic(new Color("#ede6dc"), new Color("#2a211b"));
+          imgBox.centerAlignContent();
+          imgBox.layoutHorizontally();
+          imgBox.addSpacer();
+          const imgWidget = imgBox.addImage(imgInfo.image);
+          imgWidget.imageSize = new Size(32, 32);
+          imgWidget.cornerRadius = 6;
+          imgWidget.applyFittingContentMode();
+          imgBox.addSpacer();
+        } else {
+          const imgWidget = imgBox.addImage(imgInfo.image);
+          imgWidget.imageSize = new Size(50, 50);
+          imgWidget.cornerRadius = 10;
+          imgWidget.applyFillingContentMode();
+        }
       }
 
       if (i < limit - 1) {
