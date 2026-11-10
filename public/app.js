@@ -568,7 +568,7 @@ function init() {
         startPlaybackOnLoad = true;
         const id = ensureTopicVideo(item);
         if (id) {
-          selectVideo(id, { autoplay: true });
+          selectVideo(id, { originDesk: "youtube", autoplay: true });
         }
       }
       history.replaceState(null, "", location.pathname);
@@ -770,6 +770,10 @@ function bindEvents() {
   document.querySelectorAll(".nav-sub label, #desk-library, #desk-youtube, #desk-feeds").forEach((control) => {
     control.addEventListener("change", closeMobileMenus);
     control.addEventListener("click", closeMobileMenus);
+  });
+  document.querySelector("#desk-library")?.addEventListener("click", () => {
+    setPlayerOriginDesk("");
+    syncPlayerBack();
   });
   document.querySelector("#moreCheckPlayback")?.addEventListener("click", () => {
     closeMobileMenus();
@@ -4716,7 +4720,8 @@ function openTopicResult(list, index, options = {}) {
   if (options.autoplay) startPlaybackOnLoad = true;
   const id = ensureTopicVideo(item);
   if (!id) return;
-  selectVideo(id, options);
+  const originDesk = list?.id === "youtubeGrid" || list?.closest?.("#youtubePanel") ? "youtube" : (options.originDesk || currentDeskName());
+  selectVideo(id, { originDesk, ...options });
 }
 
 function queueTopicDownload(list, index) {
@@ -5476,7 +5481,17 @@ function updateTranscriptFields() {
   scheduleFolderMetadataSave(video);
 }
 
-let playerOriginDesk = "";
+let playerOriginDesk = (() => {
+  try { return sessionStorage.getItem("picker:playerOriginDesk") || ""; } catch { return ""; }
+})();
+
+function setPlayerOriginDesk(desk) {
+  playerOriginDesk = desk || "";
+  try {
+    if (playerOriginDesk) sessionStorage.setItem("picker:playerOriginDesk", playerOriginDesk);
+    else sessionStorage.removeItem("picker:playerOriginDesk");
+  } catch {}
+}
 
 const playerDeskLabels = {
   youtube: "My YouTube",
@@ -5503,6 +5518,9 @@ function syncPlayerBack() {
   if (button) button.hidden = !show;
   if (label && name) label.textContent = name;
   if (button && name) button.setAttribute("aria-label", `Back to ${name}`);
+
+  const isFromYouTube = playerOriginDesk === "youtube" && onPlayer;
+  document.body.classList.toggle("is-youtube-player", isFromYouTube);
 }
 
 function returnFromPlayer() {
@@ -5515,7 +5533,7 @@ function returnFromPlayer() {
     closeMobilePlayer();
     return;
   }
-  playerOriginDesk = "";
+  setPlayerOriginDesk("");
   document.body.classList.remove("is-mobile-player", "is-more-open");
   document.querySelector("#navMore")?.setAttribute("aria-expanded", "false");
   showDesk(desk);
@@ -5529,8 +5547,9 @@ function selectVideo(id, options = {}) {
     pendingPlaylistPlay = false;
   }
   const current = selectedVideo();
-  const fromDesk = currentDeskName();
-  if (fromDesk !== "library") playerOriginDesk = fromDesk;
+  const fromDesk = options.originDesk || currentDeskName();
+  if (fromDesk !== "library") setPlayerOriginDesk(fromDesk);
+  else if (!options.keepOriginDesk) setPlayerOriginDesk("");
   if (current && current.id !== id) void flushFolderMetadata(current);
   state.selectedId = id;
   startPlaybackOnLoad = Boolean(options.autoplay);
@@ -5553,6 +5572,7 @@ function selectVideo(id, options = {}) {
 }
 
 function closeMobilePlayer() {
+  setPlayerOriginDesk("");
   document.body.classList.remove("is-mobile-player");
   syncPlayBubble();
   syncPlayerBack();

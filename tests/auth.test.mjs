@@ -756,3 +756,19 @@ test("Widget previews in web UI reflect Scriptable look and feel", async () => {
   const ytMed = context.renderWidgetPreviewElement("medium", "dark", "youtube");
   assert.equal(ytMed.children[0].children[1].textContent, "5 VIDEOS");
 });
+
+test("Playing YouTube clip from My YouTube page hides watch tabs and panels", async () => {
+  const fs = await import("fs");
+  const css = fs.readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+
+  // Verify CSS hides watch tabs and detail panels when is-youtube-player is active
+  assert.ok(css.includes("body.is-youtube-player .watch-tabs"));
+  assert.ok(css.includes("body.is-youtube-player .summary-panel"));
+  assert.ok(css.includes("body.is-youtube-player .transcript-panel"));
+  assert.ok(css.includes("body.is-youtube-player .chapters-panel"));
+  assert.ok(css.includes("body.is-youtube-player .watch-column > :not(.player-panel)"));
+
+  const appJs = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.ok(appJs.includes('document.body.classList.toggle("is-youtube-player"'));
+  assert.ok(appJs.includes('originDesk: "youtube"'));
+});

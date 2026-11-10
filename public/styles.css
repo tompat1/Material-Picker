@@ -2270,6 +2270,19 @@ body:has(#watch-chapters:checked) .chapters-panel {
   display: block;
 }
 
+body.is-youtube-player .watch-tabs,
+body.is-youtube-player .summary-panel,
+body.is-youtube-player .transcript-panel,
+body.is-youtube-player .chapters-panel,
+body.is-youtube-player .source-panel,
+body.is-youtube-player .watch-column > :not(.player-panel) {
+  display: none !important;
+}
+
+body.is-youtube-player .player-panel {
+  border-bottom: none;
+}
+
 body:has(#desk-transcripts:checked) .player-panel,
 body:has(#desk-transcripts:checked) .chapters-panel,
 body:has(#desk-transcripts:checked) .source-panel,
