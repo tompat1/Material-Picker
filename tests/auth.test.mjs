@@ -665,3 +665,94 @@ test("Scriptable widget code generation produces valid, error-free JavaScript", 
     }
   }
 });
+
+test("Widget previews in web UI reflect Scriptable look and feel", async () => {
+  const fs = await import("fs");
+  const appJs = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+
+  // Mock DOM minimal environment for preview rendering
+  class MockElement {
+    constructor(tag) {
+      this.tagName = tag.toUpperCase();
+      this.className = "";
+      this.textContent = "";
+      this.style = {};
+      this.children = [];
+    }
+    append(...children) {
+      this.children.push(...children);
+    }
+    appendChild(child) {
+      this.children.push(child);
+      return child;
+    }
+    remove() {}
+  }
+
+  const mockDocument = {
+    createElement(tag) {
+      return new MockElement(tag);
+    },
+  };
+
+  const start = appJs.indexOf("function createPreviewHeader(");
+  assert.ok(start !== -1, "createPreviewHeader located in public/app.js");
+  const end = appJs.indexOf("async function openWidgetsModal()", start);
+  assert.ok(end !== -1, "renderWidgetPreviewElement section located");
+
+  const codeSlice = appJs.slice(start, end).trim();
+  const context = {
+    document: mockDocument,
+    activeWidgetTheme: "dark",
+    activeWidgetSource: "feeds",
+    String,
+    Boolean,
+  };
+
+  const vm = await import("vm");
+  vm.runInNewContext(codeSlice, context);
+
+  // 1. Feeds Large preview
+  const feedsLarge = context.renderWidgetPreviewElement("large", "dark", "feeds");
+  assert.ok(feedsLarge.className.includes("widget-size-large"));
+
+  const hdr = feedsLarge.children[0];
+  assert.equal(hdr.className, "w-hdr");
+  const brand = hdr.children[0];
+  assert.equal(brand.className, "w-hdr-brand");
+  assert.equal(brand.children[0].textContent, "P");
+  assert.equal(brand.children[1].textContent, "PICKER");
+  assert.equal(brand.children[2].textContent, "• FEEDS");
+
+  const badge = hdr.children[1];
+  assert.equal(badge.className, "w-hdr-badge");
+  assert.equal(badge.textContent, "5 POSTS");
+
+  // Check uppercase sources and fallback source icon box
+  const list = feedsLarge.children[1];
+  const rows = list.children.filter((c) => c.className === "w-row");
+  assert.equal(rows.length, 5);
+  for (const row of rows) {
+    const meta = row.children[0].children[0];
+    const srcSpan = meta.children[0];
+    assert.equal(srcSpan.textContent, srcSpan.textContent.toUpperCase());
+  }
+  const feberRow = rows.find((r) => r.children[0].children[0].children[0].textContent === "FEBER");
+  assert.ok(feberRow, "Feber row exists in large feeds preview");
+  assert.ok(feberRow.children.some((c) => c.className === "w-row-icon-box"), "Feber has source icon box");
+
+  // 2. YouTube Large preview
+  const ytLarge = context.renderWidgetPreviewElement("large", "dark", "youtube");
+  const ytHdr = ytLarge.children[0];
+  const ytBrand = ytHdr.children[0];
+  assert.equal(ytBrand.children[2].textContent, "• YOUTUBE");
+  assert.ok(ytBrand.children[2].className.includes("is-youtube"));
+  assert.equal(ytHdr.children[1].textContent, "5 VIDEOS");
+
+  // 3. Medium previews
+  const feedsMed = context.renderWidgetPreviewElement("medium", "dark", "feeds");
+  assert.equal(feedsMed.children[0].children[1].textContent, "FEEDS");
+
+  const ytMed = context.renderWidgetPreviewElement("medium", "dark", "youtube");
+  assert.equal(ytMed.children[0].children[1].textContent, "5 VIDEOS");
+});

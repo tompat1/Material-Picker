@@ -3090,20 +3090,39 @@ let activeWidgetSize = "medium";
 let activeWidgetTheme = "dark";
 let activeWidgetSource = "feeds";
 
-function createPreviewHeader(badgeText) {
+function createPreviewHeader(source, size) {
+  const isYouTube = source === "youtube";
   const hdr = document.createElement("div");
   hdr.className = "w-hdr";
+
+  const brand = document.createElement("div");
+  brand.className = "w-hdr-brand";
+
+  const icon = document.createElement("span");
+  icon.className = "w-hdr-icon";
+  icon.textContent = "P";
+
   const logo = document.createElement("span");
   logo.className = "w-hdr-logo";
   logo.textContent = "PICKER";
+
+  const desk = document.createElement("span");
+  desk.className = `w-hdr-desk${isYouTube ? " is-youtube" : ""}`;
+  desk.textContent = isYouTube ? "• YOUTUBE" : "• FEEDS";
+
+  brand.append(icon, logo, desk);
+
   const badge = document.createElement("span");
   badge.className = "w-hdr-badge";
-  badge.textContent = badgeText;
-  hdr.append(logo, badge);
+  badge.textContent = size === "large"
+    ? (isYouTube ? "5 VIDEOS" : "5 POSTS")
+    : (isYouTube ? "5 VIDEOS" : "FEEDS");
+
+  hdr.append(brand, badge);
   return hdr;
 }
 
-function createPreviewRow(sourceText, timeText, titleText, thumbUrl) {
+function createPreviewRow(sourceText, timeText, titleText, thumbUrl, isSourceIcon = false) {
   const row = document.createElement("div");
   row.className = "w-row";
 
@@ -3114,7 +3133,7 @@ function createPreviewRow(sourceText, timeText, titleText, thumbUrl) {
   meta.className = "w-md-meta";
   const s = document.createElement("span");
   s.className = "w-md-source";
-  s.textContent = sourceText;
+  s.textContent = String(sourceText || "").toUpperCase();
   const tm = document.createElement("span");
   tm.className = "w-md-time";
   tm.textContent = timeText;
@@ -3128,13 +3147,32 @@ function createPreviewRow(sourceText, timeText, titleText, thumbUrl) {
   row.appendChild(content);
 
   if (thumbUrl) {
-    const img = document.createElement("img");
-    img.className = "w-row-thumb";
-    img.src = thumbUrl;
-    img.alt = "";
-    img.loading = "lazy";
-    img.onerror = () => { img.style.display = "none"; };
-    row.appendChild(img);
+    if (isSourceIcon) {
+      const iconBox = document.createElement("div");
+      iconBox.className = "w-row-icon-box";
+      const iconImg = document.createElement("img");
+      iconImg.className = "w-row-source-icon";
+      iconImg.src = thumbUrl;
+      iconImg.alt = "";
+      iconImg.loading = "lazy";
+      iconImg.onerror = () => {
+        iconImg.remove();
+        const letter = document.createElement("span");
+        letter.className = "w-source-badge-text";
+        letter.textContent = (sourceText || "P").charAt(0).toUpperCase();
+        iconBox.appendChild(letter);
+      };
+      iconBox.appendChild(iconImg);
+      row.appendChild(iconBox);
+    } else {
+      const img = document.createElement("img");
+      img.className = "w-row-thumb";
+      img.src = thumbUrl;
+      img.alt = "";
+      img.loading = "lazy";
+      img.onerror = () => { img.style.display = "none"; };
+      row.appendChild(img);
+    }
   }
 
   return row;
@@ -3146,7 +3184,7 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme, source = ac
   shell.className = `widget-card-shell widget-size-${size}${theme === "light" ? " theme-light" : ""}`;
 
   if (size === "small") {
-    shell.appendChild(createPreviewHeader(isYouTube ? "YOUTUBE" : "FEEDS"));
+    shell.appendChild(createPreviewHeader(source, size));
 
     const top = document.createElement("div");
     top.className = "w-sm-top";
@@ -3155,7 +3193,7 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme, source = ac
     meta.className = "w-sm-body";
     const src = document.createElement("span");
     src.className = "w-sm-source";
-    src.textContent = isYouTube ? "MKBHD" : "IndieWire";
+    src.textContent = isYouTube ? "MKBHD" : "INDIEWIRE";
     const foot = document.createElement("span");
     foot.className = "w-sm-foot";
     foot.textContent = isYouTube ? "2h ago" : "44m ago";
@@ -3184,7 +3222,7 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme, source = ac
   }
 
   if (size === "large") {
-    shell.appendChild(createPreviewHeader(isYouTube ? "5 NEW VIDEOS" : "5 NEW POSTS"));
+    shell.appendChild(createPreviewHeader(source, size));
     const list = document.createElement("div");
     list.className = "w-lg-list";
     const items = isYouTube
@@ -3228,16 +3266,17 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme, source = ac
             thumb: "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=100&auto=format&fit=crop&q=80",
           },
           {
+            source: "Feber",
+            time: "50m ago",
+            title: "Apple vill förvandla Siri till en självgående AI-agent",
+            thumb: "https://feber.se/favicon.ico",
+            isSourceIcon: true,
+          },
+          {
             source: "Engadget",
             time: "1h ago",
             title: "How much did an iPhone cost in 2007 vs. 2026? The gap is narrowing",
             thumb: "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=100&auto=format&fit=crop&q=80",
-          },
-          {
-            source: "Alex Gear & Tech",
-            time: "2h ago",
-            title: "Dell Alienware AW3426DW QD-OLED Review. 4 Years in the Making!",
-            thumb: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=100&auto=format&fit=crop&q=80",
           },
           {
             source: "Electrek",
@@ -3259,7 +3298,7 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme, source = ac
         sep.className = "w-separator";
         list.appendChild(sep);
       }
-      list.appendChild(createPreviewRow(item.source, item.time, item.title, item.thumb));
+      list.appendChild(createPreviewRow(item.source, item.time, item.title, item.thumb, Boolean(item.isSourceIcon)));
     });
 
     shell.appendChild(list);
@@ -3267,7 +3306,7 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme, source = ac
   }
 
   // medium (default): 2 posts with thumbnails
-  shell.appendChild(createPreviewHeader(isYouTube ? "2 NEW VIDEOS" : "2 NEW POSTS"));
+  shell.appendChild(createPreviewHeader(source, size));
   const wrapper = document.createElement("div");
   wrapper.style.display = "flex";
   wrapper.style.flexDirection = "column";
@@ -3296,10 +3335,11 @@ function renderWidgetPreviewElement(size, theme = activeWidgetTheme, source = ac
         "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=100&auto=format&fit=crop&q=80"
       )
     : createPreviewRow(
-        "Engadget",
-        "1h ago",
-        "How much did an iPhone cost in 2007 vs. 2026? The gap is narrowing",
-        "https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=100&auto=format&fit=crop&q=80"
+        "Feber",
+        "50m ago",
+        "Apple vill förvandla Siri till en självgående AI-agent",
+        "https://feber.se/favicon.ico",
+        true
       );
 
   wrapper.append(row1, sep, row2);

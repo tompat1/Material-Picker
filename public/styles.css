@@ -11581,12 +11581,30 @@ button[value="close"]:active {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12);
 }
 
+.widget-card-shell.theme-light .w-hdr-icon {
+  background: #e05316;
+  color: #fff;
+}
+
 .widget-card-shell.theme-light .w-hdr-logo {
   color: #e05316;
 }
 
+.widget-card-shell.theme-light .w-hdr-desk {
+  color: #76675a;
+}
+
+.widget-card-shell.theme-light .w-hdr-desk.is-youtube {
+  color: #b32b26;
+}
+
 .widget-card-shell.theme-light .w-hdr-badge {
   color: #76675a;
+}
+
+.widget-card-shell.theme-light .w-row-icon-box {
+  background: #ede6dc;
+  border-color: rgba(28, 21, 17, 0.1);
 }
 
 .widget-card-shell.theme-light .w-sm-source,
@@ -11699,18 +11717,52 @@ button[value="close"]:active {
   width: 100%;
 }
 
+.w-hdr-brand {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.w-hdr-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  flex-shrink: 0;
+  font-family: var(--sans);
+}
+
 .w-hdr-logo {
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 11.5px;
+  font-weight: 900;
   color: var(--accent);
   letter-spacing: 0.05em;
   display: flex;
   align-items: center;
-  gap: 4px;
+  line-height: 1;
+}
+
+.w-hdr-desk {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.w-hdr-desk.is-youtube {
+  color: #ff635c;
 }
 
 .w-hdr-badge {
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
@@ -11788,6 +11840,37 @@ button[value="close"]:active {
   width: 50px;
   height: 50px;
   border-radius: 10px;
+}
+
+.w-row-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ink) 8%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.widget-card-shell.widget-size-large .w-row-icon-box {
+  width: 50px;
+  height: 50px;
+}
+
+.w-row-source-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.w-source-badge-text {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: 0.04em;
 }
 
 .widget-card-shell.widget-size-large .w-lg-list {
