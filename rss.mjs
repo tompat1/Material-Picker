@@ -1,6 +1,6 @@
 const MAX_ITEMS = 40;
 const TITLE_LIMIT = 300;
-const SUMMARY_LIMIT = 2000;
+const SUMMARY_LIMIT = 15000;
 
 function fail(status, message) {
   const error = new Error(message);

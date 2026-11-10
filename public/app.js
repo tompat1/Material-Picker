@@ -2670,7 +2670,7 @@ function getItemWebUrl(p) {
   if (p.source) u += "&source=" + encodeURIComponent(p.source);
   if (p.thumbnail) u += "&thumb=" + encodeURIComponent(p.thumbnail);
   if (p.feedId) u += "&feedId=" + encodeURIComponent(p.feedId);
-  if (p.summary) u += "&summary=" + encodeURIComponent(String(p.summary).slice(0, 1200));
+  if (p.summary) u += "&summary=" + encodeURIComponent(String(p.summary).slice(0, 2400));
   return u;
 }
 
@@ -2778,6 +2778,28 @@ function createSourceBadge(sourceName, size) {
   }
 }
 
+function createPickerIcon(size) {
+  try {
+    const s = size || 32;
+    const ctx = new DrawContext();
+    ctx.size = new Size(s, s);
+    ctx.opaque = false;
+    ctx.respectScreenScale = true;
+    ctx.setFillColor(new Color("#e05316"));
+    const path = new Path();
+    path.addRoundedRect(new Rect(0, 0, s, s), Math.round(s * 0.28), Math.round(s * 0.28));
+    ctx.addPath(path);
+    ctx.fillPath();
+    ctx.setFont(Font.blackSystemFont(Math.round(s * 0.6)));
+    ctx.setTextColor(new Color("#ffffff"));
+    ctx.setTextAlignedCenter();
+    ctx.drawTextInRect("P", new Rect(0, Math.round(s * 0.14), s, Math.round(s * 0.72)));
+    return ctx.getImage();
+  } catch (e) {
+    return null;
+  }
+}
+
 async function getItemImage(p, targetSize) {
   if (!p) return null;
   if (p.thumbnail) {
@@ -2813,19 +2835,37 @@ async function createWidget() {
   widget.setPadding(14, 16, 14, 16);
   const family = getWidgetFamily();
   const source = getWidgetSource();
+  const isYt = source === "youtube";
+
+  // App icon (loaded from server with local DrawContext fallback)
+  const pickerLogo = (await loadImage(APP_BASE + "/brand/icons/picker-48.png")) || createPickerIcon(32);
 
   // Header
   const hdr = widget.addStack();
   hdr.layoutHorizontally();
   hdr.centerAlignContent();
+
+  if (pickerLogo) {
+    const iconW = hdr.addImage(pickerLogo);
+    iconW.imageSize = new Size(16, 16);
+    iconW.cornerRadius = 4;
+    hdr.addSpacer(6);
+  }
+
   const brand = hdr.addText("PICKER");
   brand.textColor = COLORS.accent;
   brand.font = Font.blackSystemFont(12);
+
+  hdr.addSpacer(5);
+  const deskLabel = hdr.addText(isYt ? "• YOUTUBE" : "• FEEDS");
+  deskLabel.textColor = isYt ? Color.dynamic(new Color("#b32b26"), new Color("#ff635c")) : COLORS.muted;
+  deskLabel.font = Font.boldSystemFont(9.5);
+
   hdr.addSpacer();
-  const defaultBadge = source === "youtube" ? "YOUTUBE" : "FEEDS";
+
   const countBadge = family === "large"
-    ? (source === "youtube" ? "5 VIDEOS" : "5 POSTS")
-    : defaultBadge;
+    ? (isYt ? "5 VIDEOS" : "5 POSTS")
+    : (isYt ? "5 VIDEOS" : "FEEDS");
   const tag = hdr.addText(items.length ? countBadge : "SYNC");
   tag.textColor = COLORS.muted;
   tag.font = Font.semiboldSystemFont(9.5);

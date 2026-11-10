@@ -1039,18 +1039,19 @@ let feedStatusTimer = 0;
 
 function paintFeedHealth(message = "") {
   const node = document.querySelector("#feedsStatus");
-  if (!node) return;
+  if (!node || feedStatusTimer) return;
   const broken = brokenFeeds();
   const dead = deadFeeds();
   if (!broken.length && !dead.length) {
     node.classList.remove("is-warn");
     if (message) {
-      const throbberHtml = `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"></span>`;
+      const throbberHtml = `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"><span class="amber-throbber-track"></span></span>`;
       node.innerHTML = `<p class="feeds-status-line">${throbberHtml}<span>${escapeFeedText(message)}</span></p>`;
       window.clearTimeout(feedStatusTimer);
       feedStatusTimer = window.setTimeout(() => {
+        feedStatusTimer = 0;
         node.innerHTML = "";
-      }, 3000);
+      }, 3500);
     } else {
       node.innerHTML = "";
     }
@@ -1082,32 +1083,35 @@ function setFeedStatus(message, options = {}) {
   const node = document.querySelector("#feedsStatus");
   if (!node) return;
   window.clearTimeout(feedStatusTimer);
-  const isUpdating = /^Refreshing|^Looking for|^Adding|^Reading|^Loading/i.test(message || "");
-  const broken = brokenFeeds();
-  const dead = deadFeeds();
-
-  if (message && (isUpdating || (!broken.length && !dead.length))) {
-    node.classList.remove("is-warn");
-    const throbberHtml = isUpdating
-      ? `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"></span>`
-      : `<i class="ph ph-check" aria-hidden="true"></i>`;
-    node.innerHTML = `<p class="feeds-status-line">${throbberHtml}<span>${escapeFeedText(message)}</span></p>`;
-    window.paintPickerLoader?.();
-    const duration = options.autoClear ?? (isUpdating ? 2400 : 2500);
-    if (duration > 0) {
-      feedStatusTimer = window.setTimeout(() => {
-        if (brokenFeeds().length || deadFeeds().length) {
-          paintFeedHealth();
-        } else {
-          node.innerHTML = "";
-        }
-        window.paintPickerLoader?.();
-      }, duration);
+  feedStatusTimer = 0;
+  if (!message) {
+    if (brokenFeeds().length || deadFeeds().length) {
+      paintFeedHealth();
+    } else {
+      node.innerHTML = "";
     }
+    window.paintPickerLoader?.();
     return;
   }
-  paintFeedHealth(message || "");
+  const isUpdating = /^Refreshing|^Looking for|^Adding|^Reading|^Loading/i.test(message || "");
+  node.classList.remove("is-warn");
+  const throbberHtml = isUpdating
+    ? `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"><span class="amber-throbber-track"></span></span>`
+    : `<i class="ph ph-check" aria-hidden="true"></i>`;
+  node.innerHTML = `<p class="feeds-status-line">${throbberHtml}<span>${escapeFeedText(message)}</span></p>`;
   window.paintPickerLoader?.();
+  const duration = options.autoClear ?? (isUpdating ? 0 : 3500);
+  if (duration > 0) {
+    feedStatusTimer = window.setTimeout(() => {
+      feedStatusTimer = 0;
+      if (brokenFeeds().length || deadFeeds().length) {
+        paintFeedHealth();
+      } else {
+        node.innerHTML = "";
+      }
+      window.paintPickerLoader?.();
+    }, duration);
+  }
 }
 
 let feedsAddNoticeTimer = 0;
@@ -1895,6 +1899,65 @@ function renderList() {
   bindRiverLoadMore(items.length);
 }
 
+function extractArticleText(html) {
+  if (!html || typeof html !== "string") return "";
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const unwanted = doc.querySelectorAll("script, style, noscript, nav, header, footer, aside, form, svg, iframe, [aria-hidden='true'], .comments, .advertisement, .ad, .social-share, .author-bio, .cookie-banner, .newsletter");
+    unwanted.forEach((el) => el.remove());
+
+    const container = doc.querySelector("article, [itemprop='articleBody'], .article-content, .entry-content, .post-content, .story-body, .article-body, main") || doc.body;
+    if (!container) return "";
+
+    const pNodes = container.querySelectorAll("p");
+    const paragraphs = [];
+    for (const p of pNodes) {
+      const text = p.textContent.replace(/\s+/g, " ").trim();
+      if (text.length > 25 && !/cookie|privacy policy|terms of (use|service)|all rights reserved|sign up for|newsletter|subscribe to/i.test(text)) {
+        paragraphs.push(text);
+      }
+    }
+    if (paragraphs.length >= 2) {
+      return paragraphs.join("\n\n");
+    }
+  } catch (e) {}
+  return "";
+}
+
+const articleFullContentCache = new Map();
+
+async function loadFullArticleContent(item) {
+  if (!item || !item.link || item.fullContent || item._loadingFull) return;
+  const key = item.id || item.link;
+  const cached = articleFullContentCache.get(key);
+  if (cached) {
+    item.fullContent = cached;
+    return;
+  }
+  const isTruncated = !item.summary || item.summary.length < 900 || /[…\.]\s*$/.test(item.summary) || /appeared first on/i.test(item.summary);
+  if (!isTruncated) return;
+  item._loadingFull = true;
+  try {
+    const res = await fetch(`/api/scrape?url=${encodeURIComponent(item.link)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data || !data.html) return;
+    const fullText = extractArticleText(data.html);
+    if (fullText && fullText.length > (item.summary || "").length) {
+      item.fullContent = fullText;
+      articleFullContentCache.set(key, fullText);
+      if (selectedItemId === item.id || activeWidgetStory?.id === item.id) {
+        renderReader();
+      }
+    }
+  } catch (e) {
+    // Non-fatal fallback to summary
+  } finally {
+    delete item._loadingFull;
+  }
+}
+
 function formatArticleBody(summary) {
   if (!summary) return "";
   const paragraphs = String(summary)
@@ -1928,6 +1991,9 @@ function renderReader() {
     ? `<button class="feed-article-source-btn" type="button" data-open-feed="${escapeFeedText(feed.id)}" title="View ${escapeFeedText(feed.title)} feed">${sourceIconHtml}<span>${escapeFeedText(feed.title)} →</span></button>`
     : `<p class="feed-article-source">${sourceIconHtml}<span>${escapeFeedText(fallbackFeed.title)}</span></p>`;
 
+  const displayContent = item.fullContent || item.summary || "";
+  void loadFullArticleContent(item);
+
   const readerImage = cleanImageUrl(item.image);
   reader.innerHTML = `<article class="feed-article" data-article-link="${escapeFeedText(targetUrl)}">
     ${when ? `<p class="feed-article-date">${escapeFeedText(when)}</p>` : ""}
@@ -1936,7 +2002,7 @@ function renderReader() {
     ${sourceHtml}
     ${readerImage ? `<div class="feed-article-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(readerImage)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.closest('.feed-article-thumb-wrap')?.remove()" /></div>` : ""}
     ${targetUrl ? `<a class="feed-article-link" href="${escapeFeedText(targetUrl)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(targetUrl) || "Open")} →</a>` : ""}
-    ${formatArticleBody(item.summary)}
+    ${formatArticleBody(displayContent)}
     <div class="feed-article-actions">
       <button class="ghost-button" type="button" data-star-item="${escapeFeedText(item.id)}">${feedState.starred[item.id] ? "Starred" : "Star"}</button>
       <button class="ghost-button" type="button" data-archive-item="${escapeFeedText(item.id)}">${feedState.archived[item.id] ? "Archived" : "Archive"}</button>
@@ -2176,7 +2242,7 @@ function renderFeeds() {
   renderFeedChoices();
   renderFolderPicker();
   applyPane();
-  if (brokenFeeds().length || deadFeeds().length) paintFeedHealth();
+  if (!feedStatusTimer && (brokenFeeds().length || deadFeeds().length)) paintFeedHealth();
 }
 
 function selectFeedByUrl(url) {
@@ -2410,7 +2476,7 @@ async function pullFeeds(options = {}) {
   const total = queue.length;
   let done = 0;
   const failures = [];
-  setFeedStatus(total === 1 ? "Refreshing 1 feed…" : "Refreshing feeds…", { autoClear: 2400 });
+  setFeedStatus(total === 1 ? "Refreshing 1 feed…" : "Refreshing feeds…", { autoClear: 0 });
   const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
     while (queue.length) {
       const feed = queue.shift();
@@ -2436,11 +2502,9 @@ async function pullFeeds(options = {}) {
   dedupeFeedLibrary();
   saveFeedState();
   if (failures.length) {
-    setFeedStatus(`Some feeds could not refresh: ${failures.slice(0, 3).join(", ")}${failures.length > 3 ? "…" : ""}`, { autoClear: 3500 });
-  } else if (deadFeeds().length) {
-    setFeedStatus("Feeds updated. Remove dead subscriptions below.", { autoClear: 3500 });
+    setFeedStatus(`Feeds updated. (${failures.length} unreachable)`, { autoClear: 3500 });
   } else {
-    setFeedStatus("Feeds updated.", { autoClear: 2500 });
+    setFeedStatus("Feeds updated.", { autoClear: 3500 });
   }
   if (selectedItemId) paintIncomingFeeds();
   else renderFeeds();
