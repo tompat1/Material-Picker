@@ -8705,10 +8705,13 @@ label.cms-image-choose {
 
 .feeds-sort {
   display: inline-flex;
+  align-items: center;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .feeds-sort button {
+  flex-shrink: 0;
   min-height: 1.7rem;
   padding: 0 0.65rem;
   border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
@@ -8908,12 +8911,15 @@ label.cms-image-choose {
 }
 
 .feeds-status {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   min-height: 0;
-  margin: 0.1rem 0 0.25rem;
+  min-width: 0;
+  margin: 0 0 0 0.35rem;
   padding: 0;
   z-index: 5;
+  overflow: hidden;
+  flex: 0 1 auto;
 }
 
 .feeds-status:empty {
@@ -8925,17 +8931,26 @@ label.cms-image-choose {
 .feeds-status-line {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.35rem;
   margin: 0;
-  padding: 0.22rem 0.65rem;
+  padding: 0.15rem 0.4rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
-  color: var(--ink);
-  font-size: 0.78rem;
-  font-weight: 600;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
   letter-spacing: 0.01em;
   pointer-events: none;
   animation: fadeInStatusLine 0.2s var(--ease);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.feeds-status-line span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .feeds-status-line .amber-throbber {
@@ -8945,6 +8960,7 @@ label.cms-image-choose {
 .feeds-status-line i {
   color: var(--accent);
   font-size: 0.85rem;
+  flex-shrink: 0;
 }
 
 @keyframes fadeInStatusLine {
@@ -8954,6 +8970,8 @@ label.cms-image-choose {
 
 .feeds-status.is-warn {
   position: static;
+  width: 100%;
+  flex-basis: 100%;
   height: auto;
   margin: 0.4rem 0 0.65rem;
   padding: 0.6rem 0.75rem;
@@ -10665,6 +10683,8 @@ button[value="close"]:active {
     justify-self: start;
     margin: 0;
     flex-wrap: nowrap;
+    align-items: center;
+    min-width: 0;
   }
 
   .feeds-sort button {
@@ -11239,15 +11259,25 @@ button[value="close"]:active {
     grid-column: 1 / -1;
     grid-row: 2;
     align-self: stretch;
+    align-items: center;
     gap: 4px;
+    min-width: 0;
+    overflow: hidden;
   }
 
   body:has(#desk-feeds:checked) .feeds-sort button {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
     min-height: 36px;
     padding-inline: 12px;
     background: transparent !important;
+  }
+
+  body:has(#desk-feeds:checked) .feeds-sort .feeds-status {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    margin: 0 0 0 2px;
   }
 
   body:has(#desk-feeds:checked) .feeds-sort-hint {
