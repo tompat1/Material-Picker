@@ -2098,9 +2098,13 @@ body:has(#desk-favourites:checked) .bench {
     overflow: hidden;
   }
 
-  body:has(#desk-youtube:checked) .bench,
-  body:has(#desk-feeds:checked) .bench {
+  body:has(#desk-youtube:checked) .bench {
     overflow: auto;
+    min-height: 0;
+  }
+
+  body:has(#desk-feeds:checked) .bench {
+    overflow: hidden;
     min-height: 0;
   }
 
@@ -10083,6 +10087,7 @@ html[data-picker-theme="new-age"] .feeds-opml-upload {
   max-width: 42rem;
   touch-action: pan-y;
   will-change: transform;
+  padding-bottom: 4.5rem;
 }
 
 .feed-article h3 {
@@ -10377,15 +10382,41 @@ button[value="close"]:active {
 }
 
 @media (min-width: 761px) {
+  body:has(#desk-feeds:checked) .bench {
+    overflow: hidden;
+  }
+
+  body:has(#desk-feeds:checked) #feedsPanel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: calc(100dvh - 4.6rem);
+    padding: 1.15rem 1.25rem 0;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .feeds-reeder-bar {
+    flex-shrink: 0;
+  }
+
+  .feeds-favorite-tabs {
+    flex-shrink: 0;
+  }
+
   .feeds-swipe {
-    overflow: visible;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .feeds-track {
     display: grid;
     grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
     gap: 1.4rem;
-    align-items: start;
+    height: 100%;
+    min-height: 0;
+    align-items: stretch;
     width: auto;
     transform: none;
   }
@@ -10393,21 +10424,22 @@ button[value="close"]:active {
   .feeds-pane--list,
   .feeds-pane--reader {
     min-width: 0;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    position: static;
+  }
+
+  .feeds-pane--list {
+    padding-bottom: 2.5rem;
   }
 
   .feeds-track.is-reading {
     align-items: stretch;
-    min-height: calc(100dvh - 11rem);
-  }
-
-  .feeds-track.is-reading .feeds-pane--list,
-  .feeds-track.is-reading .feeds-pane--reader {
-    max-height: calc(100dvh - 11rem);
-    overflow: auto;
-    overscroll-behavior: contain;
-    position: sticky;
-    top: 0.85rem;
-    align-self: start;
+    min-height: 0;
+    height: 100%;
   }
 
   .feeds-track:not(.is-reading) {

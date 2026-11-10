@@ -467,3 +467,46 @@ test("mobile YouTube channel carousel responds to a native horizontal swipe", as
   await expect.poll(() => track.evaluate((element) => element.scrollLeft)).toBeGreaterThan(40);
   await context.close();
 });
+
+test("desktop article reader allows scrolling completely to the bottom of long posts", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 800 });
+
+  await page.addInitScript(() => {
+    const paragraphs = Array.from({ length: 20 }, (_, i) => `Paragraph ${i + 1}: Detailed analysis of the topic.`).join("\n\n");
+    localStorage.setItem("material-picker:feeds", JSON.stringify({
+      feeds: [{ id: "feed-1", title: "IndieWire", url: "https://indiewire.example/feed", folderIds: [] }],
+      folders: [],
+      favoriteFolderIds: [],
+      items: [{
+        id: "story-1",
+        feedId: "feed-1",
+        title: "Test Long Article",
+        publishedAt: "2026-11-10T22:00:00Z",
+        summary: paragraphs,
+      }],
+      read: {},
+      archived: {},
+      starred: {},
+    }));
+  });
+
+  await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  await page.locator(".feed-row").first().click();
+  const reader = page.locator("#feedReader");
+  await expect(reader).toBeVisible();
+
+  await reader.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+
+  const actions = page.locator(".feed-article-actions");
+  await expect(actions).toBeVisible();
+  const actionsBox = await actions.boundingBox();
+  expect(actionsBox.y + actionsBox.height).toBeLessThanOrEqual(800);
+});
+
