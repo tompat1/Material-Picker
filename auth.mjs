@@ -767,7 +767,7 @@ export function normalizeFeedLibrary(value) {
     favoriteFolderIds: [...new Set(Array.isArray(value?.favoriteFolderIds) ? value.favoriteFolderIds : [])]
       .map((id) => String(id || "").slice(0, 80))
       .filter((id) => folderIds.has(id))
-      .slice(0, 5),
+      .slice(0, 10),
     removedUrls: (Array.isArray(value?.removedUrls) ? value.removedUrls : [])
       .map((url) => String(url || "").slice(0, 500))
       .filter((url) => /^https?:\/\//i.test(url))

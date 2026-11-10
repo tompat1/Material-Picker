@@ -4,8 +4,11 @@ const vm = require("node:vm");
 const test = require("node:test");
 
 function favoriteFolderApp() {
-  const folders = ["Apple", "Music", "Film & TV", "Tech", "Gaming", "Science"]
-    .map((name, index) => ({ id: `folder-${index + 1}`, name, collapsed: index >= 3 }));
+  const folders = [
+    "Apple", "Music", "Film & TV", "Tech", "Gaming",
+    "Science", "News", "Design", "Books", "Podcasts",
+    "Space", "Coding",
+  ].map((name, index) => ({ id: `folder-${index + 1}`, name, collapsed: index >= 3 }));
   const saved = new Map([["material-picker:feeds", JSON.stringify({
     feeds: [{ id: "apple-in-tech", folderIds: ["folder-4"], topics: ["apple"] }],
     folders,
@@ -52,19 +55,19 @@ function favoriteFolderApp() {
   return { api: context.favoriteFolderTest, favoriteTabs, folders };
 }
 
-test("favorite feed folders are capped at five and can be replaced", () => {
+test("favorite feed folders are capped at ten and can be replaced", () => {
   const { api, folders } = favoriteFolderApp();
-  assert.deepEqual([...api.state.favoriteFolderIds], folders.slice(0, 5).map((folder) => folder.id));
+  assert.deepEqual([...api.state.favoriteFolderIds], folders.slice(0, 10).map((folder) => folder.id));
 
-  api.toggle(folders[5].id);
-  assert.deepEqual([...api.state.favoriteFolderIds], folders.slice(0, 5).map((folder) => folder.id));
-  assert.match(api.status(), /up to 5 favorite folder filters/i);
+  api.toggle(folders[10].id);
+  assert.deepEqual([...api.state.favoriteFolderIds], folders.slice(0, 10).map((folder) => folder.id));
+  assert.match(api.status(), /more than 10 favourites are not allowed/i);
 
   api.toggle(folders[0].id);
-  api.toggle(folders[5].id);
+  api.toggle(folders[10].id);
   assert.deepEqual([...api.state.favoriteFolderIds], [
-    ...folders.slice(1, 5).map((folder) => folder.id),
-    folders[5].id,
+    ...folders.slice(1, 10).map((folder) => folder.id),
+    folders[10].id,
   ]);
 });
 

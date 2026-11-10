@@ -2,7 +2,7 @@ const FEEDS_KEY = "material-picker:feeds";
 const CUSTOM_TOPICS_KEY = "material-picker:custom-feed-topics";
 const FEED_ITEM_CAP = 40;
 const FEED_REFRESH_MS = 15 * 60 * 1000;
-const MAX_FAVORITE_FOLDERS = 5;
+const MAX_FAVORITE_FOLDERS = 10;
 const TOPIC_LABELS = {
   news: "News",
   tech: "Tech",
@@ -518,7 +518,7 @@ function toggleFavoriteFolder(id) {
     return;
   }
   if (feedState.favoriteFolderIds.length >= MAX_FAVORITE_FOLDERS) {
-    setFeedStatus(`You can keep up to ${MAX_FAVORITE_FOLDERS} favorite folder filters. Remove one before adding “${folder.name}”.`);
+    setFeedStatus("More than 10 favourites are not allowed.");
     return;
   }
   feedState.favoriteFolderIds.push(id);
