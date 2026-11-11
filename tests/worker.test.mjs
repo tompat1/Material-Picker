@@ -412,6 +412,40 @@ test("rss catalog searches topics without fetching a remote feed", async () => {
   assert.deepEqual(body.feeds.map((feed) => feed.id), ["openai"]);
 });
 
+test("rss catalog returns IMDb, The Guardian, and discovers online publication feeds", async () => {
+  // IMDb
+  const imdbRes = await handleApiRequest(request("/api/rss/catalog?q=imdb"));
+  assert.equal(imdbRes.status, 200);
+  const imdbData = await imdbRes.json();
+  assert.ok(imdbData.feeds.length >= 4);
+  assert.ok(imdbData.feeds.some((feed) => feed.title.includes("IMDb")));
+  assert.ok(imdbData.feeds.some((feed) => feed.url.includes("rss.imdb.com/news/movies")));
+
+  // The Guardian
+  const guardianRes = await handleApiRequest(request("/api/rss/catalog?q=The+Guardian"));
+  assert.equal(guardianRes.status, 200);
+  const guardianData = await guardianRes.json();
+  assert.ok(guardianData.feeds.length >= 5);
+  assert.ok(guardianData.feeds.some((feed) => feed.title.includes("Film")));
+  assert.ok(guardianData.feeds.some((feed) => feed.title.includes("Technology")));
+
+  // Online publication domain discovery
+  let fetchedUrl = "";
+  const onlineRes = await handleApiRequest(request("/api/rss/catalog?q=dailynews.org"), {
+    fetchImpl: async (target) => {
+      fetchedUrl = target.href || String(target);
+      return new Response(
+        `<!doctype html><html><head><link rel="alternate" type="application/rss+xml" title="Daily News Today" href="https://dailynews.org/feed.xml" /></head><body></body></html>`,
+        { headers: { "content-type": "text/html" } }
+      );
+    },
+  });
+  assert.equal(onlineRes.status, 200);
+  assert.ok(fetchedUrl.includes("dailynews.org"));
+  const onlineData = await onlineRes.json();
+  assert.ok(onlineData.feeds.some((feed) => feed.title === "Daily News Today" && feed.url === "https://dailynews.org/feed.xml"));
+});
+
 test("rss relay requires a feed or page URL", async () => {
   const response = await handleApiRequest(request("/api/rss"));
   assert.equal(response.status, 400);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { discoverFeeds, loadFeed, parseFeed, popularFeedCatalog, searchFeedCatalog } from "../rss.mjs";
+import { discoverFeeds, discoverPublicationFeeds, loadFeed, parseFeed, popularFeedCatalog, searchFeedCatalog } from "../rss.mjs";
 
 const RSS = `<?xml version="1.0"?>
 <rss version="2.0">
@@ -162,7 +162,8 @@ test("searchFeedCatalog filters by topic and words", () => {
   assert.ok(apple.includes("daring-fireball"));
 
   const gamingAi = searchFeedCatalog({ topic: "gaming", query: "pc" }).map((feed) => feed.id);
-  assert.deepEqual(gamingAi, ["rps"]);
+  assert.ok(gamingAi.includes("rps"));
+  assert.ok(gamingAi.includes("pcgamer"));
 
   assert.equal(searchFeedCatalog({}).length, 0);
   assert.equal(searchFeedCatalog({ topic: "cooking" }).length, 0);
@@ -176,6 +177,19 @@ test("searchFeedCatalog filters by topic and words", () => {
   assert.ok(searchFeedCatalog({ query: "matt wolfe" }).some((feed) => feed.id === "matt-wolfe"));
   assert.ok(searchFeedCatalog({ query: "engadget" }).some((feed) => feed.id === "engadget"));
   assert.ok(searchFeedCatalog({ query: "guardian" }).some((feed) => feed.id === "guardian-world"));
+
+  const imdbFeeds = searchFeedCatalog({ query: "imdb" });
+  assert.ok(imdbFeeds.length >= 4);
+  assert.ok(imdbFeeds.some((feed) => feed.id === "imdb-top"));
+  assert.ok(imdbFeeds.some((feed) => feed.id === "imdb-movies"));
+  assert.ok(imdbFeeds.some((feed) => feed.id === "imdb-tv"));
+  assert.ok(imdbFeeds.some((feed) => feed.id === "imdb-celebrity"));
+
+  const guardianFeeds = searchFeedCatalog({ query: "The Guardian" });
+  assert.ok(guardianFeeds.length >= 5);
+  assert.ok(guardianFeeds.some((feed) => feed.id === "guardian-film"));
+  assert.ok(guardianFeeds.some((feed) => feed.id === "guardian-tech"));
+  assert.ok(guardianFeeds.some((feed) => feed.id === "guardian-culture"));
 });
 
 test("loadFeed probes common feed paths when the page has no alternate links", async () => {
@@ -233,5 +247,32 @@ test("parseFeed ignores undefined image URLs and tracking pixels", () => {
   assert.equal(feed.items[0].image, "");
   assert.equal(feed.items[1].image, "https://npr.brightspotcdn.com/photo.jpg");
   assert.equal(feed.items[2].image, "");
+});
+
+test("discoverPublicationFeeds discovers feeds from HTML link tags or direct feed URL", async () => {
+  const fakeFetch = async (target) => {
+    if (target.includes("direct-feed")) {
+      return {
+        body: `<?xml version="1.0"?><rss version="2.0"><channel><title>Direct Publication Feed</title><link>https://example.com/</link><item><title>First post</title><link>https://example.com/1</link></item></channel></rss>`,
+        contentType: "application/rss+xml",
+        finalUrl: target,
+      };
+    }
+    return {
+      body: `<!doctype html><html><head><link rel="alternate" type="application/rss+xml" title="Online News Daily" href="https://example.com/feed.xml"></head><body><h1>Welcome</h1></body></html>`,
+      contentType: "text/html",
+      finalUrl: target,
+    };
+  };
+
+  const discoveredFromDomain = await discoverPublicationFeeds("example.com", fakeFetch);
+  assert.equal(discoveredFromDomain.length, 1);
+  assert.equal(discoveredFromDomain[0].title, "Online News Daily");
+  assert.equal(discoveredFromDomain[0].url, "https://example.com/feed.xml");
+
+  const discoveredFromDirect = await discoverPublicationFeeds("https://example.com/direct-feed.xml", fakeFetch);
+  assert.equal(discoveredFromDirect.length, 1);
+  assert.equal(discoveredFromDirect[0].title, "Direct Publication Feed");
+  assert.equal(discoveredFromDirect[0].url, "https://example.com/direct-feed.xml");
 });
 

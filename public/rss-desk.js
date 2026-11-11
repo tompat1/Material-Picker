@@ -50,6 +50,8 @@ let customTopics = loadCustomTopics();
 let customTopicFormOpen = false;
 let directoryFeeds = [];
 let directoryRequest = 0;
+let directoryLoading = false;
+let catalogQueryDebounceTimer = null;
 let catalogPicks = new Map();
 let feedSort = "latest";
 let showReadPosts = false;
@@ -2192,6 +2194,11 @@ function renderDirectory() {
     paintDiscoverBar();
     return;
   }
+  if (directoryLoading && !directoryFeeds.length) {
+    box.innerHTML = `<p class="feeds-directory-empty"><span class="feeds-status-throbber" style="display:inline-block; vertical-align:middle; margin-right:6px;" aria-hidden="true"></span>Finding available feeds…</p>`;
+    paintDiscoverBar();
+    return;
+  }
   if (!directoryFeeds.length) {
     box.innerHTML = `<p class="feeds-directory-empty">No feeds match that search.</p>`;
     paintDiscoverBar();
@@ -2265,9 +2272,12 @@ async function loadDirectory() {
   if (catalogQuery.trim()) params.set("q", catalogQuery.trim());
   if (!selectedTopic && !catalogQuery.trim()) {
     directoryFeeds = [];
+    directoryLoading = false;
     renderDirectory();
     return;
   }
+  directoryLoading = true;
+  renderDirectory();
   try {
     const response = await fetch(`/api/rss/catalog?${params}`);
     const data = await response.json().catch(() => ({}));
@@ -2279,8 +2289,12 @@ async function loadDirectory() {
     if (requestId !== directoryRequest) return;
     directoryFeeds = [];
     setFeedStatus(error.message || "The feed list could not be loaded.");
+  } finally {
+    if (requestId === directoryRequest) {
+      directoryLoading = false;
+      renderDirectory();
+    }
   }
-  renderDirectory();
 }
 
 function setFeedsDialogMode(mode) {
@@ -2854,7 +2868,17 @@ function bindFeedsDesk() {
     } else if (!catalogQuery.trim() && !selectedTopic) {
       selectedTopic = "popular";
     }
-    void loadDirectory();
+    clearTimeout(catalogQueryDebounceTimer);
+    catalogQueryDebounceTimer = setTimeout(() => {
+      void loadDirectory();
+    }, 180);
+  });
+  document.querySelector("#feedTopicQuery")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      clearTimeout(catalogQueryDebounceTimer);
+      void loadDirectory();
+    }
   });
   document.querySelector("#opmlFile")?.addEventListener("change", (event) => {
     const file = event.target.files?.[0];

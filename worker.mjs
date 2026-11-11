@@ -2,7 +2,7 @@ import { createD1AccountStore, handleAuthRequest, sessionUser } from "./auth.mjs
 import { createD1CmsStore, handleCmsRequest } from "./cms.mjs";
 import { handleFeedlyRequest } from "./feedly.mjs";
 import { fetchVideoChapters } from "./video-chapters.mjs";
-import { FEED_TOPICS, loadFeed, parseOpml, RSS_ACCEPT, RSS_CONTENT_TYPE, searchFeedCatalog } from "./rss.mjs";
+import { discoverPublicationFeeds, FEED_TOPICS, loadFeed, parseOpml, RSS_ACCEPT, RSS_CONTENT_TYPE, searchFeedCatalog } from "./rss.mjs";
 import { searchVideos, videoFeed } from "./video-search.mjs";
 
 const MAX_PAGE_BYTES = 2 * 1024 * 1024;
@@ -946,12 +946,29 @@ export async function handleApiRequest(request, dependencies = {}) {
     }
   }
   if (request.method === "GET" && url.pathname === "/api/rss/catalog") {
+    const query = url.searchParams.get("q") || "";
+    const topic = url.searchParams.get("topic") || "";
+    const feeds = searchFeedCatalog({ query, topic });
+    const trimmed = query.trim();
+    if (trimmed && (feeds.length === 0 || /^https?:\/\/|[a-z0-9-]+\.[a-z]{2,}/i.test(trimmed))) {
+      try {
+        const discovered = await discoverPublicationFeeds(trimmed, (value) => fetchFeedDocument(value, fetchImpl));
+        if (discovered && discovered.length) {
+          const seen = new Set(feeds.map((f) => f.url.toLowerCase()));
+          for (const item of discovered) {
+            if (!seen.has(item.url.toLowerCase())) {
+              seen.add(item.url.toLowerCase());
+              feeds.push(item);
+            }
+          }
+        }
+      } catch {
+        // Ignore discovery errors and deliver catalog feeds.
+      }
+    }
     return json(200, {
       topics: FEED_TOPICS,
-      feeds: searchFeedCatalog({
-        query: url.searchParams.get("q") || "",
-        topic: url.searchParams.get("topic") || "",
-      }),
+      feeds,
     });
   }
   if (request.method === "GET" && url.pathname === "/api/rss") {

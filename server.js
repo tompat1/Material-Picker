@@ -214,13 +214,33 @@ async function handleOpml(request, response) {
 }
 
 async function handleRssCatalog(response, requestUrl) {
-  const { FEED_TOPICS, searchFeedCatalog } = await import("./rss.mjs");
+  const { FEED_TOPICS, searchFeedCatalog, discoverPublicationFeeds, RSS_ACCEPT, RSS_CONTENT_TYPE } = await import("./rss.mjs");
+  const query = requestUrl.searchParams.get("q") || "";
+  const topic = requestUrl.searchParams.get("topic") || "";
+  const feeds = searchFeedCatalog({ query, topic });
+  const trimmed = query.trim();
+  if (trimmed && (feeds.length === 0 || /^https?:\/\/|[a-z0-9-]+\.[a-z]{2,}/i.test(trimmed))) {
+    try {
+      const discovered = await discoverPublicationFeeds(trimmed, (value) => fetchRemoteText(value, {
+        accept: RSS_ACCEPT,
+        contentTypePattern: RSS_CONTENT_TYPE,
+      }));
+      if (discovered && discovered.length) {
+        const seen = new Set(feeds.map((f) => f.url.toLowerCase()));
+        for (const item of discovered) {
+          if (!seen.has(item.url.toLowerCase())) {
+            seen.add(item.url.toLowerCase());
+            feeds.push(item);
+          }
+        }
+      }
+    } catch {
+      // Ignore discovery errors and deliver catalog feeds.
+    }
+  }
   return sendJson(response, 200, {
     topics: FEED_TOPICS,
-    feeds: searchFeedCatalog({
-      query: requestUrl.searchParams.get("q") || "",
-      topic: requestUrl.searchParams.get("topic") || "",
-    }),
+    feeds,
   });
 }
 
