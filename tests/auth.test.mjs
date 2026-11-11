@@ -772,3 +772,27 @@ test("Playing YouTube clip from My YouTube page hides watch tabs and panels", as
   assert.ok(appJs.includes('document.body.classList.toggle("is-youtube-player"'));
   assert.ok(appJs.includes('originDesk: "youtube"'));
 });
+
+test("Widgets modal has top-level tabs and places Connect CTA below preview", async () => {
+  const fs = await import("fs");
+  const appJs = fs.readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../public/styles.css", import.meta.url), "utf8");
+
+  // Verify CSS defines top-level modal tabs and panels
+  assert.ok(css.includes(".widgets-main-tabs"));
+  assert.ok(css.includes(".widgets-main-tab-btn"));
+  assert.ok(css.includes(".widgets-panel"));
+  assert.ok(css.includes(".widgets-guide-panel"));
+
+  // Verify app.js sets up main tabs with Widgets and Info / Guide
+  assert.ok(appJs.includes('label: "Widgets"'));
+  assert.ok(appJs.includes('label: "Info / Guide"'));
+  assert.ok(appJs.includes('widgetsPanel.appendChild(stage)'));
+  assert.ok(appJs.includes('widgetsPanel.appendChild(ctaBox)'));
+  assert.ok(appJs.includes('guidePanel.appendChild(steps)'));
+
+  // Ensure ctaBox is appended after stage in widgetsPanel
+  const stageIdx = appJs.indexOf("widgetsPanel.appendChild(stage)");
+  const ctaIdx = appJs.indexOf("widgetsPanel.appendChild(ctaBox)");
+  assert.ok(stageIdx !== -1 && ctaIdx !== -1 && ctaIdx > stageIdx, "CTA box must be placed under preview stage");
+});

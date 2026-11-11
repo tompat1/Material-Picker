@@ -11524,7 +11524,59 @@ button[value="close"]:active {
 .widgets-mount {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
+}
+
+.widgets-main-tabs {
+  display: flex;
+  gap: 0.4rem;
+  background: var(--library);
+  padding: 0.3rem;
+  border-radius: 999px;
+  width: fit-content;
+  align-self: flex-start;
+  margin-top: -0.25rem;
+  border: 1px solid var(--line);
+}
+
+.widgets-main-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+  font-family: inherit;
+}
+
+.widgets-main-tab-btn.is-active {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.widgets-main-tab-btn:hover:not(.is-active) {
+  color: var(--ink);
+}
+
+.widgets-panel,
+.widgets-guide-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+}
+
+.widgets-panel[hidden],
+.widgets-guide-panel[hidden] {
+  display: none !important;
 }
 
 .widgets-lead {

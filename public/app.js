@@ -3389,74 +3389,66 @@ async function openWidgetsModal() {
 
   mount.replaceChildren();
 
+  let activeWidgetsTab = "widgets";
+
+  const mainTabs = document.createElement("div");
+  mainTabs.className = "widgets-main-tabs";
+  mainTabs.setAttribute("role", "tablist");
+  mainTabs.setAttribute("aria-label", "Widget dialog tabs");
+
+  const mainTabDefs = [
+    { id: "widgets", icon: "ph-squares-four", label: "Widgets" },
+    { id: "guide", icon: "ph-book-open", label: "Info / Guide" },
+  ];
+  mainTabDefs.forEach(({ id, icon, label }) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `widgets-main-tab-btn${activeWidgetsTab === id ? " is-active" : ""}`;
+    btn.dataset.widgetsTab = id;
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", activeWidgetsTab === id ? "true" : "false");
+
+    const iconEl = document.createElement("i");
+    iconEl.className = `ph ${icon} widgets-tab-icon`;
+    iconEl.setAttribute("aria-hidden", "true");
+
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = label;
+
+    btn.append(iconEl, labelSpan);
+    mainTabs.appendChild(btn);
+  });
+
+  const widgetsPanel = document.createElement("div");
+  widgetsPanel.className = "widgets-panel";
+  widgetsPanel.id = "widgetsMainPanel";
+  widgetsPanel.setAttribute("role", "tabpanel");
+
+  const guidePanel = document.createElement("div");
+  guidePanel.className = "widgets-guide-panel";
+  guidePanel.id = "widgetsGuidePanel";
+  guidePanel.setAttribute("role", "tabpanel");
+  guidePanel.hidden = true;
+
+  function switchWidgetsTab(tabId) {
+    activeWidgetsTab = tabId;
+    mainTabs.querySelectorAll("[data-widgets-tab]").forEach((btn) => {
+      const active = btn.dataset.widgetsTab === tabId;
+      btn.classList.toggle("is-active", active);
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    widgetsPanel.hidden = tabId !== "widgets";
+    guidePanel.hidden = tabId !== "guide";
+  }
+
+  mainTabs.querySelectorAll("[data-widgets-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => switchWidgetsTab(btn.dataset.widgetsTab));
+  });
+
   const lead = document.createElement("p");
   lead.className = "widgets-lead";
   lead.textContent = "Get live feed and video updates on your iPhone Home Screen and Mac Desktop with Mini, Midi, and Maxi sizes.";
-  mount.appendChild(lead);
-
-  const ctaBox = document.createElement("div");
-  ctaBox.className = "widgets-cta-box";
-
-  const ctaInfo = document.createElement("div");
-  ctaInfo.className = "widgets-cta-info";
-  const ctaH3 = document.createElement("h3");
-  const ctaP = document.createElement("p");
-
-  function updateCtaText() {
-    if (activeWidgetSource === "youtube") {
-      ctaH3.textContent = "Connect YouTube Widget (iPhone & Mac)";
-      ctaP.textContent = widgetToken
-        ? "Configured for your YouTube subscriptions. Tap install to copy the code and launch Scriptable—then simply paste into the new script window."
-        : "Configured for your YouTube subscriptions. Sign in with Google to sync your subscribed channels.";
-    } else {
-      ctaH3.textContent = "Connect Feeds Widget (iPhone & Mac)";
-      ctaP.textContent = widgetToken
-        ? "Configured for your RSS & Feedly subscriptions. Tap install to copy the code and launch Scriptable—then simply paste into the new script window."
-        : "Tap install to copy the code and launch Scriptable—then simply paste into the new script window and tap Done.";
-    }
-  }
-  updateCtaText();
-  ctaInfo.append(ctaH3, ctaP);
-
-  const ctaButtons = document.createElement("div");
-  ctaButtons.className = "widgets-cta-buttons";
-
-  const launchBtn = document.createElement("a");
-  launchBtn.className = "primary-button";
-  launchBtn.id = "widgetsScriptableLaunchBtn";
-  launchBtn.href = "scriptable:///add";
-  launchBtn.textContent = "Install in Scriptable";
-
-  const copyBtn = document.createElement("button");
-  copyBtn.type = "button";
-  copyBtn.className = "secondary-button";
-  copyBtn.id = "widgetsCopyScriptBtn";
-  copyBtn.textContent = "Copy script";
-
-  const downloadBtn = document.createElement("button");
-  downloadBtn.type = "button";
-  downloadBtn.className = "secondary-button";
-  downloadBtn.id = "widgetsDownloadScriptBtn";
-  downloadBtn.textContent = "Download .js";
-
-  ctaButtons.append(launchBtn, copyBtn, downloadBtn);
-
-  const pasteCallout = document.createElement("p");
-  pasteCallout.className = "widgets-paste-callout hint";
-  pasteCallout.style.marginTop = "0.75rem";
-  pasteCallout.style.fontSize = "0.82rem";
-  pasteCallout.style.lineHeight = "1.4";
-  pasteCallout.style.color = "var(--muted)";
-  pasteCallout.style.width = "100%";
-
-  const strongSpan = document.createElement("strong");
-  strongSpan.textContent = "When Scriptable opens: ";
-  const textSpan = document.createElement("span");
-  textSpan.textContent = "Tap inside the blank script editor, select Paste, and tap Done in the top corner.";
-  pasteCallout.append(strongSpan, textSpan);
-
-  ctaBox.append(ctaInfo, ctaButtons, pasteCallout);
-  mount.appendChild(ctaBox);
+  widgetsPanel.appendChild(lead);
 
   const controlsBar = document.createElement("div");
   controlsBar.className = "widgets-controls-bar";
@@ -3533,13 +3525,77 @@ async function openWidgetsModal() {
   });
 
   controlsBar.append(sourceBar, tabBar, themeBar);
-  mount.appendChild(controlsBar);
+  widgetsPanel.appendChild(controlsBar);
 
   const stage = document.createElement("div");
   stage.className = "widgets-preview-stage";
   stage.id = "widgetsPreviewStage";
   stage.appendChild(renderWidgetPreviewElement(activeWidgetSize, activeWidgetTheme, activeWidgetSource));
-  mount.appendChild(stage);
+  widgetsPanel.appendChild(stage);
+
+  const ctaBox = document.createElement("div");
+  ctaBox.className = "widgets-cta-box";
+
+  const ctaInfo = document.createElement("div");
+  ctaInfo.className = "widgets-cta-info";
+  const ctaH3 = document.createElement("h3");
+  const ctaP = document.createElement("p");
+
+  function updateCtaText() {
+    if (activeWidgetSource === "youtube") {
+      ctaH3.textContent = "Connect YouTube Widget (iPhone & Mac)";
+      ctaP.textContent = widgetToken
+        ? "Configured for your YouTube subscriptions. Tap install to copy the code and launch Scriptable—then simply paste into the new script window."
+        : "Configured for your YouTube subscriptions. Sign in with Google to sync your subscribed channels.";
+    } else {
+      ctaH3.textContent = "Connect Feeds Widget (iPhone & Mac)";
+      ctaP.textContent = widgetToken
+        ? "Configured for your RSS & Feedly subscriptions. Tap install to copy the code and launch Scriptable—then simply paste into the new script window."
+        : "Tap install to copy the code and launch Scriptable—then simply paste into the new script window and tap Done.";
+    }
+  }
+  updateCtaText();
+  ctaInfo.append(ctaH3, ctaP);
+
+  const ctaButtons = document.createElement("div");
+  ctaButtons.className = "widgets-cta-buttons";
+
+  const launchBtn = document.createElement("a");
+  launchBtn.className = "primary-button";
+  launchBtn.id = "widgetsScriptableLaunchBtn";
+  launchBtn.href = "scriptable:///add";
+  launchBtn.textContent = "Install in Scriptable";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "secondary-button";
+  copyBtn.id = "widgetsCopyScriptBtn";
+  copyBtn.textContent = "Copy script";
+
+  const downloadBtn = document.createElement("button");
+  downloadBtn.type = "button";
+  downloadBtn.className = "secondary-button";
+  downloadBtn.id = "widgetsDownloadScriptBtn";
+  downloadBtn.textContent = "Download .js";
+
+  ctaButtons.append(launchBtn, copyBtn, downloadBtn);
+
+  const pasteCallout = document.createElement("p");
+  pasteCallout.className = "widgets-paste-callout hint";
+  pasteCallout.style.marginTop = "0.75rem";
+  pasteCallout.style.fontSize = "0.82rem";
+  pasteCallout.style.lineHeight = "1.4";
+  pasteCallout.style.color = "var(--muted)";
+  pasteCallout.style.width = "100%";
+
+  const strongSpan = document.createElement("strong");
+  strongSpan.textContent = "When Scriptable opens: ";
+  const textSpan = document.createElement("span");
+  textSpan.textContent = "Tap inside the blank script editor, select Paste, and tap Done in the top corner.";
+  pasteCallout.append(strongSpan, textSpan);
+
+  ctaBox.append(ctaInfo, ctaButtons, pasteCallout);
+  widgetsPanel.appendChild(ctaBox);
 
   let activeGuidePlatform = "iphone";
 
@@ -3599,7 +3655,7 @@ async function openWidgetsModal() {
     } else {
       h4.textContent = "How to add to your iPhone Home Screen:";
       const iphoneSteps = [
-        "Tap Install in Scriptable above (the widget script is automatically copied to your clipboard and Scriptable opens).",
+        "Tap Install in Scriptable (the widget script is automatically copied to your clipboard and Scriptable opens).",
         "When Scriptable opens with an empty Untitled Script, tap the blank editor area, select Paste, and tap Done in the top corner.",
         "On your iPhone Home Screen, long-press any empty area until icons jiggle, then tap the + button in the top corner.",
         `Search for Scriptable, swipe to choose ${sizeName}, and tap Add Widget.`,
@@ -3617,6 +3673,23 @@ async function openWidgetsModal() {
 
   guideContainer.appendChild(renderGuide(activeGuidePlatform));
   steps.appendChild(guideContainer);
+
+  const guideButtons = document.createElement("div");
+  guideButtons.className = "widgets-cta-buttons";
+  guideButtons.style.marginTop = "0.4rem";
+
+  const guideLaunchBtn = document.createElement("a");
+  guideLaunchBtn.className = "primary-button";
+  guideLaunchBtn.href = "scriptable:///add";
+  guideLaunchBtn.textContent = "Install in Scriptable";
+
+  const guideCopyBtn = document.createElement("button");
+  guideCopyBtn.type = "button";
+  guideCopyBtn.className = "secondary-button";
+  guideCopyBtn.textContent = "Copy script";
+
+  guideButtons.append(guideLaunchBtn, guideCopyBtn);
+  steps.appendChild(guideButtons);
 
   const themeNote = document.createElement("p");
   themeNote.className = "widgets-platform-note hint";
@@ -3669,7 +3742,9 @@ async function openWidgetsModal() {
   platformNote.append(platIcon, platStrong, platBody);
   steps.appendChild(platformNote);
 
-  mount.appendChild(steps);
+  guidePanel.appendChild(steps);
+
+  mount.replaceChildren(mainTabs, widgetsPanel, guidePanel);
 
   sourceBar.querySelectorAll("[data-wsource]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -3748,6 +3823,31 @@ async function openWidgetsModal() {
       setTimeout(() => { downloadBtn.textContent = "Download .js"; }, 2000);
     } catch {
       showActionNotice(downloadBtn.getBoundingClientRect(), "Download failed");
+    }
+  });
+
+  guideLaunchBtn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    try {
+      await navigator.clipboard.writeText(scriptCode);
+      guideLaunchBtn.textContent = "Copied! Paste in Scriptable…";
+      showActionNotice(guideLaunchBtn.getBoundingClientRect(), "Script copied! Paste it in Scriptable & tap Done");
+    } catch {
+      // Fallback
+    }
+    setTimeout(() => {
+      guideLaunchBtn.textContent = "Install in Scriptable";
+    }, 4000);
+    window.location.href = "scriptable:///add";
+  });
+
+  guideCopyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(scriptCode);
+      guideCopyBtn.textContent = "Copied!";
+      setTimeout(() => { guideCopyBtn.textContent = "Copy script"; }, 2000);
+    } catch {
+      showActionNotice(guideCopyBtn.getBoundingClientRect(), "Failed to copy script");
     }
   });
 
