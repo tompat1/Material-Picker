@@ -1906,25 +1906,97 @@ function extractArticleText(html) {
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, "text/html");
-    const unwanted = doc.querySelectorAll("script, style, noscript, nav, header, footer, aside, form, svg, iframe, [aria-hidden='true'], .comments, .advertisement, .ad, .social-share, .author-bio, .cookie-banner, .newsletter");
-    unwanted.forEach((el) => el.remove());
 
-    const container = doc.querySelector("article, [itemprop='articleBody'], .article-content, .entry-content, .post-content, .story-body, .article-body, main") || doc.body;
+    // Remove noise, scripts, ads, navigation, related posts, and sidebars
+    const noiseSelectors = [
+      "script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg", "iframe",
+      "[aria-hidden='true']", ".comments", "#comments", ".advertisement", ".ad", ".social-share",
+      ".author-bio", ".cookie-banner", ".newsletter", ".signup", ".subscribe", ".tags", ".article-tags",
+      ".post-tags", ".related", ".related-posts", ".related-articles", ".more-stories", ".most-read",
+      ".popular", ".trending", ".feed", ".teaser", ".recirc", ".outbrain", ".taboola", ".sidebar",
+      ".widget", "[class*='related']", "[class*='recommend']", "[class*='popular']", "[class*='promo']",
+      "[class*='most-read']", "[id*='related']", "[id*='comments']"
+    ];
+    doc.querySelectorAll(noiseSelectors.join(", ")).forEach((el) => el.remove());
+
+    // Look for strict, specific article body containers first
+    const specificSelectors = [
+      "[itemprop='articleBody']",
+      ".article-body",
+      ".article__body",
+      ".entry-content",
+      ".post-content",
+      ".post_body",
+      ".story-body",
+      ".article-content",
+      ".c-entry-content"
+    ];
+
+    let container = null;
+    for (const selector of specificSelectors) {
+      const found = doc.querySelector(selector);
+      if (found && found.querySelectorAll("p").length >= 1) {
+        container = found;
+        break;
+      }
+    }
+
+    if (!container) {
+      container = doc.querySelector("article");
+    }
+
     if (!container) return "";
 
     const pNodes = container.querySelectorAll("p");
     const paragraphs = [];
+    const stopPattern = /^(ge inkorgen|mest l[äa]sta|mest diskuterat|l[äa]s [äa]ven|relaterat|l[äa]s mer|tipsa oss|kommentera|andra l[äa]ser|dela artikeln|relaterade artiklar|popular posts|trending now|most read|related stories|more stories|read next|newsletter|sign up for|subscribe to|all rights reserved|copyright)/i;
+
     for (const p of pNodes) {
-      const text = p.textContent.replace(/\s+/g, " ").trim();
-      if (text.length > 25 && !/cookie|privacy policy|terms of (use|service)|all rights reserved|sign up for|newsletter|subscribe to/i.test(text)) {
-        paragraphs.push(text);
+      if (p.closest(".related, .more, .tags, .newsletter, .promo, footer, aside, [class*='related'], [class*='promo']")) {
+        continue;
       }
+      const text = p.textContent.replace(/\s+/g, " ").trim();
+      if (!text || text.length < 20) continue;
+
+      // Stop once we hit a "related articles", "most read", or "newsletter" boundary
+      if (stopPattern.test(text)) {
+        break;
+      }
+
+      // Skip common disclaimers / cookie banners / tag lists
+      if (/cookie|privacy policy|terms of (use|service)|all rights reserved|sign up for|newsletter|subscribe to/i.test(text)) {
+        continue;
+      }
+      // Skip comma-separated tag strings (e.g. "Film & TV, Skådespelare, Stacy Keach, död, vif")
+      if ((text.match(/,/g) || []).length >= 3 && text.length < 120 && !/[.!?]$/.test(text)) {
+        continue;
+      }
+
+      paragraphs.push(text);
     }
-    if (paragraphs.length >= 2) {
+
+    if (paragraphs.length >= 1) {
       return paragraphs.join("\n\n");
     }
   } catch (e) {}
   return "";
+}
+
+function isFeedItemTruncated(item) {
+  const text = String(item?.summary || "").trim();
+  if (!text) return true;
+
+  // Explicit truncation indicators
+  if (/(?:…|\.\.\.|\[…\]|\[\.\.\.\]|\[\s*read\s+more\s*\]|\bread\s+more\b|\bcontinue\s+reading\b|\bappeared\s+first\s+on\b|\[\+\d+\s*chars\])\s*$/i.test(text)) {
+    return true;
+  }
+
+  // Very short teaser (under 120 chars) that does not end with sentence-ending punctuation
+  if (text.length < 120 && !/[.!?]["']?\s*$/.test(text)) {
+    return true;
+  }
+
+  return false;
 }
 
 const articleFullContentCache = new Map();
@@ -1937,8 +2009,7 @@ async function loadFullArticleContent(item) {
     item.fullContent = cached;
     return;
   }
-  const isTruncated = !item.summary || item.summary.length < 900 || /[…\.]\s*$/.test(item.summary) || /appeared first on/i.test(item.summary);
-  if (!isTruncated) return;
+  if (!isFeedItemTruncated(item)) return;
   item._loadingFull = true;
   try {
     const res = await fetch(`/api/scrape?url=${encodeURIComponent(item.link)}`);

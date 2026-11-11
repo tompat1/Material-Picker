@@ -1297,7 +1297,7 @@ async function handleWidgetLatest(request, url, store, options) {
   const parsedLimit = parseInt(url.searchParams.get("limit") || "10", 10);
   const safeLimit = Number.isFinite(parsedLimit) ? parsedLimit : 10;
   const limit = Math.max(1, Math.min(safeLimit, 30));
-  const results = items.slice(0, limit);
+  const results = selectDiverseItems(items, limit);
 
   const headers = new Headers({
     "content-type": "application/json; charset=utf-8",
@@ -1310,6 +1310,60 @@ async function handleWidgetLatest(request, url, store, options) {
     count: results.length,
     items: results,
   }), { status: 200, headers });
+}
+
+function selectDiverseItems(items, limit) {
+  if (!items || !items.length) return [];
+  if (items.length <= 1 || limit <= 1) return items.slice(0, limit);
+
+  // Group items by publication/source
+  const groups = new Map();
+  for (const item of items) {
+    const key = String(item.feedId || item.source || item.channelId || item.feedUrl || "feed").toLowerCase().trim();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+
+  // If there's only 1 source, return its newest items
+  if (groups.size <= 1) {
+    return items.slice(0, limit);
+  }
+
+  // Sort each group's items descending by publication date
+  for (const list of groups.values()) {
+    list.sort((a, b) => {
+      const timeA = Date.parse(a.publishedAt || 0) || 0;
+      const timeB = Date.parse(b.publishedAt || 0) || 0;
+      return timeB - timeA;
+    });
+  }
+
+  // Sort groups by the date of their freshest item (newest source first)
+  const sortedGroups = Array.from(groups.values()).sort((a, b) => {
+    const timeA = Date.parse(a[0]?.publishedAt || 0) || 0;
+    const timeB = Date.parse(b[0]?.publishedAt || 0) || 0;
+    return timeB - timeA;
+  });
+
+  // Interleave items across sources (round-robin)
+  // This guarantees that multiple sources are represented and no single source dominates
+  const results = [];
+  let round = 0;
+  let addedInRound = true;
+
+  while (results.length < limit && addedInRound) {
+    addedInRound = false;
+    for (const group of sortedGroups) {
+      if (round < group.length) {
+        results.push(group[round]);
+        addedInRound = true;
+        if (results.length >= limit) break;
+      }
+    }
+    round++;
+  }
+
+  return results;
 }
 
 async function handleYouTubeHome(request, store, options) {

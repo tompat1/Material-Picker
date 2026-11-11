@@ -623,6 +623,33 @@ test("widget latest endpoint authenticates with widget token, loads configured f
   assert.equal(nonnumericLimitRes.status, 200);
   const nonnumericData = await nonnumericLimitRes.json();
   assert.ok(nonnumericData.items.length > 0, "Invalid limit should fallback to default rather than returning empty array");
+
+  // 8. Source diversity test: ensure no single publication dominates 4 of 5 slots when multiple feeds are configured
+  await call("/api/feeds/library", {
+    method: "PUT",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({
+      feeds: [
+        { id: "feed-feber", url: "https://feber.example/feed.xml", title: "Feber" },
+        { id: "feed-macworld", url: "https://macworld.example/feed.xml", title: "Macworld" },
+      ],
+      savedItems: [
+        { id: "feber-1", feedId: "feed-feber", title: "Feber Post 1", link: "https://feber.example/1", publishedAt: "2026-11-11T09:40:00Z" },
+        { id: "feber-2", feedId: "feed-feber", title: "Feber Post 2", link: "https://feber.example/2", publishedAt: "2026-11-11T09:30:00Z" },
+        { id: "feber-3", feedId: "feed-feber", title: "Feber Post 3", link: "https://feber.example/3", publishedAt: "2026-11-11T09:20:00Z" },
+        { id: "feber-4", feedId: "feed-feber", title: "Feber Post 4", link: "https://feber.example/4", publishedAt: "2026-11-11T09:10:00Z" },
+        { id: "mw-1", feedId: "feed-macworld", title: "Macworld Post 1", link: "https://macworld.example/1", publishedAt: "2026-11-11T09:00:00Z" },
+      ],
+    }),
+  });
+  const diverseRes = await call(`/api/widget/latest?token=${encodeURIComponent(token)}&limit=5`);
+  assert.equal(diverseRes.status, 200);
+  const diverseData = await diverseRes.json();
+  assert.equal(diverseData.items.length, 5);
+  // Macworld must be promoted to position 2 via source interleaving instead of being relegated to position 5
+  assert.equal(diverseData.items[0].source, "Feber");
+  assert.equal(diverseData.items[1].source, "Macworld");
+  assert.equal(diverseData.items[2].source, "Feber");
 });
 
 test("Scriptable widget code generation produces valid, error-free JavaScript", async () => {

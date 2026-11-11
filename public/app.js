@@ -2726,9 +2726,43 @@ async function loadItems() {
       req.headers = { Authorization: "Bearer " + WIDGET_TOKEN };
     }
     const res = await req.loadJSON();
-    if (Array.isArray(res && res.items)) return res.items;
+    if (Array.isArray(res && res.items)) return diversifyWidgetItems(res.items);
   } catch (e) {}
   return [];
+}
+
+function diversifyWidgetItems(rawItems) {
+  if (!Array.isArray(rawItems) || rawItems.length <= 2) return rawItems || [];
+  const groups = {};
+  for (let i = 0; i < rawItems.length; i++) {
+    const item = rawItems[i];
+    const src = String(item.source || item.feedId || "feed").toLowerCase().trim();
+    if (!groups[src]) groups[src] = [];
+    groups[src].push(item);
+  }
+  const groupKeys = Object.keys(groups);
+  if (groupKeys.length <= 1) return rawItems;
+  groupKeys.sort((a, b) => {
+    const tA = Date.parse(groups[a][0]?.publishedAt || 0) || 0;
+    const tB = Date.parse(groups[b][0]?.publishedAt || 0) || 0;
+    return tB - tA;
+  });
+  const out = [];
+  let round = 0;
+  let added = true;
+  while (out.length < rawItems.length && added) {
+    added = false;
+    for (let k = 0; k < groupKeys.length; k++) {
+      const g = groups[groupKeys[k]];
+      if (round < g.length) {
+        out.push(g[round]);
+        added = true;
+        if (out.length >= rawItems.length) break;
+      }
+    }
+    round++;
+  }
+  return out;
 }
 
 async function loadImage(url) {
