@@ -2709,12 +2709,20 @@ function getWidgetSource() {
 }
 
 async function loadItems() {
+  const source = getWidgetSource();
+  const cacheKey = "picker.widget.items." + source + "." + String(WIDGET_TOKEN || ENDPOINT_URL).slice(-16);
+  let cachedItems = [];
+  try {
+    if (Keychain.contains(cacheKey)) {
+      const cached = JSON.parse(Keychain.get(cacheKey));
+      if (Array.isArray(cached && cached.items)) cachedItems = cached.items;
+    }
+  } catch (e) {}
   try {
     let url = ENDPOINT_URL;
     if (WIDGET_TOKEN && !url.includes("token=")) {
       url += (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(WIDGET_TOKEN);
     }
-    const source = getWidgetSource();
     if (url.includes("source=")) {
       url = url.replace(/source=[^&]*/, "source=" + encodeURIComponent(source));
     } else {
@@ -2726,9 +2734,19 @@ async function loadItems() {
       req.headers = { Authorization: "Bearer " + WIDGET_TOKEN };
     }
     const res = await req.loadJSON();
-    if (Array.isArray(res && res.items)) return diversifyWidgetItems(res.items);
+    if (Array.isArray(res && res.items)) {
+      const items = diversifyWidgetItems(res.items);
+      if (items.length) {
+        try {
+          Keychain.set(cacheKey, JSON.stringify({ savedAt: Date.now(), items }));
+        } catch (e) {}
+        return items;
+      }
+      if (cachedItems.length) return diversifyWidgetItems(cachedItems);
+      return [];
+    }
   } catch (e) {}
-  return [];
+  return diversifyWidgetItems(cachedItems);
 }
 
 function diversifyWidgetItems(rawItems) {

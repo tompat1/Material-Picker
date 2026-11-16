@@ -568,6 +568,25 @@ test("widget latest endpoint authenticates with widget token, loads configured f
   const { token } = await tokRes.json();
   assert.ok(token);
 
+  // Simulate a widget installed before dedicated long-lived credentials existed:
+  // using it once upgrades its still-valid 30-day session in place.
+  const legacyToken = cookie.split("=")[1];
+  const legacyUpgradeRes = await call(`/api/widget/latest?token=${encodeURIComponent(legacyToken)}`);
+  assert.equal(legacyUpgradeRes.status, 200);
+
+  // Widget credentials are deliberately much longer lived than browser login sessions.
+  // A home-screen widget must not silently turn into an empty "sync" prompt after 30 days.
+  const realNow = Date.now;
+  Date.now = () => realNow() + 31 * 24 * 60 * 60 * 1000;
+  try {
+    const longLivedRes = await call(`/api/widget/latest?token=${encodeURIComponent(token)}`);
+    assert.equal(longLivedRes.status, 200);
+    const upgradedLegacyRes = await call(`/api/widget/latest?token=${encodeURIComponent(legacyToken)}`);
+    assert.equal(upgradedLegacyRes.status, 200);
+  } finally {
+    Date.now = realNow;
+  }
+
   // 5. Query /api/widget/latest with ?token=... (no cookies)
   const tokenQueryRes = await call(`/api/widget/latest?token=${encodeURIComponent(token)}`);
   assert.equal(tokenQueryRes.status, 200);
@@ -675,6 +694,8 @@ test("Scriptable widget code generation produces valid, error-free JavaScript", 
   assert.ok(script.includes("getItemImage"), "Script must resolve item image or source icon");
   assert.ok(script.includes("getSourceFaviconUrl"), "Script must extract publishing source icon");
   assert.ok(script.includes("createSourceBadge"), "Script must generate fallback source badge with initials");
+  assert.ok(script.includes("Keychain.set(cacheKey"), "Script must cache the last successful widget payload");
+  assert.ok(script.includes("cachedItems"), "Script must reuse cached content during transient failures");
   assert.ok(!script.includes("replace(//"), "Must not contain broken unescaped regex literal in template string");
 
   const ytScript = generateScriptableCode(testEndpoint, "test-widget-token-123", "medium", "youtube");

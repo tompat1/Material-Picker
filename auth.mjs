@@ -4,6 +4,7 @@ import { parseFeed } from "./rss.mjs";
 const SESSION_COOKIE = "picker_session";
 const STATE_COOKIE = "picker_oauth_state";
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
+const WIDGET_SESSION_MS = 5 * 365 * 24 * 60 * 60 * 1000;
 const STATE_MS = 10 * 60 * 1000;
 const YOUTUBE_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
 
@@ -403,9 +404,9 @@ export function createMemoryAccountStore() {
       users.set(user.id, user);
       return publicUser(user, null);
     },
-    async createSession(userId) {
+    async createSession(userId, lifetimeMs = SESSION_MS) {
       const id = crypto.randomUUID();
-      sessions.set(id, { userId, expiresAt: new Date(Date.now() + SESSION_MS).toISOString() });
+      sessions.set(id, { userId, expiresAt: new Date(Date.now() + lifetimeMs).toISOString() });
       return id;
     },
     async userForSession(sessionId) {
@@ -415,6 +416,12 @@ export function createMemoryAccountStore() {
       if (!user) return null;
       const feedly = feedlyTokens.get(user.id);
       return { ...publicUser(user, tokens.get(user.id)), feedlyConnected: Boolean(feedly?.refreshToken) };
+    },
+    async extendSession(sessionId, lifetimeMs = SESSION_MS) {
+      const session = sessions.get(sessionId);
+      if (!session || Date.parse(session.expiresAt) <= Date.now()) return false;
+      session.expiresAt = new Date(Date.now() + lifetimeMs).toISOString();
+      return true;
     },
     async deleteSession(sessionId) {
       sessions.delete(sessionId);
@@ -532,10 +539,10 @@ export function createD1AccountStore(db) {
         .run();
       return { id, email, name, picture: "", youtubeConnected: false };
     },
-    async createSession(userId) {
+    async createSession(userId, lifetimeMs = SESSION_MS) {
       const id = crypto.randomUUID();
       await db.prepare("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)")
-        .bind(id, userId, new Date(Date.now() + SESSION_MS).toISOString())
+        .bind(id, userId, new Date(Date.now() + lifetimeMs).toISOString())
         .run();
       return id;
     },
@@ -547,6 +554,13 @@ export function createD1AccountStore(db) {
       const token = await db.prepare("SELECT refresh_token FROM youtube_tokens WHERE user_id = ?").bind(user.id).first();
       const feedly = await feedlyRow(db, user.id);
       return { ...publicUser(rowToUser(user), token ? { refreshToken: token.refresh_token } : null), feedlyConnected: Boolean(feedly?.refresh_token) };
+    },
+    async extendSession(sessionId, lifetimeMs = SESSION_MS) {
+      const expiresAt = new Date(Date.now() + lifetimeMs).toISOString();
+      const result = await db.prepare("UPDATE sessions SET expires_at = ? WHERE id = ? AND expires_at > ?")
+        .bind(expiresAt, sessionId, new Date().toISOString())
+        .run();
+      return Boolean(result?.meta?.changes ?? result?.changes ?? true);
     },
     async deleteSession(sessionId) {
       await db.prepare("DELETE FROM sessions WHERE id = ?").bind(sessionId).run();
@@ -977,7 +991,7 @@ export async function handleAuthRequest(request, options) {
     if (!user) {
       return json(401, { error: "Sign in to generate a widget token." });
     }
-    const token = await store.createSession(user.id);
+    const token = await store.createSession(user.id, WIDGET_SESSION_MS);
     return json(200, { token });
   }
   if (request.method === "GET" && url.pathname === "/api/widget/latest") {
@@ -1176,6 +1190,11 @@ async function handleWidgetLatest(request, url, store, options) {
   }
   if (!user) {
     return json(401, { error: "A valid widget token or session is required." });
+  }
+  // Upgrade older widget credentials that were issued with the browser-session
+  // lifetime. Active installed widgets keep working without periodic reinstalls.
+  if (token && typeof store.extendSession === "function") {
+    await store.extendSession(token, WIDGET_SESSION_MS);
   }
 
   const items = [];

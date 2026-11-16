@@ -116,10 +116,10 @@ export function createFileAccountStore(filePath) {
         return { id: user.id, email, name, picture: "", youtubeConnected: false };
       });
     },
-    async createSession(userId) {
+    async createSession(userId, lifetimeMs = SESSION_MS) {
       return update((data) => {
         const id = crypto.randomUUID();
-        data.sessions.push({ id, userId, expiresAt: new Date(Date.now() + SESSION_MS).toISOString() });
+        data.sessions.push({ id, userId, expiresAt: new Date(Date.now() + lifetimeMs).toISOString() });
         return id;
       });
     },
@@ -139,6 +139,14 @@ export function createFileAccountStore(filePath) {
           youtubeConnected: Boolean(token?.refreshToken),
           feedlyConnected: Boolean(feedly?.refreshToken),
         };
+      });
+    },
+    async extendSession(sessionId, lifetimeMs = SESSION_MS) {
+      return update((data) => {
+        const session = data.sessions.find((item) => item.id === sessionId);
+        if (!session || Date.parse(session.expiresAt) <= Date.now()) return false;
+        session.expiresAt = new Date(Date.now() + lifetimeMs).toISOString();
+        return true;
       });
     },
     async deleteSession(sessionId) {
