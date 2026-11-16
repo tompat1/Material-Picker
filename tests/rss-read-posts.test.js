@@ -38,8 +38,12 @@ function readPostApp() {
   vm.runInContext(`${source}\n
     globalThis.readPostTest = {
       items: itemsForSource,
-      setReadView(value) { showReadPosts = Boolean(value); },
-      toggleReadView: toggleReadPostsView,
+      setSort(value) {
+        showUnreadPosts = false;
+        feedSort = value === "active" ? "active" : "latest";
+      },
+      setUnreadView(value) { showUnreadPosts = Boolean(value); },
+      toggleUnreadView: toggleUnreadPostsView,
       state: feedState,
       store: storeFeed,
     };
@@ -47,15 +51,18 @@ function readPostApp() {
   return context.readPostTest;
 }
 
-test("read feed view keeps opened posts available and excludes archived posts", () => {
+test("newest and busiest include read posts while unread view excludes read and archived posts", () => {
   const app = readPostApp();
   assert.deepEqual([...app.items("all")].map((item) => item.id), ["unread-tech", "read-tech", "read-news"]);
   assert.deepEqual([...app.items("folder:tech")].map((item) => item.id), ["unread-tech", "read-tech"]);
 
-  app.toggleReadView();
-  assert.deepEqual([...app.items("all")].map((item) => item.id), ["read-tech", "read-news"]);
-  assert.deepEqual([...app.items("folder:tech")].map((item) => item.id), ["read-tech"]);
-  assert.deepEqual([...app.items("folder:news")].map((item) => item.id), ["read-news"]);
+  app.setSort("active");
+  assert.deepEqual([...app.items("all")].map((item) => item.id), ["unread-tech", "read-tech", "read-news"]);
+
+  app.toggleUnreadView();
+  assert.deepEqual([...app.items("all")].map((item) => item.id), ["unread-tech"]);
+  assert.deepEqual([...app.items("folder:tech")].map((item) => item.id), ["unread-tech"]);
+  assert.deepEqual([...app.items("folder:news")].map((item) => item.id), []);
 });
 
 test("feed refreshes retain older posts with user history beyond the transient cap", () => {

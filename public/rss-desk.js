@@ -54,7 +54,7 @@ let directoryLoading = false;
 let catalogQueryDebounceTimer = null;
 let catalogPicks = new Map();
 let feedSort = "latest";
-let showReadPosts = false;
+let showUnreadPosts = false;
 let touchStart = null;
 
 function cleanImageUrl(value) {
@@ -380,7 +380,7 @@ function resetUserFeedState() {
   };
   customTopics = [];
   feedSort = "latest";
-  showReadPosts = false;
+  showUnreadPosts = false;
   selectedSource = "all";
   selectedItemId = "";
   feedPane = 0;
@@ -684,21 +684,17 @@ function unreadItems() {
   return feedState.items.filter(isUnread);
 }
 
-function readItems() {
-  return feedState.items.filter((item) => item && feedState.read[item.id] && !feedState.archived[item.id]);
-}
-
 function allFeedItems() {
   return feedState.items.filter((item) => item && !feedState.archived[item.id]);
 }
 
 function currentFeedItems() {
-  return showReadPosts ? readItems() : allFeedItems();
+  return showUnreadPosts ? unreadItems() : allFeedItems();
 }
 
-function toggleReadPostsView() {
-  showReadPosts = !showReadPosts;
-  if (showReadPosts) feedSort = "latest";
+function toggleUnreadPostsView() {
+  showUnreadPosts = !showUnreadPosts;
+  if (showUnreadPosts) feedSort = "latest";
   selectedItemId = "";
   feedPane = 0;
   renderFeeds();
@@ -844,10 +840,10 @@ function sourceTitle(source = selectedSource) {
 function feedSortDescription() {
   const subject = sourceTitle().trim();
   const allPosts = subject === "All";
-  if (showReadPosts) {
+  if (showUnreadPosts) {
     return allPosts
-      ? "Posts you’ve read, newest first."
-      : `${subject} posts you’ve read, newest first.`;
+      ? "Unread posts, newest first."
+      : `Unread posts from ${subject}, newest first.`;
   }
   if (feedSort === "active") {
     return allPosts
@@ -1377,7 +1373,7 @@ function applyPane() {
       subtitle.textContent = "";
     } else {
       const count = itemsForSource().length;
-      subtitle.textContent = `${countLabel(count)} ${showReadPosts ? "read" : "posts"}`;
+      subtitle.textContent = `${countLabel(count)} ${showUnreadPosts ? "unread" : "posts"}`;
     }
   }
 }
@@ -1731,7 +1727,7 @@ function feedsSignInNote() {
 
 function feedsDiscoverInvite() {
   if (!pickerIsSignedIn()) return "";
-  if (showReadPosts) return "";
+  if (showUnreadPosts) return "";
   if (feedState.dismissedDiscoverInvite) return "";
   const fewFeeds = feedState.feeds.length < 12;
   const allWithUnread = selectedSource === "all" && unreadItems().length > 0;
@@ -1802,13 +1798,13 @@ function renderList() {
   if (!river) return;
   const sortButtons = document.querySelectorAll("#feedsSort [data-feed-sort]");
   sortButtons.forEach((button) => {
-    button.setAttribute("aria-pressed", !showReadPosts && button.dataset.feedSort === feedSort ? "true" : "false");
+    button.setAttribute("aria-pressed", !showUnreadPosts && button.dataset.feedSort === feedSort ? "true" : "false");
   });
   const readToggle = document.querySelector("#feedsReadToggle");
   if (readToggle) {
-    readToggle.setAttribute("aria-pressed", showReadPosts ? "true" : "false");
-    readToggle.setAttribute("aria-label", showReadPosts ? "Show all posts" : "Show only read posts");
-    readToggle.title = showReadPosts ? "Return to all posts" : "Show only posts you have already read";
+    readToggle.setAttribute("aria-pressed", showUnreadPosts ? "true" : "false");
+    readToggle.setAttribute("aria-label", showUnreadPosts ? "Show all posts" : "Show only unread posts");
+    readToggle.title = showUnreadPosts ? "Return to all posts" : "Show only posts you have not read";
   }
   const activeSort = document.querySelector("#feedsSort [data-feed-sort='active']");
   if (activeSort) {
@@ -1819,7 +1815,7 @@ function renderList() {
     sortHint.textContent = feedSortDescription();
   }
 
-  const currentKey = `${selectedSource}|${Array.from(selectedFolderIds).sort().join(",")}|${folderFilterMode}|${feedSort}|${showReadPosts ? "read" : "all"}`;
+  const currentKey = `${selectedSource}|${Array.from(selectedFolderIds).sort().join(",")}|${folderFilterMode}|${feedSort}|${showUnreadPosts ? "unread" : "all"}`;
   if (currentKey !== lastRenderedSourceKey) {
     lastRenderedSourceKey = currentKey;
     riverRenderLimit = 40;
@@ -1843,7 +1839,7 @@ function renderList() {
       riverObserver = null;
     }
     river.innerHTML = feedState.feeds.length
-      ? `${filterBanner}${feedsDiscoverInvite()}<p class="feeds-river-empty">${showReadPosts ? "Nothing read" : "No posts"} in this view.</p>${feedsSignInNote()}`
+      ? `${filterBanner}${feedsDiscoverInvite()}<p class="feeds-river-empty">${showUnreadPosts ? "No unread posts" : "No posts"} in this view.</p>${feedsSignInNote()}`
       : feedsWelcome();
     return;
   }
@@ -1867,7 +1863,7 @@ function renderList() {
     if (feedSort === "latest") lastDay = day;
     const when = formatClock(item.publishedAt);
     const itemImage = cleanImageUrl(item.image);
-    const isReadInAll = Boolean(feedState.read[item.id] && !showReadPosts);
+    const isReadInAll = Boolean(feedState.read[item.id] && !showUnreadPosts);
     const readMark = isReadInAll
       ? `<span class="feed-row-read-mark" aria-hidden="true"><i class="ph ph-check" aria-hidden="true"></i> Read</span>`
       : "";
@@ -2872,12 +2868,12 @@ function bindFeedsDesk() {
   document.querySelector("#discoverTopicPack")?.addEventListener("click", () => selectTopicPack());
   document.querySelector("#feedsSort")?.addEventListener("click", (event) => {
     if (event.target.closest("#feedsReadToggle")) {
-      toggleReadPostsView();
+      toggleUnreadPostsView();
       return;
     }
     const button = event.target.closest("[data-feed-sort]");
     if (!button) return;
-    showReadPosts = false;
+    showUnreadPosts = false;
     feedSort = button.dataset.feedSort === "active" ? "active" : "latest";
     selectedItemId = "";
     feedPane = 0;
