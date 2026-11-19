@@ -3334,9 +3334,21 @@ function bindFeedsDesk() {
   });
   document.querySelector("#desk-feeds")?.addEventListener("change", () => {
     if (!document.querySelector("#desk-feeds")?.checked) return;
-    renderFeeds();
+    showFeedsStartPage();
     const task = refreshFeeds();
     if (task) window.pickerWaitUntil?.("feeds", "Loading feeds", task);
+  });
+
+  const feedsNavElements = [
+    document.querySelector("#desk-feeds"),
+    document.querySelector("#feedsNav"),
+    document.querySelector('label[for="desk-feeds"]'),
+  ].filter(Boolean);
+
+  feedsNavElements.forEach((el) => {
+    el.addEventListener("click", () => {
+      showFeedsStartPage();
+    });
   });
   window.addEventListener("resize", applyPane);
   renderFeeds();
@@ -3348,5 +3360,31 @@ function bindFeedsDesk() {
     window.__pendingWidgetStoryParams = null;
   }
 }
+
+function showFeedsStartPage() {
+  previousSource = null;
+  selectedSource = "all";
+  selectedFolderIds.clear();
+  folderFilterMode = "show";
+  activeWidgetStory = null;
+  selectedItemId = "";
+  feedPane = 0;
+  showUnreadPosts = false;
+  applyPane();
+  renderFeeds();
+  document.querySelector("#feedsAddDialog")?.close();
+  const river = document.querySelector("#feedRiver");
+  if (river) river.scrollTop = 0;
+  const listPane = document.querySelector(".feeds-pane--list");
+  if (listPane) listPane.scrollTop = 0;
+  const swipe = document.querySelector("#feedsSwipe");
+  if (swipe) swipe.scrollTop = 0;
+  const panel = document.querySelector("#feedsPanel");
+  if (panel) panel.scrollTop = 0;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+window.showFeedsStartPage = showFeedsStartPage;
+window.resetFeedsToStartPage = showFeedsStartPage;
 
 document.addEventListener("DOMContentLoaded", bindFeedsDesk);

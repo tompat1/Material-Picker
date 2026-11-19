@@ -261,6 +261,44 @@ test("mobile article headers bound long author names", async ({ page }) => {
   await expect(byline).toHaveText(author);
 });
 
+test("clicking the Feeds toolbar menu-item while reading an article returns to the full start page/list", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("material-picker:feeds", JSON.stringify({
+      feeds: [
+        { id: "feed-1", title: "Feber", url: "https://feber.example/feed", folderIds: ["tech"] },
+        { id: "feed-2", title: "IndieWire", url: "https://indiewire.example/feed", folderIds: ["movies"] },
+      ],
+      folders: [{ id: "tech", name: "Tech" }, { id: "movies", name: "Movies" }],
+      favoriteFolderIds: ["tech", "movies"],
+      items: [
+        { id: "story-1", feedId: "feed-1", title: "Mariah Carey blir Barbie igen", publishedAt: "2026-11-19T11:49:00Z" },
+        { id: "story-2", feedId: "feed-2", title: "IndieWire Movie Post", publishedAt: "2026-11-19T10:00:00Z" },
+      ],
+      read: {},
+      archived: {},
+    }));
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  // Open the article
+  await page.locator('[data-open-story="story-1"]').click();
+  await expect(page.locator("#feedsPanel")).toHaveClass(/is-article-view/);
+
+  // Click on the Feeds toolbar item in the bottom navigation
+  await page.locator('label[for="desk-feeds"]').click();
+
+  // Feeds panel must exit article view and return to full list/start page
+  await expect(page.locator("#feedsPanel")).not.toHaveClass(/is-article-view/);
+  await expect(page.locator("#feedsTitle")).toHaveText("All");
+  await expect(page.locator('[data-open-story="story-1"]')).toBeVisible();
+  await expect(page.locator('[data-open-story="story-2"]')).toBeVisible();
+});
+
 test("feed filter descriptions follow the selected subject", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("material-picker:feeds", JSON.stringify({

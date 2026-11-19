@@ -767,13 +767,81 @@ function bindEvents() {
   bindPlayBubble();
   document.querySelector("#youtubeHome")?.addEventListener("click", onYouTubeHomeClick);
   bindMerchShop();
-  document.querySelectorAll(".nav-sub label, #desk-library, #desk-youtube, #desk-feeds").forEach((control) => {
+  document.querySelectorAll(".nav-sub label, #desk-library, #desk-youtube, #desk-feeds, label[for='desk-library'], label[for='desk-youtube'], label[for='desk-feeds']").forEach((control) => {
     control.addEventListener("change", closeMobileMenus);
     control.addEventListener("click", closeMobileMenus);
   });
-  document.querySelector("#desk-library")?.addEventListener("click", () => {
-    setPlayerOriginDesk("");
-    syncPlayerBack();
+
+  const libraryControls = [
+    document.querySelector("#desk-library"),
+    document.querySelector('label[for="desk-library"]'),
+  ].filter(Boolean);
+  libraryControls.forEach((control) => {
+    control.addEventListener("click", () => {
+      closeMobileMenus();
+      setPlayerOriginDesk("");
+      syncPlayerBack();
+      if (document.body.classList.contains("is-mobile-player")) closeMobilePlayer();
+      if (typeof activeCollectionId !== "undefined") {
+        activeCollectionId = "all";
+      }
+      if (typeof mobileLibraryFilter !== "undefined") {
+        mobileLibraryFilter = "all";
+      }
+      const searchInput = document.querySelector("#librarySearch");
+      if (searchInput && searchInput.value) {
+        searchInput.value = "";
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      renderLibraryCollections();
+      renderLibrary();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+
+  const youtubeControls = [
+    document.querySelector("#desk-youtube"),
+    document.querySelector("#youtubeNav"),
+    document.querySelector('label[for="desk-youtube"]'),
+  ].filter(Boolean);
+  youtubeControls.forEach((control) => {
+    control.addEventListener("click", () => {
+      closeMobileMenus();
+      setPlayerOriginDesk("");
+      syncPlayerBack();
+      if (document.body.classList.contains("is-mobile-player")) closeMobilePlayer();
+      if (typeof youtubeShelf !== "undefined") {
+        youtubeShelf.view = "all";
+        youtubeShelf.channelId = "";
+        youtubeShelf.playlistId = "";
+        youtubeShelf.topic = "";
+        youtubeShelf.subFilter = "latest";
+        youtubeManageSubs = false;
+        renderYouTubeChannels?.();
+        paintYouTubeGrid?.();
+      }
+      document.querySelector("#youtubeHome")?.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+
+  const feedsControls = [
+    document.querySelector("#desk-feeds"),
+    document.querySelector("#feedsNav"),
+    document.querySelector('label[for="desk-feeds"]'),
+  ].filter(Boolean);
+  feedsControls.forEach((control) => {
+    control.addEventListener("click", () => {
+      closeMobileMenus();
+      window.showFeedsStartPage?.();
+    });
+  });
+
+  document.querySelectorAll(".nav-sub label").forEach((control) => {
+    control.addEventListener("click", () => {
+      closeMobileMenus();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   });
   document.querySelector("#moreCheckPlayback")?.addEventListener("click", () => {
     closeMobileMenus();
