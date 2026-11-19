@@ -540,3 +540,36 @@ test("desktop article reader allows scrolling completely to the bottom of long p
   expect(actionsBox.y + actionsBox.height).toBeLessThanOrEqual(800);
 });
 
+test("now playing header places back button and action buttons inline above full-width title", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.evaluate(() => {
+    window.selectVideo("summit-01", { originDesk: "youtube" });
+  });
+
+  const bar = page.locator("#nowPlayingBar");
+  await expect(bar).toBeVisible();
+
+  const backBtn = page.locator("#playerBack");
+  await expect(backBtn).toBeVisible();
+  await expect(backBtn).toContainText("My YouTube");
+
+  const actions = page.locator(".now-playing-actions");
+  await expect(actions).toBeVisible();
+
+  const backBox = await backBtn.boundingBox();
+  const actionsBox = await actions.boundingBox();
+  const titleBox = await page.locator("#playerTitle").boundingBox();
+
+  // Back button and action buttons are in the top bar inline (roughly same vertical position)
+  expect(Math.abs(backBox.y - actionsBox.y)).toBeLessThan(15);
+  // Back button is on the left, actions are on the right
+  expect(backBox.x).toBeLessThan(actionsBox.x);
+
+  // Title is positioned underneath the bar
+  expect(titleBox.y).toBeGreaterThanOrEqual(backBox.y + backBox.height - 5);
+  // Title spans the container width (wider than the actions)
+  expect(titleBox.width).toBeGreaterThan(actionsBox.width);
+});
+
+

@@ -2192,11 +2192,23 @@ body:has(#desk-transcripts:checked) .app-shell {
   }
 }
 
-.now-playing-heading {
+.now-playing-bar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 2.15rem;
+}
+
+.now-playing-bar .now-playing-actions {
+  margin-left: auto;
+  gap: 0.15rem;
+}
+
+.now-playing-heading {
+  display: block;
+  width: 100%;
+  min-width: 0;
 }
 
 .now-playing h2 {
@@ -4891,7 +4903,7 @@ progress::-moz-progress-bar {
 .now-playing .add-to-list,
 .now-playing .favourite-toggle {
   flex: 0 0 auto;
-  margin: 6px 0 0;
+  margin: 0;
 }
 
 .playlist-create {
