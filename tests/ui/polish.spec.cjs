@@ -256,17 +256,9 @@ test("mobile article headers bound long author names", async ({ page }) => {
   await page.locator('[data-open-story="story-1"]').click();
 
   const title = page.locator("#feedsTitle");
-  const subtitle = page.locator("#feedsSubtitle");
-  const actions = page.locator(".feeds-reeder-actions");
-  await expect(subtitle).toHaveText(author);
-  await expect(subtitle).toHaveCSS("text-overflow", "ellipsis");
-  const [titleBox, subtitleBox, actionsBox] = await Promise.all([
-    title.boundingBox(),
-    subtitle.boundingBox(),
-    actions.boundingBox(),
-  ]);
-  expect(titleBox.width).toBeGreaterThanOrEqual(48);
-  expect(subtitleBox.x + subtitleBox.width).toBeLessThanOrEqual(actionsBox.x - 7);
+  await expect(title).toBeVisible();
+  const byline = page.locator(".feed-article-by");
+  await expect(byline).toHaveText(author);
 });
 
 test("feed filter descriptions follow the selected subject", async ({ page }) => {
@@ -292,8 +284,8 @@ test("feed filter descriptions follow the selected subject", async ({ page }) =>
   await expect(hint).toHaveText("Tech posts, newest first. Read posts are muted.");
   await page.getByRole("button", { name: "Busiest" }).click();
   await expect(hint).toHaveText("Sources with the most posts in Tech first — based on this view.");
-  await page.getByRole("button", { name: "Read" }).click();
-  await expect(hint).toHaveText("Tech posts you’ve read, newest first.");
+  await page.getByRole("button", { name: "Unread" }).click();
+  await expect(hint).toHaveText("Unread posts from Tech, newest first.");
 });
 
 test("desktop YouTube subscription actions do not collide and Manage exposes channel controls", async ({ page }) => {

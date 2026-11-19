@@ -1045,6 +1045,7 @@ function paintFeedHealth(message = "") {
     banner.hidden = true;
     return;
   }
+  if (feedStatusTimer) return;
   const lead = message
     || (broken.length
       ? "Some feeds need a new address. Resolve the ones that are still alive, or remove the rest."
@@ -1353,7 +1354,7 @@ function applyPane() {
 
   if (subtitle) {
     if (onArticle) {
-      subtitle.textContent = "";
+      subtitle.textContent = article?.author || "";
     } else {
       const count = itemsForSource().length;
       subtitle.textContent = `${countLabel(count)} ${showUnreadPosts ? "unread" : "posts"}`;
@@ -2299,7 +2300,7 @@ function renderFeeds() {
   renderFeedChoices();
   renderFolderPicker();
   applyPane();
-  paintFeedHealth();
+  if (!feedStatusTimer && (brokenFeeds().length || deadFeeds().length)) paintFeedHealth();
 }
 
 function selectFeedByUrl(url) {
