@@ -1036,26 +1036,15 @@ function setFeedHealth(feed, status) {
 let feedStatusTimer = 0;
 
 function paintFeedHealth(message = "") {
-  const node = document.querySelector("#feedsStatus");
-  if (!node || feedStatusTimer) return;
+  const banner = document.querySelector("#feedsRepairBanner");
+  if (!banner) return;
   const broken = brokenFeeds();
   const dead = deadFeeds();
   if (!broken.length && !dead.length) {
-    node.classList.remove("is-warn");
-    if (message) {
-      const throbberHtml = `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"><span class="amber-throbber-track"></span></span>`;
-      node.innerHTML = `<p class="feeds-status-line">${throbberHtml}<span>${escapeFeedText(message)}</span></p>`;
-      window.clearTimeout(feedStatusTimer);
-      feedStatusTimer = window.setTimeout(() => {
-        feedStatusTimer = 0;
-        node.innerHTML = "";
-      }, 3500);
-    } else {
-      node.innerHTML = "";
-    }
+    banner.innerHTML = "";
+    banner.hidden = true;
     return;
   }
-  node.classList.add("is-warn");
   const lead = message
     || (broken.length
       ? "Some feeds need a new address. Resolve the ones that are still alive, or remove the rest."
@@ -1074,7 +1063,8 @@ function paintFeedHealth(message = "") {
   if (broken.length > 1) {
     rows.push(`<li class="feeds-repair-all"><button type="button" data-resolve-all>Resolve all</button></li>`);
   }
-  node.innerHTML = `<p>${escapeFeedText(lead)}</p><ul class="feeds-repair">${rows.join("")}</ul>`;
+  banner.innerHTML = `<p>${escapeFeedText(lead)}</p><ul class="feeds-repair">${rows.join("")}</ul>`;
+  banner.hidden = false;
 }
 
 function setFeedStatus(message, options = {}) {
@@ -1083,16 +1073,12 @@ function setFeedStatus(message, options = {}) {
   window.clearTimeout(feedStatusTimer);
   feedStatusTimer = 0;
   if (!message) {
-    if (brokenFeeds().length || deadFeeds().length) {
-      paintFeedHealth();
-    } else {
-      node.innerHTML = "";
-    }
+    node.innerHTML = "";
+    paintFeedHealth();
     window.paintPickerLoader?.();
     return;
   }
   const isUpdating = /^Refreshing|^Looking for|^Adding|^Reading|^Loading/i.test(message || "");
-  node.classList.remove("is-warn");
   const throbberHtml = isUpdating
     ? `<span class="amber-throbber amber-throbber--xs" aria-hidden="true"><span class="amber-throbber-track"></span></span>`
     : `<i class="ph ph-check" aria-hidden="true"></i>`;
@@ -1102,11 +1088,8 @@ function setFeedStatus(message, options = {}) {
   if (duration > 0) {
     feedStatusTimer = window.setTimeout(() => {
       feedStatusTimer = 0;
-      if (brokenFeeds().length || deadFeeds().length) {
-        paintFeedHealth();
-      } else {
-        node.innerHTML = "";
-      }
+      node.innerHTML = "";
+      paintFeedHealth();
       window.paintPickerLoader?.();
     }, duration);
   }
@@ -2316,7 +2299,7 @@ function renderFeeds() {
   renderFeedChoices();
   renderFolderPicker();
   applyPane();
-  if (!feedStatusTimer && (brokenFeeds().length || deadFeeds().length)) paintFeedHealth();
+  paintFeedHealth();
 }
 
 function selectFeedByUrl(url) {
