@@ -408,9 +408,17 @@ test("desktop fullscreen player keeps a clear minimize control visible", async (
     const embed = document.querySelector("#embedPlayer");
     shell.dataset.mode = "embed";
     embed.setAttribute("src", "about:blank");
+    window.__fullscreenHadUserActivation = false;
+    shell.requestFullscreen = () => {
+      window.__fullscreenHadUserActivation = navigator.userActivation.isActive;
+      return Promise.resolve();
+    };
     livePlayback = true;
-    returnFromPlayBubble();
+    floatPlayBubble();
   });
+
+  await page.locator("#playBubbleReturn").click();
+  await expect.poll(() => page.evaluate(() => window.__fullscreenHadUserActivation)).toBe(true);
 
   const minimize = page.locator("#playerFullscreenExit");
   await expect(minimize).toBeVisible();

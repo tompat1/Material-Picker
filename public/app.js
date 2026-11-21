@@ -7873,7 +7873,6 @@ function bindPlayBubble() {
     dragged = false;
     justDragged = wasDrag;
     bubble.classList.remove("is-dragging");
-    if (!wasDrag && !event.target.closest(".play-bubble-close")) returnFromPlayBubble();
   });
   scrim.addEventListener("pointercancel", () => {
     drag = null;
