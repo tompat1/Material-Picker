@@ -1899,7 +1899,9 @@ function extractArticleText(html) {
     ];
     doc.querySelectorAll(noiseSelectors.join(", ")).forEach((el) => el.remove());
 
-    // Look for strict, specific article body containers first
+    // Look for strict, specific article body containers first. BBC's current
+    // article pages wrap their text blocks in #main-content, while many other
+    // publishers expose one of the class or itemprop hooks below.
     const specificSelectors = [
       "[itemprop='articleBody']",
       ".article-body",
@@ -1909,13 +1911,15 @@ function extractArticleText(html) {
       ".post_body",
       ".story-body",
       ".article-content",
-      ".c-entry-content"
+      ".c-entry-content",
+      "main#main-content article",
+      "main#main-content"
     ];
 
     let container = null;
     for (const selector of specificSelectors) {
       const found = doc.querySelector(selector);
-      if (found && found.querySelectorAll("p").length >= 1) {
+      if (found && found.querySelectorAll("p").length >= 2) {
         container = found;
         break;
       }
@@ -1962,9 +1966,23 @@ function extractArticleText(html) {
   return "";
 }
 
+function articleParagraphCount(value) {
+  return String(value || "")
+    .split(/\n\s*\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter((paragraph) => paragraph.length >= 20)
+    .length;
+}
+
 function isFeedItemTruncated(item) {
   const text = String(item?.summary || "").trim();
   if (!text) return true;
+
+  // Feed descriptions are commonly a single complete teaser sentence. That
+  // does not look truncated, but it still leaves the reader with only a
+  // headline-sized excerpt (notably for BBC feeds). Enrich those entries from
+  // the article page until the reader can show at least two real paragraphs.
+  if (articleParagraphCount(text) < 2) return true;
 
   // Explicit truncation indicators
   if (/(?:…|\.\.\.|\[…\]|\[\.\.\.\]|\[\s*read\s+more\s*\]|\bread\s+more\b|\bcontinue\s+reading\b|\bappeared\s+first\s+on\b|\[\+\d+\s*chars\])\s*$/i.test(text)) {
