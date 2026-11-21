@@ -7945,7 +7945,7 @@ label.cms-image-choose {
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 999px;
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-ink);
   font-family: inherit;
   font-size: 0.88rem;
   font-weight: 700;
@@ -7960,8 +7960,8 @@ label.cms-image-choose {
 }
 
 .shop-lightbox-close:hover {
-  background: color-mix(in srgb, var(--accent) 85%, #ffffff);
-  color: #ffffff;
+  background: var(--accent-hot);
+  color: var(--accent-ink);
   transform: scale(1.05);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
 }
