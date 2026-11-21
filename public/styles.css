@@ -12123,3 +12123,41 @@ button[value="close"]:active {
   color: var(--ink);
 }
 
+/* Branded thumbnail fallback for missing or unavailable provider artwork. */
+.picker-thumbnail-fallback::after,
+.yt-thumb-fallback,
+.topic-thumb-fallback {
+  background-image: url("/brand/logos/picker-mark-dark.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.picker-thumbnail-fallback::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background-size: 28% auto;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.card-thumb.picker-thumbnail-fallback::after {
+  background-size: 38% auto;
+}
+
+.topic-thumb-wrap.picker-thumbnail-fallback::after,
+.topic-thumb-fallback {
+  background-size: 32% auto;
+}
+
+.yt-thumb-fallback {
+  background-size: 22% auto;
+  opacity: 0.72;
+}
+
+html[data-picker-theme="new-age"] .picker-thumbnail-fallback::after,
+html[data-picker-theme="new-age"] .yt-thumb-fallback,
+html[data-picker-theme="new-age"] .topic-thumb-fallback {
+  background-image: url("/brand/logos/picker-mark-light.svg");
+}
+

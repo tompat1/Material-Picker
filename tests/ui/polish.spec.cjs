@@ -433,6 +433,30 @@ test("desktop fullscreen player keeps a clear minimize control visible", async (
   await expect(minimize).toBeHidden();
 });
 
+test("missing thumbnails use the Picker mark for each theme", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    const fallback = document.createElement("span");
+    fallback.id = "missing-thumbnail-test";
+    fallback.className = "yt-thumb";
+    fallback.innerHTML = '<img alt="" src="about:blank">';
+    document.body.append(fallback);
+    usePickerThumbnailFallback(fallback.querySelector("img"));
+  });
+
+  const fallback = page.locator("#missing-thumbnail-test");
+  await expect(fallback).toHaveClass(/picker-thumbnail-fallback/);
+  await expect(fallback.locator("img")).toHaveCount(0);
+
+  const fallbackAsset = () => page.evaluate(() => (
+    getComputedStyle(document.querySelector("#missing-thumbnail-test"), "::after").backgroundImage
+  ));
+  await expect.poll(fallbackAsset).toContain("picker-mark-dark.svg");
+
+  await page.evaluate(() => document.documentElement.dataset.pickerTheme = "new-age");
+  await expect.poll(fallbackAsset).toContain("picker-mark-light.svg");
+});
+
 test("mobile YouTube channel carousel responds to a native horizontal swipe", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },

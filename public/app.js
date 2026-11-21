@@ -2286,6 +2286,15 @@ function youtubeChannelMark(thumbnail, title) {
   return `<span class="yt-avatar yt-avatar-fallback" aria-hidden="true">${escapeHtml(letter)}</span>`;
 }
 
+function usePickerThumbnailFallback(image) {
+  if (!image) return;
+  const container = image.closest?.(".card-thumb, .yt-thumb-wrap, .yt-thumb, .topic-thumb-wrap");
+  const spinner = image.previousElementSibling;
+  if (spinner?.classList?.contains("thumb-spinner")) spinner.remove();
+  container?.classList.add("picker-thumbnail-fallback");
+  image.remove();
+}
+
 function hideYouTubeVideoByUrl(url, card) {
   if (!url) return;
   const videos = youtubeShelfVideos();
@@ -2508,7 +2517,7 @@ function paintYouTubeGrid(message = "") {
     grid.innerHTML = playlists.length
       ? playlists.map((playlist) => `<article class="yt-card">
           <button class="yt-thumb" type="button" data-youtube-playlist="${escapeHtml(playlist.id)}">
-            ${playlist.thumbnail ? `<img alt="" src="${escapeHtml(playlist.thumbnail)}" />` : `<span class="yt-thumb-fallback"></span>`}
+            ${playlist.thumbnail ? `<img alt="" src="${escapeHtml(playlist.thumbnail)}" onerror="usePickerThumbnailFallback(this)" />` : `<span class="yt-thumb-fallback" aria-hidden="true"></span>`}
           </button>
           <div class="yt-card-copy">
             <h3>${escapeHtml(playlist.title)}</h3>
@@ -2535,7 +2544,7 @@ function paintYouTubeGrid(message = "") {
     </div>
     <div class="yt-card-content">
       <button class="yt-thumb" type="button" data-youtube-open="${index}">
-        ${video.thumbnail ? `<span class="yt-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img alt="" src="${escapeHtml(video.thumbnail)}" loading="lazy" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.previousElementSibling?.remove();this.remove()" /></span>` : `<span class="yt-thumb-fallback"></span>`}
+        ${video.thumbnail ? `<span class="yt-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img alt="" src="${escapeHtml(video.thumbnail)}" loading="lazy" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="usePickerThumbnailFallback(this)" /></span>` : `<span class="yt-thumb-fallback" aria-hidden="true"></span>`}
         ${video.duration ? `<span class="yt-duration">${escapeHtml(video.duration)}</span>` : ""}
       </button>
       <div class="yt-card-body">
@@ -4512,7 +4521,7 @@ function topicResultMarkup(results) {
     const vote = core.feedVoteForUrl(state, item.url);
     const title = item.title || "Untitled video";
     const thumb = item.thumbnail
-      ? `<img alt="" src="${escapeHtml(item.thumbnail)}" />`
+      ? `<img alt="" src="${escapeHtml(item.thumbnail)}" onerror="usePickerThumbnailFallback(this)" />`
       : `<span class="topic-thumb-fallback" aria-hidden="true"></span>`;
     return `<article class="topic-result" data-feed-url="${escapeHtml(item.url)}">
       <button class="topic-open" type="button" data-open-topic="${index}">
@@ -5371,6 +5380,7 @@ async function clearThumbnails() {
 
 function paintThumb(element, url) {
   element.classList.remove("is-rendering", "needs-render");
+  element.classList.remove("picker-thumbnail-fallback");
   let image = element.querySelector("img");
   if (!image) {
     image = document.createElement("img");
@@ -5379,6 +5389,7 @@ function paintThumb(element, url) {
     element.prepend(image);
   }
   image.onload = () => image.classList.add("is-loaded");
+  image.onerror = () => usePickerThumbnailFallback(image);
   image.src = url;
   if (image.complete) image.classList.add("is-loaded");
   element.querySelectorAll(".thumb-spinner, .thumb-render").forEach((node) => node.remove());
