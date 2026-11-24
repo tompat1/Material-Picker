@@ -1096,6 +1096,20 @@ function bindEvents() {
       showActionNotice(rect, saved ? "Saved to favourites" : "Removed from favourites");
       return;
     }
+    const shareButton = event.target.closest(".share-button");
+    if (shareButton) {
+      const videoId = shareButton.dataset.videoId || (shareButton.id === "shareCurrentVideo" ? state.selectedId : "");
+      const video = state.videos.find((item) => item.id === videoId) || selectedVideo();
+      if (video && !shareButton.disabled) {
+        pulseAction(shareButton);
+        void sharePost({
+          title: video.title || "Video",
+          text: [video.title, video.speaker].filter(Boolean).join(" - "),
+          url: video.url || video.sourceUrl || window.location.href,
+        }, shareButton);
+      }
+      return;
+    }
     const button = event.target.closest(".add-to-list");
     const menu = document.querySelector("#playlistMenu");
     if (button) {
@@ -6208,6 +6222,10 @@ function renderLibrary() {
       favouriteButton.dataset.videoId = video.id;
       favouriteButton.classList.toggle("is-favourite", isFavourite(video.id));
     }
+    const cardShareButton = card.querySelector(".share-button");
+    if (cardShareButton) {
+      cardShareButton.dataset.videoId = video.id;
+    }
 
     const checkbox = card.querySelector(".video-select-input");
     checkbox.checked = selectedVideoIds.has(video.id);
@@ -6759,6 +6777,59 @@ function acknowledgeAction(button, message, rect) {
   showActionNotice(rect || button?.getBoundingClientRect(), message);
   pulseAction(button);
 }
+
+async function sharePost(data, button) {
+  let url = data?.url || data?.link || "";
+  if (url && !url.startsWith("http://") && !url.startsWith("https://")) {
+    try {
+      url = new URL(url, window.location.href).href;
+    } catch {
+      url = window.location.href;
+    }
+  }
+  if (!url) url = window.location.href;
+
+  const title = data?.title || document.title || "Picker";
+  const text = data?.text || title;
+  const rect = button?.getBoundingClientRect?.();
+
+  if (typeof navigator !== "undefined" && navigator.share) {
+    try {
+      await navigator.share({ title, text, url });
+      acknowledgeAction(button, "Shared!", rect);
+      return;
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+    }
+  }
+
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = url;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    acknowledgeAction(button, "Link copied to clipboard", rect);
+  } catch {
+    acknowledgeAction(button, "Could not copy link", rect);
+  }
+}
+
+function syncShareButtons() {
+  const currentShare = document.querySelector("#shareCurrentVideo");
+  if (currentShare) currentShare.disabled = !selectedVideo();
+}
+
+window.sharePost = sharePost;
+window.acknowledgeAction = acknowledgeAction;
+window.pulseAction = pulseAction;
 
 function voteNotice(vote, liked) {
   if (vote === 1) return "Liked";
@@ -7420,6 +7491,7 @@ function renderForm() {
   syncPlayButton();
   syncAddToListButtons();
   syncFavouriteButtons();
+  syncShareButtons();
   syncPlayerFeedVotes();
   renderScreenMeta(video);
   void ensureVideoChapters(video);

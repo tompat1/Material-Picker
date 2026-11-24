@@ -604,4 +604,81 @@ test("now playing header places back button and action buttons inline above full
   expect(titleBox.width).toBeGreaterThan(actionsBox.width);
 });
 
+test("sharing works for both feed posts and video posts", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.addInitScript(() => {
+    window.sharedCalls = [];
+    navigator.share = async (data) => {
+      window.sharedCalls.push(data);
+      return Promise.resolve();
+    };
+    localStorage.setItem("material-picker:v1", JSON.stringify({
+      videos: [{ id: "vid-1", title: "Test Video", url: "https://www.youtube.com/watch?v=123", speaker: "Test Channel" }],
+      selectedId: "vid-1",
+    }));
+    localStorage.setItem("material-picker:feeds", JSON.stringify({
+      feeds: [{ id: "feed-1", title: "Feber", url: "https://feber.example/feed", folderIds: [] }],
+      folders: [],
+      favoriteFolderIds: [],
+      items: [{
+        id: "post-123",
+        feedId: "feed-1",
+        title: "Mariah Carey blir Barbie igen",
+        link: "https://feber.se/leksaker/mariah-carey/123",
+        publishedAt: "2026-11-24T10:00:00Z",
+        summary: "En ny docka har presenterats.",
+      }],
+      read: {},
+      archived: {},
+      starred: {},
+    }));
+  });
+
+  await page.goto("/");
+
+  // Test 1: Video post sharing from now-playing bar
+  await page.evaluate(() => {
+    window.selectVideo("vid-1", { originDesk: "youtube" });
+  });
+
+  const videoShareBtn = page.locator("#shareCurrentVideo");
+  await expect(videoShareBtn).toBeVisible();
+  await expect(videoShareBtn).toBeEnabled();
+  await videoShareBtn.click();
+
+  let calls = await page.evaluate(() => window.sharedCalls);
+  expect(calls.length).toBe(1);
+  expect(calls[0].title).toBe("Test Video");
+  expect(calls[0].url).toBe("https://www.youtube.com/watch?v=123");
+
+  // Test 2: Feed post sharing from article reader
+  await page.locator("#desk-feeds").evaluate((input) => {
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  await page.locator(".feed-row").first().click();
+
+  // Mobile top header share button
+  const topShare = page.locator("#feedsArticleShare");
+  await expect(topShare).toBeVisible();
+  await topShare.click();
+
+  calls = await page.evaluate(() => window.sharedCalls);
+  expect(calls.length).toBe(2);
+  expect(calls[1].title).toBe("Mariah Carey blir Barbie igen");
+  expect(calls[1].url).toBe("https://feber.se/leksaker/mariah-carey/123");
+
+  // In-article bottom action share button
+  const actionShare = page.locator(".feed-article-actions [data-share-item]");
+  await expect(actionShare).toBeVisible();
+  await actionShare.click();
+
+  calls = await page.evaluate(() => window.sharedCalls);
+  expect(calls.length).toBe(3);
+  expect(calls[2].title).toBe("Mariah Carey blir Barbie igen");
+});
+
+
 

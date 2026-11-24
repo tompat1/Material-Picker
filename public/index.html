@@ -431,6 +431,9 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
               </button>
             </div>
+            <button class="feeds-icon-button" id="feedsArticleShare" type="button" hidden aria-label="Share article" data-tooltip="Share" title="Share article">
+              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            </button>
           </header>
           <nav class="feeds-favorite-tabs" id="feedsFavoriteTabs" aria-label="Feed folder shortcuts" hidden></nav>
           <div class="feeds-repair-banner" id="feedsRepairBanner" role="alert" hidden></div>
@@ -642,6 +645,9 @@
                   </button>
                   <button class="favourite-toggle" id="favouriteCurrent" type="button" aria-label="Add to favourites" data-tooltip="Add to favourites" aria-pressed="false" disabled>
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-line" d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/><path class="heart-solid" d="M12 21.35 10.55 20C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/></svg>
+                  </button>
+                  <button class="share-button" id="shareCurrentVideo" type="button" aria-label="Share this video" data-tooltip="Share" disabled>
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
                   </button>
                   <div class="topic-feedback player-feedback" role="group" aria-label="Rate this video">
                     <button class="topic-vote topic-vote-up" id="playerVoteUp" type="button" aria-pressed="false" disabled aria-label="Like this video" data-tooltip="Like">
@@ -1012,6 +1018,9 @@
           <button class="favourite-toggle" type="button" aria-label="Add to favourites" data-tooltip="Add to favourites" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path class="heart-line" d="M12 19.4 4.8 12.6a4.2 4.2 0 0 1 6-5.9L12 7.8l1.2-1.1a4.2 4.2 0 0 1 6 5.9z"/><path class="heart-solid" d="M12 21.35 10.55 20C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54z"/></svg>
           </button>
+          <button class="share-button" type="button" aria-label="Share this video" data-tooltip="Share">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          </button>
         </div>
         <div class="card-download-progress" hidden>
           <progress max="100" value="0"></progress>
@@ -1045,7 +1054,7 @@
 
     <script src="./vendor/hls.min.js" defer></script>
     <script src="./app-core.js?v=picker-nav-21" defer></script>
-    <script src="./app.js?v=picker-nav-143" defer></script>
-    <script src="./rss-desk.js?v=picker-nav-41" defer></script>
+    <script src="./app.js?v=picker-nav-144" defer></script>
+    <script src="./rss-desk.js?v=picker-nav-42" defer></script>
   </body>
 </html>

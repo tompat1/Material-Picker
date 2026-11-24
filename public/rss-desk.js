@@ -1324,6 +1324,11 @@ function applyPane() {
     reederActions.hidden = onArticle;
   }
 
+  const articleShare = document.querySelector("#feedsArticleShare");
+  if (articleShare) {
+    articleShare.hidden = !onArticle;
+  }
+
   if (favoriteTabs) {
     favoriteTabs.hidden = onArticle;
   }
@@ -2066,17 +2071,22 @@ function renderReader() {
   void loadFullArticleContent(item);
 
   const readerImage = cleanImageUrl(item.image);
+  const shareIconSvg = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>`;
   reader.innerHTML = `<article class="feed-article" data-article-link="${escapeFeedText(targetUrl)}">
     ${when ? `<p class="feed-article-date">${escapeFeedText(when)}</p>` : ""}
     <h3>${escapeFeedText(item.title)}</h3>
     ${item.author ? `<p class="feed-article-by">${escapeFeedText(item.author)}</p>` : ""}
     ${sourceHtml}
     ${readerImage ? `<div class="feed-article-thumb-wrap"><span class="thumb-spinner" aria-hidden="true"></span><img src="${escapeFeedText(readerImage)}" alt="" loading="lazy" referrerpolicy="no-referrer" onload="this.classList.add('is-loaded');this.previousElementSibling?.remove()" onerror="this.closest('.feed-article-thumb-wrap')?.remove()" /></div>` : ""}
-    ${targetUrl ? `<a class="feed-article-link" href="${escapeFeedText(targetUrl)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(targetUrl) || "Open")} →</a>` : ""}
+    <div class="feed-article-meta-row">
+      ${targetUrl ? `<a class="feed-article-link" href="${escapeFeedText(targetUrl)}" target="_blank" rel="noreferrer">${escapeFeedText(feedHost(targetUrl) || "Open")} →</a>` : ""}
+      <button class="feed-article-share-btn" type="button" data-share-item="${escapeFeedText(item.id)}" title="Share this post" aria-label="Share this post">${shareIconSvg}<span>Share</span></button>
+    </div>
     ${formatArticleBody(displayContent)}
     <div class="feed-article-actions">
       <button class="ghost-button" type="button" data-star-item="${escapeFeedText(item.id)}">${feedState.starred[item.id] ? "Starred" : "Star"}</button>
       <button class="ghost-button" type="button" data-archive-item="${escapeFeedText(item.id)}">${feedState.archived[item.id] ? "Archived" : "Archive"}</button>
+      <button class="ghost-button feed-article-share-pill" type="button" data-share-item="${escapeFeedText(item.id)}" aria-label="Share this post">${shareIconSvg}<span>Share</span></button>
       ${item.videoUrl ? `<button class="ghost-button" type="button" data-save-video="${escapeFeedText(item.id)}">Save</button>` : ""}
     </div>
   </article>`;
@@ -2710,6 +2720,30 @@ function saveFeedVideo(item) {
       speaker: item.author,
     },
   }));
+}
+
+async function shareFeedPostFallback(data, button) {
+  let url = data?.url || data?.link || window.location.href;
+  const title = data?.title || document.title || "Picker";
+  const text = data?.text || title;
+  const rect = button?.getBoundingClientRect?.();
+  if (typeof navigator !== "undefined" && navigator.share) {
+    try {
+      await navigator.share({ title, text, url });
+      if (typeof acknowledgeAction === "function") acknowledgeAction(button, "Shared!", rect);
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+    }
+  }
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+    }
+    if (typeof acknowledgeAction === "function") acknowledgeAction(button, "Link copied to clipboard", rect);
+  } catch {
+    if (typeof acknowledgeAction === "function") acknowledgeAction(button, "Could not copy link", rect);
+  }
 }
 
 function bindSwipe() {
@@ -3349,6 +3383,35 @@ function bindFeedsDesk() {
     }
     const saveButton = event.target.closest("[data-save-video]");
     if (saveButton) saveFeedVideo(itemById(saveButton.dataset.saveVideo));
+    const share = event.target.closest("[data-share-item]");
+    if (share) {
+      const id = share.dataset.shareItem;
+      const item = itemById(id) || activeWidgetStory;
+      if (item) {
+        if (typeof pulseAction === "function") pulseAction(share);
+        const shareFn = window.sharePost || shareFeedPostFallback;
+        void shareFn({
+          title: item.title || "Post",
+          text: item.author ? `${item.title} by ${item.author}` : item.title,
+          url: item.link || item.videoUrl || item.feedUrl || window.location.href,
+        }, share);
+      }
+      return;
+    }
+  });
+
+  document.querySelector("#feedsArticleShare")?.addEventListener("click", (event) => {
+    const item = itemById(selectedItemId) || activeWidgetStory;
+    if (item) {
+      const button = event.currentTarget;
+      if (typeof pulseAction === "function") pulseAction(button);
+      const shareFn = window.sharePost || shareFeedPostFallback;
+      void shareFn({
+        title: item.title || "Post",
+        text: item.author ? `${item.title} by ${item.author}` : item.title,
+        url: item.link || item.videoUrl || item.feedUrl || window.location.href,
+      }, button);
+    }
   });
   document.querySelector("#desk-feeds")?.addEventListener("change", () => {
     if (!document.querySelector("#desk-feeds")?.checked) return;
